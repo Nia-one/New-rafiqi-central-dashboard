@@ -1,0 +1,49 @@
+{
+  "meta": {
+    "block": "12:00–14:00 IST",
+    "updatedAt": "14:00 IST",
+    "month": "July 2026",
+    "day": 13,
+    "daysInMonth": 31,
+    "daysLeft": 18,
+    "theatresBehind": 3,
+    "illustrative": true
+  },
+  "monthlyCMTarget": 4000000,
+  "monthEndProjection": 3240000,
+  "askRateMultiple": 1.4,
+  "spine": [
+    { "id": "contracted", "label": "Demand contracted", "lane": "Demand", "actual": 862, "plan": 1050, "unit": "members" },
+    { "id": "capacity", "label": "Capacity live", "lane": "Śram Park", "actual": 920, "plan": 950, "unit": "Nests" },
+    { "id": "active", "label": "Members active", "lane": "FONO", "actual": 2314, "plan": 2500, "unit": "members" },
+    { "id": "attach", "label": "Attach", "lane": "Essentials", "actual": 41, "plan": 45, "unit": "percent" },
+    { "id": "arpu", "label": "ARPU", "lane": "Economics", "actual": 1742, "plan": 1800, "unit": "INR" },
+    { "id": "cm", "label": "CM", "lane": "Economics", "actual": 1360000, "plan": 1680000, "unit": "INR" }
+  ],
+  "constraints": [
+    { "id": "c1", "title": "Named demand has no ready capacity", "where": "Deccan (Pune) · Chakan", "impact": 440000, "detail": "128 ready Nests have no named enterprise requirement.", "owner": "Demand JCO", "next": "Name anchor enterprise before 16:00", "lane": "Demand", "stalledBlocks": 4 },
+    { "id": "c2", "title": "Commercial terms are waiting too long", "where": "Wellington (Karnataka) · Hosur", "impact": 286000, "detail": "Utilities clauses remain open after 18 days.", "owner": "Supply JCO", "next": "Close utilities clauses today", "lane": "Śram Park", "stalledBlocks": 3 },
+    { "id": "c3", "title": "Stockouts stop repeat purchases", "where": "Coromandel (Tamil Nadu) · 3 Studios", "impact": 182000, "detail": "Supplier fill is below 90% on high-repeat SKUs.", "owner": "EAE + supplier", "next": "Repool stock by 18:00", "lane": "Essentials", "stalledBlocks": 2 },
+    { "id": "c4", "title": "Members wait too long for activation", "where": "Rajputana (NCR) · Noida", "impact": 96000, "detail": "32 contracted members await activation.", "owner": "Operations lead", "next": "Confirm Studio roster", "lane": "FONO", "stalledBlocks": 1 },
+    { "id": "c5", "title": "Finance actuals are incomplete", "where": "Network", "impact": 72000, "detail": "Utilities actual is missing for two Studios.", "owner": "Finance analyst", "next": "Post actual by day close", "lane": "Economics", "stalledBlocks": 1 }
+  ],
+  "history": [
+    { "day": 1, "actual": 90000 }, { "day": 2, "actual": 184000 }, { "day": 3, "actual": 281000 },
+    { "day": 4, "actual": 380000 }, { "day": 5, "actual": 482000 }, { "day": 6, "actual": 586000 },
+    { "day": 7, "actual": 692000 }, { "day": 8, "actual": 800000 }, { "day": 9, "actual": 910000 },
+    { "day": 10, "actual": 1021000 }, { "day": 11, "actual": 1133000 }, { "day": 12, "actual": 1246000 },
+    { "day": 13, "actual": 1360000 }
+  ],
+  "previousBlock": {
+    "cm": 1304000,
+    "contracted": 850,
+    "membersActive": 2305,
+    "attach": 39,
+    "closures": 2,
+    "stockoutsClearedStudios": 2,
+    "stalledTheatre": "Deccan (Pune)",
+    "staleOwner": "JCO C",
+    "staleHours": 4,
+    "staleOwners": ["JCO C"]
+  }
+}

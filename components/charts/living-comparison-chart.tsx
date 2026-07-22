@@ -1,0 +1,8 @@
+"use client"
+import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { EditorialChartFrame } from "./editorial-chart-frame"
+import { CHART_SOURCE_NOTE, EDITORIAL_CHART_COPY, livingComparison } from "@/lib/editorial-charts"
+
+const config = { actual: { label: "Actual", color: "var(--chart-1)" }, plan: { label: "Plan", color: "var(--chart-2)" } }
+export function LivingComparisonChart() { return <EditorialChartFrame id="living-comparison" {...EDITORIAL_CHART_COPY.living} source={CHART_SOURCE_NOTE} annotation={<div className="chart-key"><span><i />Actual</span><span><i className="plan" />Plan</span></div>} table={<table><caption>Living actual versus plan</caption><thead><tr><th>Measure</th><th>Actual</th><th>Plan</th><th>Gap</th></tr></thead><tbody>{livingComparison.map(d => <tr key={d.label}><th>{d.label}</th><td>{d.actual}</td><td>{d.plan}</td><td>{d.gap}</td></tr>)}</tbody></table>}><ChartContainer config={config} className="editorial-chart-canvas"><BarChart accessibilityLayer data={livingComparison} layout="vertical" margin={{ left: 8, right: 52 }}><CartesianGrid horizontal={false} /><XAxis type="number" domain={[0, 2600]} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="label" width={122} tickLine={false} axisLine={false} /><ChartTooltip content={<ChartTooltipContent />} /><Bar dataKey="plan" fill="var(--color-plan)" radius={4}><LabelList dataKey="plan" position="right" /></Bar><Bar dataKey="actual" fill="var(--color-actual)" radius={4}><LabelList dataKey="actual" position="right" /></Bar></BarChart></ChartContainer></EditorialChartFrame> }

@@ -1,0 +1,315 @@
+﻿import { getDashboardData } from "./dashboardService";
+
+function toObjects(rows: any[][]) {
+  if (!rows?.length) return [];
+
+  const headers = rows[0].map((h: any) => String(h).trim());
+
+  return rows.slice(1).map((row) => {
+    const obj: Record<string, any> = {};
+
+    headers.forEach((header, index) => {
+      obj[header] = row[index] ?? "";
+    });
+
+    return obj;
+  });
+}
+
+function num(value: any) {
+  if (value === null || value === undefined || value === "") return 0;
+
+  const parsed = Number(
+    String(value).replace(/[â‚¹,%]/g, "").trim()
+  );
+
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function first(obj: Record<string, any>, keys: string[]) {
+  for (const key of keys) {
+    if (
+      obj[key] !== undefined &&
+      obj[key] !== null &&
+      String(obj[key]).trim() !== ""
+    ) {
+      return obj[key];
+    }
+  }
+
+  return "";
+}
+
+function studioNumber(row: Record<string, any>, keys: string[]) {
+  return num(first(row, keys));
+}
+
+export async function buildOpsData() {
+  console.log('OPS_MAPPER_START');
+  const data = await getDashboardData();
+
+  console.log("Action Log (first 10 rows):");
+console.log(data.actionLog?.slice(0, 10));
+
+console.log("Incident Log (first 10 rows):");
+console.log(data.incidentLog?.slice(0, 10));
+
+console.log("Approval Log (first 10 rows):");
+console.log(data.approvalLog?.slice(0, 10));
+
+console.log("AVAILABLE SHEETS:", Object.keys(data));
+
+console.log("Finance Daily (first 5 rows):");
+console.log(data.financeDaily?.slice(0, 5));
+
+console.log("Dashboard Overview (first 5 rows):");
+console.log(data.dashboardOverview?.slice(0, 5));
+console.log("Enterprise Demand (first 5 rows):");
+console.log(data.enterpriseDemand?.slice(0, 5));
+
+console.log("Member Activation (first 5 rows):");
+console.log(data.memberActivation?.slice(0, 5));
+
+console.log("Hourly Heartbeat (first 5 rows):");
+console.log(data.hourlyHeartbeat?.slice(0, 5));
+
+console.log("CONSTRAINTS RAW:", data.constraints?.slice(0,10));
+console.log("Evidence Log (first 5 rows):");
+console.log(data.evidenceLog?.slice(0, 5));
+
+  // Convert all Google Sheet tabs into objects
+  const studios = toObjects(data.studioMaster);
+  const people = toObjects(data.peopleRoster);
+  const living = toObjects(data.livingHourly);
+  const work = toObjects(data.workHourly);
+  const essentials = toObjects(data.essentialsHourly);
+  const finance = toObjects(data.financeDaily);
+  const history = toObjects(data.cmHistory);
+const constraints = toObjects(data.constraints);
+const previousBlocks = toObjects(data.previousBlock);
+const enterpriseDemand = toObjects(data.enterpriseDemand);
+console.log("Enterprise Demand Objects (first 3):");
+console.log("Enterprise Demand Raw Rows:", data.enterpriseDemand.length);
+console.log(enterpriseDemand.slice(0, 3));
+
+  // Lightweight studio summary (used in upcoming mapping)
+  const studioSummary = studios.map((studio) => ({
+    id: first(studio, [
+      "Studio ID",
+      "studio id",
+      "Studio_Id",
+    ]),
+
+    theatre: first(studio, [
+      "Theatre",
+      "Theatre Name",
+      "theatre",
+    ]),
+
+    studio: first(studio, [
+      "Studio Name",
+      "Studio",
+      "studio",
+    ]),
+
+    capacity: studioNumber(studio, [
+      "Capacity",
+      "Contracted Nests",
+      "contracted nests",
+    ]),
+
+    liveCapacity: studioNumber(studio, [
+      "Activation Ready Nests",
+      "activation ready nests",
+    ]),
+
+    activeMembers: studioNumber(studio, [
+      "Members Active",
+      "members active",
+    ]),
+
+    status: first(studio, [
+      "Status",
+      "status",
+    ]),
+  }));
+
+  const overview = data.dashboardOverview || [];
+
+  // Convert Dashboard_Overview into key/value map
+  const metrics = Object.fromEntries(
+    overview.slice(1).map((row: any[]) => {
+      const metric = row[0];
+      const value = Number(row[1]);
+
+      return [
+        metric,
+        Number.isFinite(value) ? value : row[1],
+      ];
+    })
+  );
+
+console.log(
+  "GOOGLE METRICS\n" +
+  JSON.stringify(metrics, null, 2)
+);
+  return {
+  meta: {
+    block: "",
+    updatedAt: new Date().toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    month: new Date().toLocaleString("en-IN", {
+      month: "long",
+      year: "numeric",
+    }),
+    day: new Date().getDate(),
+    daysInMonth: new Date(
+      new Date().getFullYear(),
+      new Date().getMonth() + 1,
+      0
+    ).getDate(),
+    daysLeft:
+      new Date(
+        new Date().getFullYear(),
+        new Date().getMonth() + 1,
+        0
+      ).getDate() - new Date().getDate(),
+    theatresBehind: 0,
+    illustrative: false,
+  },
+
+  monthlyCMTarget: num(metrics.Monthly_CM_Target),
+  monthEndProjection: num(metrics.Month_End_Projection),
+  askRateMultiple: 1,
+
+  flywheel: {
+    living: {
+      demand: num(metrics.Demand_Contracted),
+      supply: num(metrics.Capacity_Live),
+    },
+
+    work: {
+      demand: work.length,
+      supply: work.reduce(
+        (sum, row) =>
+          sum + num(first(row, [
+            "available workers",
+            "available workers count",
+            "worker availability",
+            "headcount available"
+          ])),
+        0
+      ),
+    },
+
+    essentials: {
+      eligible: num(metrics.Members_Active),
+      purchasing: num(metrics.Attach),
+    },
+  },
+
+  spine: [
+    {
+      id: "contracted",
+      label: "Demand contracted",
+      lane: "Demand",
+      actual: num(metrics.Demand_Contracted),
+      plan: 0,
+      unit: "members",
+    },
+    {
+      id: "capacity",
+      label: "Capacity live",
+      lane: "Shram Park",
+      actual: num(metrics.Capacity_Live),
+      plan: 0,
+      unit: "Nests",
+    },
+    {
+      id: "active",
+      label: "Members active",
+      lane: "FONO",
+      actual: num(metrics.Members_Active),
+      plan: 0,
+      unit: "members",
+    },
+    {
+      id: "attach",
+      label: "Attach",
+      lane: "Essentials",
+      actual: num(metrics.Attach),
+      plan: 0,
+      unit: "percent",
+    },
+    {
+      id: "arpu",
+      label: "ARPU",
+      lane: "Economics",
+      actual: num(metrics.ARPU),
+      plan: 0,
+      unit: "INR",
+    },
+    {
+      id: "cm",
+      label: "CM",
+      lane: "Economics",
+      actual: num(metrics.CM),
+      plan: 0,
+      unit: "INR",
+    },
+  ],
+
+  constraints: constraints.map((row) => ({
+  id: row.id,
+  title: row.title,
+  where: row.where,
+  impact: num(row.impact),
+  detail: row.detail,
+  owner: row.owner,
+  next: row.next,
+  lane: row.lane,
+  stalledBlocks: num(row.stalledBlocks),
+})),
+  history: history.map((row) => ({
+  day: new Date(row.business_date).getDate(),
+  actual: num(row.actual),
+})),
+previousBlock: previousBlocks.length
+  ? {
+      cm: num(previousBlocks[0].cm),
+      contracted: num(previousBlocks[0].contracted),
+      membersActive: num(previousBlocks[0].membersActive),
+      attach: num(previousBlocks[0].attach),
+      closures: num(previousBlocks[0].closures),
+      stockoutsClearedStudios: num(previousBlocks[0].stockoutsClearedStudios),
+      stalledTheatre: previousBlocks[0].stalledTheatre || "",
+      staleOwner: previousBlocks[0].staleOwner || "",
+      staleHours: num(previousBlocks[0].staleHours),
+    }
+  : {
+      cm: 0,
+      contracted: 0,
+      membersActive: 0,
+      attach: 0,
+      closures: 0,
+      stockoutsClearedStudios: 0,
+      stalledTheatre: "",
+      staleOwner: "",
+      staleHours: 0,
+    },
+};
+}
+
+
+
+
+
+
+
+
+
+
+
+

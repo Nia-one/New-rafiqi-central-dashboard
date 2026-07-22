@@ -1,0 +1,7 @@
+"use client"
+import { LabelList, Line, LineChart, XAxis, YAxis } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { EditorialChartFrame } from "./editorial-chart-frame"
+import { attachSlope, CHART_SOURCE_NOTE, EDITORIAL_CHART_COPY } from "@/lib/editorial-charts"
+const config = { attach: { label: "Attach", color: "var(--chart-1)" } }
+export function AttachSlopeChart(){ return <EditorialChartFrame id="attach-slope" {...EDITORIAL_CHART_COPY.essentials} source={CHART_SOURCE_NOTE} annotation={<p className="chart-callout"><strong>+2pp</strong> since 12:00<br/><span>4pp to plan</span></p>} table={<table><caption>Attach rate progression</caption><tbody>{attachSlope.map(d=><tr key={d.label}><th>{d.label}</th><td>{d.value}%</td></tr>)}</tbody></table>}><ChartContainer config={config} className="editorial-chart-canvas"><LineChart accessibilityLayer data={attachSlope} margin={{top:28,right:32,left:4,bottom:8}}><XAxis dataKey="label" tickLine={false} axisLine={false}/><YAxis domain={[35,47]} tickFormatter={v=>`${v}%`} tickLine={false} axisLine={false}/><ChartTooltip content={<ChartTooltipContent/>}/><Line type="linear" dataKey="value" stroke="var(--color-attach)" strokeWidth={2.5} dot={{r:5,fill:"var(--color-attach)"}}><LabelList dataKey="value" position="top" formatter={(v)=>`${Number(v)}%`}/></Line></LineChart></ChartContainer></EditorialChartFrame> }

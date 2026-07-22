@@ -1,0 +1,88 @@
+import { getSheet } from "./googleSheets";
+
+export async function getDashboardData() {
+  const [
+    sourceRegistry,
+    policyRegistry,
+    theatreMaster,
+    studioMaster,
+    peopleRoster,
+    enterpriseDemand,
+    memberActivation,
+    hourlyHeartbeat,
+    incidentLog,
+    actionLog,
+    evidenceLog,
+    approvalLog,
+    livingHourly,
+    workHourly,
+    essentialsHourly,
+    financeDaily,
+    dashboardOverview,
+  ] = await Promise.all([
+    getSheet("Source_Registry!A:Z"),
+    getSheet("Policy_Registry!A:Z"),
+    getSheet("Theatre_Master!A:Z"),
+    getSheet("Studio_Master!A:Z"),
+    getSheet("People_Roster!A:Z"),
+    getSheet("Enterprise_Demand!A:Z"),
+    getSheet("Member_Activation!A:Z"),
+    getSheet("Hourly_Heartbeat!A:Z"),
+    getSheet("Incident_Log!A:Z"),
+    getSheet("Action_Log!A:Z"),
+    getSheet("Evidence_Log!A:Z"),
+    getSheet("Approval_Log!A:Z"),
+    getSheet("Living_Hourly!A:Z"),
+    getSheet("Work_Hourly!A:Z"),
+    getSheet("Essentials_Hourly!A:Z"),
+    getSheet("Finance_Daily!A:Z"),
+    getSheet("Dashboard_Overview!A:D"),
+  ]);
+
+  return {
+    sourceRegistry,
+    policyRegistry,
+    theatreMaster,
+    studioMaster,
+    peopleRoster,
+    enterpriseDemand,
+    memberActivation,
+    hourlyHeartbeat,
+    incidentLog,
+    actionLog,
+    evidenceLog,
+    approvalLog,
+    livingHourly,
+    workHourly,
+    essentialsHourly,
+    financeDaily,
+    dashboardOverview,
+  };
+}
+
+/**
+ * Adapter layer
+ * Converts Google Sheets data into the structure expected by lib/ops-data.ts
+ *
+ * NOTE:
+ * This is intentionally a placeholder.
+ * We'll map each section (meta, spine, history, constraints, etc.)
+ * in the next steps without changing any UI components.
+ */
+export async function buildOpsData() {
+  const data = await getDashboardData();
+
+  return {
+    meta: {},
+    monthlyCMTarget: 0,
+    monthEndProjection: 0,
+    askRateMultiple: 0,
+    spine: [],
+    constraints: [],
+    history: [],
+    previousBlock: {},
+
+    // Temporary reference to the raw sheet data while we build the mapper
+    _raw: data,
+  };
+}
