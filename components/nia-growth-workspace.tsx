@@ -10,7 +10,7 @@ import { MeasureViz } from "@/components/measure-viz"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./nia-growth-workspace.module.css"
 
-type Props = { preview: NiaGrowthPreview }
+type Props = { preview: NiaGrowthPreview; liveData?: any }
 type ShadowOutcome = "Unresolved" | "Evidence received" | "Failed evidence" | "Human sign-off required"
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
@@ -24,7 +24,7 @@ function GrowthLane({ lane }: { lane: NiaGrowthPreview["lanes"][number] }) {
   return <article className={styles.lane} data-supply-model={lane.supplyModel}>
     <header>
       <div className={isFono ? styles.fonoMark : styles.spMark}>{isFono ? <Building2 aria-hidden /> : <Landmark aria-hidden />}</div>
-      <div><span>{lane.supplyModel === "FONO" ? "FONO" : "SP · Śram Park"}</span><strong>{lane.capacityLabel}</strong></div>
+      <div><span>{lane.supplyModel === "FONO" ? "FONO" : "SP · Shram Park"}</span><strong>{lane.capacityLabel}</strong></div>
       <b>{lane.progressPct}% ready</b>
     </header>
     <div className={styles.capacityTrack} aria-label={`${lane.supplyModel}: ${lane.activationReadyNests} of ${lane.plannedNests} Nests activation-ready`}>
@@ -39,7 +39,21 @@ function GrowthLane({ lane }: { lane: NiaGrowthPreview["lanes"][number] }) {
   </article>
 }
 
-export function NiaGrowthWorkspace({ preview }: Props) {
+export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const target = liveData?.living?.reduce((sum: number, row: any) => sum + Number(row["contracted nests"] || 0), 0) || 0
+  const current = liveData?.summary?.readyNests ?? 0
+  const gap = Math.max(0, target - current)
+  const owner = liveData?.living?.[0]?.["next action owner actor id"] || fixturePreview.summary.owner
+  const preview: NiaGrowthPreview = {
+    ...fixturePreview,
+    headline: liveData ? `${current} activation-ready Nests against ${target} contracted Nests.` : fixturePreview.headline,
+    summary: {
+      ...fixturePreview.summary,
+      target: `${target} contracted Nests`, current: `${current} activation-ready Nests`, gap: `${gap} Nests`, owner,
+      progress: target ? `${Math.round(current / target * 100)}%` : "No data",
+      verifiedResult: `${current} Nests from the live Living feed`,
+    },
+  }
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; supplyModel: "FONO" | "SP"; outcome: ShadowOutcome; route: string; at: string }[]>([])
@@ -69,7 +83,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     { title: "Growth vs plan", summary: `${preview.summary.current} current · ${preview.summary.target} target` },
     { title: "Headline measures", summary: `${preview.measures.length} readiness controls at a glance` },
     { title: "Capacity implication", summary: "Close readiness and coverage gaps before new capital." },
-    { title: "Growth by channel", summary: "FONO and Śram Park remain separately governed." },
+    { title: "Growth by channel", summary: "FONO and Shram Park remain separately governed." },
     { title: "Open opportunities", summary: `${tasks.length} opportunities need verified action` },
     { title: "Human decisions", summary: `${preview.signOffs.length} growth decisions waiting` },
     { title: "Background record", summary: `${audit.length} local shadow events · governed controls retained` },
@@ -107,9 +121,9 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     <p className={styles.soWhat}>So what: the capacity gap is a readiness-and-coverage problem, so it closes by verifying activation-ready Nests, not by committing new capital.</p>
 
     <section className={styles.lanesPanel} aria-label="Growth by channel">
-      <header><div><span>Growth by Channel</span><strong>FONO and Śram Park stay separate</strong></div><p>Capacity · readiness · coverage</p></header>
+      <header><div><span>Growth by Channel</span><strong>FONO and Shram Park stay separate</strong></div><p>Capacity · readiness · coverage</p></header>
       <div className={styles.lanes}><GrowthLane lane={preview.lanes[0]} /><GrowthLane lane={preview.lanes[1]} /></div>
-      <p className={styles.soWhat}>So what: FONO and Śram Park have different readiness and coverage gates, so each channel needs its own decision; SP additionally cannot proceed without signed contract coverage.</p>
+      <p className={styles.soWhat}>So what: FONO and Shram Park have different readiness and coverage gates, so each channel needs its own decision; SP additionally cannot proceed without signed contract coverage.</p>
     </section>
 
     <section className={styles.workPanel} aria-label="Opportunities needing action">

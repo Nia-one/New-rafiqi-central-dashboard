@@ -14,7 +14,7 @@ import { actionStageFromStatus, ActionSegment, type ActionSegmentKey, Operationa
 import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 
-type Props = { preview: EnterpriseDemandLoopPreview }
+type Props = { preview: EnterpriseDemandLoopPreview; liveData?: any }
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
 
@@ -92,7 +92,24 @@ function defaultNextAction(outcome: EnterpriseDisposition) {
   return "Continue the governed next step"
 }
 
-export function EnterpriseDemandWorkspace({ preview }: Props) {
+export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const demand = liveData?.enterpriseDemand?.[0]
+  const committedNests = Number(demand?.["headcount required"] ?? fixturePreview.activeNode.committedNests) || fixturePreview.activeNode.committedNests
+  const verifiedReadyNests = liveData?.summary?.readyNests ?? fixturePreview.activeNode.verifiedReadyNests
+  const preview: EnterpriseDemandLoopPreview = {
+    ...fixturePreview,
+    headline: demand ? `${demand["enterprise name"] || "Enterprise"} needs ${committedNests} verified ready Nests.` : fixturePreview.headline,
+    activeNode: {
+      ...fixturePreview.activeNode,
+      enterpriseName: demand?.["enterprise name"] || fixturePreview.activeNode.enterpriseName,
+      plantName: demand?.["plant name"] || fixturePreview.activeNode.plantName,
+      committedNests,
+      verifiedReadyNests,
+      readinessGap: Math.max(0, committedNests - verifiedReadyNests),
+      ownerActorId: demand?.["owner actor id"] || fixturePreview.activeNode.ownerActorId,
+      arrivalAt: demand?.["activation required at"] || fixturePreview.activeNode.arrivalAt,
+    },
+  }
   const [steps, setSteps] = useState<readonly JourneyStep[]>(() => preview.journeyPlan.steps)
   const [selectedOutcomes, setSelectedOutcomes] = useState<Record<string, EnterpriseDisposition>>(() => Object.fromEntries(preview.journeyPlan.steps.map((step) => [step.stepId, "No answer"])) as Record<string, EnterpriseDisposition>)
   const [shadowAudit, setShadowAudit] = useState<readonly { eventId: string; stepId: string; outcome: EnterpriseDisposition; occurredAt: string; nextAction: string }[]>([])

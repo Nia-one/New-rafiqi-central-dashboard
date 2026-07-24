@@ -7,7 +7,7 @@ import { LivingSupplyModelReport } from "@/components/living-supply-model-report
 test("the Living UI visibly renders FONO, SP, and then the combined roll-up", () => {
   const html = renderToStaticMarkup(createElement(LivingSupplyModelReport))
   // The governed data key stays "SP" (CSS + lineage still bind to it) even though the
-  // human-facing label reads "Śram Park".
+  // human-facing label reads "Shram Park".
   const fono = html.indexOf('data-supply-model="FONO"')
   const sp = html.indexOf('data-supply-model="SP"')
   const combined = html.indexOf('data-supply-model="Combined"')
@@ -18,13 +18,13 @@ test("the Living UI visibly renders FONO, SP, and then the combined roll-up", ()
   assert.equal(html.includes("Float"), false)
 })
 
-test("the opaque 'SP' code is shown to people as 'Śram Park'", () => {
+test("the opaque 'SP' code is shown to people as 'Shram Park'", () => {
   const html = renderToStaticMarkup(createElement(LivingSupplyModelReport))
   // New joiners must not have to decode "SP": the label, refresh-order step, channel
-  // detail kicker, and combined caption all spell out Śram Park.
-  assert.match(html, /<strong>Śram Park<\/strong>/)
-  assert.match(html, /FONO first\. Śram Park second\./)
-  assert.match(html, /FONO \+ Śram Park, shown last/)
+  // detail kicker, and combined caption all spell out Shram Park.
+  assert.match(html, /<strong>Shram Park<\/strong>/)
+  assert.match(html, /FONO first\. Shram Park second\./)
+  assert.match(html, /FONO \+ Shram Park, shown last/)
   // The bare two-letter code must not survive as a standalone visible word.
   assert.equal(/>SP</.test(html), false)
 })

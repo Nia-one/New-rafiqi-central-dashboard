@@ -3,7 +3,26 @@ import { isNoData, topUnresolved } from "@/lib/allocation-engine"
 import { OVERVIEW_ROUTES, type DashboardRoute } from "@/lib/dashboard-model"
 import { formatInr, formatSpineValue, metricPace, metricVariance } from "@/lib/ops-data"
 
-export function SpineStrip({ liveOpsData, allocationData, onNavigate }: { liveOpsData: any; allocationData?: any; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+type SpineMetric = {
+  id: string
+  label: string
+  lane: string
+  actual: number
+  plan: number
+  unit: string
+}
+
+export function SpineStrip({
+  liveOpsData,
+  allocationData,
+  onNavigate,
+}: {
+  liveOpsData: {
+    spine: SpineMetric[]
+  }
+  allocationData?: any
+  onNavigate: (route: DashboardRoute, mismatchId?: string) => void
+}) {
   const owners: Record<string, string> = { contracted: "Demand JCOs", capacity: "RM + Franchise Acquisition", active: "Theatre ops", attach: "Marketing", arpu: "Amrita Prasad", cm: "Finance" }
   const top = topUnresolved({}, allocationData?.mismatchInputs)
   const leakCm = top && !isNoData(top.forwardCmAtRisk24h) ? formatInr(top.forwardCmAtRisk24h, true) : "No data"

@@ -2,10 +2,13 @@ import {
   PHASE_ONE_TAB_CONTRACTS,
   SUPPLY_MODELS,
   type CanonicalActivation,
-  type CanonicalDemand,
-  type CanonicalPerson,
-  type CanonicalStudio,
-  type CanonicalTheatre,
+type CanonicalDemand,
+type CanonicalPerson,
+type CanonicalStudio,
+type CanonicalTheatre,
+type CanonicalAction,
+type CanonicalEvidence,
+type CanonicalApproval,
   type IntakeField,
   type IntakeTabContract,
   type OperatingIntakeTab,
@@ -50,8 +53,10 @@ export type CanonicalImport = {
   demands: CanonicalDemand[]
   people: CanonicalPerson[]
   activations: CanonicalActivation[]
+  actions: CanonicalAction[]
+  evidences: CanonicalEvidence[]
+  approvals: CanonicalApproval[]
 }
-
 export type OperatingIngestionEvent = {
   eventId: string
   type: "source.row.imported" | "source.row.quarantined" | "enterprise.demand.ingested"
@@ -219,6 +224,77 @@ function canonicalize(row: RawImportedRow, output: CanonicalImport) {
   if (source.tab === "Enterprise_Demand") output.demands.push({ demandId: text(values.demand_id)!, enterpriseId: text(values.enterprise_id)!, enterpriseName: text(values.enterprise_name)!, plantId: text(values.plant_id)!, plantName: text(values.plant_name)!, latitude: numberValue(values.latitude)!, longitude: numberValue(values.longitude)!, roleRequired: text(values.role_required)!, skillRequired: text(values.skill_required), shift: text(values.shift), headcountRequired: numberValue(values.headcount_required)!, headcountMatched: numberValue(values.headcount_matched)!, activationRequiredAt: timestamp(values.activation_required_at)!, certainty: text(values.certainty)!, status: text(values.status)!, ownerActorId: text(values.owner_actor_id)!, openedAt: timestamp(values.opened_at)!, updatedAt: timestamp(values.updated_at)!, lineage: source })
   if (source.tab === "People_Roster") output.people.push({ actorId: text(values.actor_id)!, displayName: text(values.display_name)!, whatsappPhoneHash: text(values.whatsapp_phone_hash)!, role: text(values.role)!, theatreId: text(values.theatre_id), studioId: text(values.studio_id), managerActorId: text(values.manager_actor_id), activeShift: booleanValue(values.active_shift)!, shiftStartAt: timestamp(values.shift_start_at), shiftEndAt: timestamp(values.shift_end_at), language: text(values.language)!, updatedAt: timestamp(values.updated_at)!, lineage: source })
   if (source.tab === "Member_Activation") output.activations.push({ activationId: text(values.activation_id)!, memberToken: text(values.member_token)!, activatedAt: timestamp(values.activated_at)!, theatreId: text(values.theatre_id)!, studioId: text(values.studio_id)!, nestId: text(values.nest_id)!, demandId: text(values.demand_id), enterpriseId: text(values.enterprise_id), workAssignmentId: text(values.work_assignment_id), membershipBilledInr: numberValue(values.membership_billed_inr)!, membershipCollectedInr: numberValue(values.membership_collected_inr)!, activationEvidenceUrl: text(values.activation_evidence_url)!, verifiedAt: timestamp(values.verified_at), verifiedBy: text(values.verified_by), verificationStatus: text(values.verification_status)!, sourceSubmissionId: text(values.source_submission_id)!, lineage: source })
+
+  if (source.tab === "Action_Log") output.actions.push({
+    actionId: text(values.action_id)!,
+    incidentId: text(values.incident_id)!,
+    operatingObjective: text(values.operating_objective)!,
+    expectedMetric: text(values.expected_metric)!,
+    baselineValue: text(values.baseline_value)!,
+    targetValue: text(values.target_value)!,
+    expectedFinancialImpactInr: numberValue(values.expected_financial_impact_inr)!,
+    confidence: text(values.confidence)!,
+    ownerActorId: text(values.owner_actor_id)!,
+    dueAt: timestamp(values.due_at)!,
+    requiredEvidence: text(values.required_evidence)!,
+    approvalTier: text(values.approval_tier)!,
+    state: text(values.state)!,
+    proposedAt: timestamp(values.proposed_at)!,
+    approvedAt: timestamp(values.approved_at),
+    approvedBy: text(values.approved_by),
+    assignedAt: timestamp(values.assigned_at),
+    inProgressAt: timestamp(values.in_progress_at),
+    proofSubmittedAt: timestamp(values.proof_submitted_at),
+    proofEvidenceId: text(values.proof_evidence_id),
+    verifiedAt: timestamp(values.verified_at),
+    verifiedBy: text(values.verified_by),
+    verificationResult: text(values.verification_result),
+    closedAt: timestamp(values.closed_at),
+    reopenedAt: timestamp(values.reopened_at),
+    reopenReason: text(values.reopen_reason),
+    escalatedAt: timestamp(values.escalated_at),
+    sourceSubmissionId: text(values.source_submission_id)!,
+    updatedAt: timestamp(values.updated_at)!,
+    lineage: source
+    })
+
+  if (source.tab === "Evidence_Log") output.evidences.push({
+    evidenceId: text(values.evidence_id)!,
+    linkedType: text(values.linked_type)!,
+    linkedId: text(values.linked_id)!,
+    evidenceType: text(values.evidence_type)!,
+    protectedUrl: text(values.protected_url)!,
+    uploadedByActorId: text(values.uploaded_by_actor_id)!,
+    uploadedAt: timestamp(values.uploaded_at)!,
+    description: text(values.description)!,
+    geoLat: numberValue(values.geo_lat),
+    geoLng: numberValue(values.geo_lng),
+    verificationStatus: text(values.verification_status)!,
+    rejectedReason: text(values.rejected_reason),
+    retentionClass: text(values.retention_class)!,
+    sourceSubmissionId: text(values.source_submission_id)!,
+    updatedAt: timestamp(values.updated_at)!,
+    lineage: source,
+  })
+
+  if (source.tab === "Approval_Log") output.approvals.push({
+    approvalId: text(values.approval_id)!,
+    linkedActionId: text(values.linked_action_id)!,
+    decisionType: text(values.decision_type)!,
+    amountInr: numberValue(values.amount_inr)!,
+    currentTerms: text(values.current_terms)!,
+    proposedTerms: text(values.proposed_terms)!,
+    businessReason: text(values.business_reason)!,
+    expectedResult: text(values.expected_result)!,
+    approverRole: text(values.approver_role)!,
+    approverActorId: text(values.approver_actor_id),
+    decision: text(values.decision)!,
+    decisionReason: text(values.decision_reason)!,
+    decidedAt: timestamp(values.decided_at)!,
+    sourceSubmissionId: text(values.source_submission_id)!,
+    updatedAt: timestamp(values.updated_at)!,
+    lineage: source,
+  })
 }
 
 export function importOperatingRows(input: SheetImportInput, previousRows: readonly RawImportedRow[] = []): IngestionResult {
@@ -242,7 +318,16 @@ export function importOperatingRows(input: SheetImportInput, previousRows: reado
   const batchIdentities = new Set<string>()
   const rawRows: RawImportedRow[] = []
   const quarantinedRows: QuarantinedRow[] = []
-  const canonical: CanonicalImport = { theatres: [], studios: [], demands: [], people: [], activations: [] }
+  const canonical: CanonicalImport = {
+  theatres: [],
+  studios: [],
+  demands: [],
+  people: [],
+  activations: [],
+  actions: [],
+  evidences: [],
+  approvals: [],
+}
   const events: OperatingIngestionEvent[] = []
   let duplicatesIgnored = 0
 
@@ -277,3 +362,6 @@ export function importOperatingRows(input: SheetImportInput, previousRows: reado
     stats: { submitted: input.rows.length, imported: rawRows.length - quarantinedRows.length, quarantined: quarantinedRows.length, duplicatesIgnored, synthetic: input.synthetic },
   }
 }
+
+
+

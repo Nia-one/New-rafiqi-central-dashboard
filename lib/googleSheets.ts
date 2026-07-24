@@ -1,15 +1,17 @@
 import "server-only";
+import { GoogleAuth } from "google-auth-library";
+
 import fs from "fs";
 import path from "path";
-import { GoogleAuth } from "google-auth-library";
 
 const keyFile = path.join(
   process.cwd(),
   process.env.GOOGLE_SERVICE_ACCOUNT_FILE || "service-account.json"
 );
 
-const credentials = JSON.parse(fs.readFileSync(keyFile, "utf8"));
-
+const credentials = JSON.parse(
+  fs.readFileSync(keyFile, "utf8")
+);
 const auth = new GoogleAuth({
   credentials,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
@@ -115,3 +117,5 @@ export async function batchGet(ranges: string[]) {
     (item: any) => item.values ?? []
   );
 }
+
+

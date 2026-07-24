@@ -43,7 +43,7 @@ test("first viewport preserves target through verified-result order", () => {
     assert.ok(next > cursor, label)
     cursor = next
   }
-  assert.equal(preview.question, "Where should Nia add capacity next, through FONO or Śram Park, without creating unapproved capital risk?")
+  assert.equal(preview.question, "Where should Nia add capacity next, through FONO or Shram Park, without creating unapproved capital risk?")
 })
 
 test("exactly four locked measures are projected", () => {
@@ -54,7 +54,7 @@ test("exactly four locked measures are projected", () => {
 
 test("two-channel primary visual shows FONO first and SP second before any combined view", () => {
   assert.match(componentSource, /Growth by Channel/)
-  assert.match(componentSource, /FONO and Śram Park stay separate/)
+  assert.match(componentSource, /FONO and Shram Park stay separate/)
   assert.deepEqual(preview.lanes.map((lane) => lane.supplyModel), ["FONO", "SP"])
   assert.equal(preview.lanes[0].coverageLabel, "Base 92 · Nia fill 34")
   assert.match(preview.lanes[1].coverageLabel, /signed/)

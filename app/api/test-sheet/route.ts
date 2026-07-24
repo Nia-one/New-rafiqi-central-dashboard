@@ -3,13 +3,24 @@ import { getSheet } from "@/lib/googleSheets";
 
 export async function GET() {
   try {
-    // Change "Reference_Master" if your first sheet has a different name
-   const data = await getSheet("Source_Registry!A:Z");
+    const action = await getSheet("Action_Log!A:AZ");
+    const evidence = await getSheet("Evidence_Log!A:AZ");
+    const approval = await getSheet("Approval_Log!A:AZ");
 
     return NextResponse.json({
       success: true,
-      rows: data.length,
-      data,
+      action: {
+        rows: action.length,
+        data: action.slice(0, 3),
+      },
+      evidence: {
+        rows: evidence.length,
+        data: evidence.slice(0, 3),
+      },
+      approval: {
+        rows: approval.length,
+        data: approval.slice(0, 3),
+      },
     });
   } catch (error: any) {
     return NextResponse.json(

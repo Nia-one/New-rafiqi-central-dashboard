@@ -1,4 +1,6 @@
-import { getDashboardData } from "./dashboardService";
+﻿import { getDashboardData } from "./dashboardService";
+
+import { parseDashboardContent } from "./dashboard-content";
 
 function toObjects(rows: any[][]) {
   if (!rows?.length) return [];
@@ -20,7 +22,7 @@ function num(value: any) {
   if (value === null || value === undefined || value === "") return 0;
 
   const parsed = Number(
-    String(value).replace(/[₹,%]/g, "").trim()
+    String(value).replace(/[â‚¹,%]/g, "").trim()
   );
 
   return Number.isFinite(parsed) ? parsed : 0;
@@ -48,6 +50,35 @@ export async function buildOpsData() {
   console.log('OPS_MAPPER_START');
   const data = await getDashboardData();
 
+  console.log("Action Log (first 10 rows):");
+console.log(data.actionLog?.slice(0, 10));
+
+console.log("Incident Log (first 10 rows):");
+console.log(data.incidentLog?.slice(0, 10));
+
+console.log("Approval Log (first 10 rows):");
+console.log(data.approvalLog?.slice(0, 10));
+
+console.log("AVAILABLE SHEETS:", Object.keys(data));
+
+console.log("Finance Daily (first 5 rows):");
+console.log(data.financeDaily?.slice(0, 5));
+
+console.log("Dashboard Overview (first 5 rows):");
+console.log(data.dashboardOverview?.slice(0, 5));
+console.log("Enterprise Demand (first 5 rows):");
+console.log(data.enterpriseDemand?.slice(0, 5));
+
+console.log("Member Activation (first 5 rows):");
+console.log(data.memberActivation?.slice(0, 5));
+
+console.log("Hourly Heartbeat (first 5 rows):");
+console.log(data.hourlyHeartbeat?.slice(0, 5));
+
+console.log("CONSTRAINTS RAW:", data.constraints?.slice(0,10));
+console.log("Evidence Log (first 5 rows):");
+console.log(data.evidenceLog?.slice(0, 5));
+
   // Convert all Google Sheet tabs into objects
   const studios = toObjects(data.studioMaster);
   const people = toObjects(data.peopleRoster);
@@ -55,6 +86,16 @@ export async function buildOpsData() {
   const work = toObjects(data.workHourly);
   const essentials = toObjects(data.essentialsHourly);
   const finance = toObjects(data.financeDaily);
+  const history = toObjects(data.cmHistory);
+const constraints = toObjects(data.constraints);
+const rootCause = toObjects(data.rootCause);
+const actions = toObjects(data.actions);
+const executionQueue = toObjects(data.executionQueue);
+const previousBlocks = toObjects(data.previousBlock);
+const enterpriseDemand = toObjects(data.enterpriseDemand);
+console.log("Enterprise Demand Objects (first 3):");
+console.log("Enterprise Demand Raw Rows:", data.enterpriseDemand.length);
+console.log(enterpriseDemand.slice(0, 3));
 
   // Lightweight studio summary (used in upcoming mapping)
   const studioSummary = studios.map((studio) => ({
@@ -113,141 +154,222 @@ export async function buildOpsData() {
     })
   );
 
-  return {};
-  test: true,
-    meta: {
-      block:
-        metrics.Current_Block ??
-        metrics.Block ??
-        "",
+console.log(
+  "GOOGLE METRICS\n" +
+  JSON.stringify(metrics, null, 2)
+);
 
-      updatedAt:
-        metrics.Last_Updated ??
-        metrics.Updated_At ??
-        "",
+const plans = {
+  Demand_Contracted: num(metrics.Demand_Contracted_Target),
+  Capacity_Live: num(metrics.Capacity_Live_Target),
+  Members_Active: num(metrics.Members_Active_Target),
+  Attach: num(metrics.Attach_Target),
+  ARPU: num(metrics.ARPU_Target),
+  CM: num(metrics.Monthly_CM_Target),
+};
 
-      month:
-        metrics.Month ??
-        "",
+  return {
+  meta: {
+    block: "",
+    updatedAt: new Date().toLocaleTimeString("en-IN", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    month: new Date().toLocaleString("en-IN", {
+      month: "long",
+      year: "numeric",
+    }),
+    day: new Date().getDate(),
+    daysInMonth: new Date(
+      new Date().getFullYear(),
+      new Date().getMonth() + 1,
+      0
+    ).getDate(),
+    daysLeft:
+      new Date(
+        new Date().getFullYear(),
+        new Date().getMonth() + 1,
+        0
+      ).getDate() - new Date().getDate(),
+    theatresBehind: 0,
+    illustrative: false,
+  },
 
-      day:
-        num(metrics.Day),
+  monthlyCMTarget: num(metrics.Monthly_CM_Target),
+  monthEndProjection: num(metrics.Month_End_Projection),
+  askRateMultiple: 1,
 
-      daysInMonth:
-        num(metrics.Days_In_Month),
-
-      daysLeft:
-        num(metrics.Days_Left),
-
-      theatresBehind:
-        num(metrics.Theatres_Behind),
-
-      illustrative: false,
+  flywheel: {
+    living: {
+      demand: num(metrics.Demand_Contracted),
+      supply: num(metrics.Capacity_Live),
     },
 
-    monthlyCMTarget: num(metrics.Monthly_CM_Target),
+    work: {
+      demand: work.length,
+      supply: work.reduce(
+        (sum, row) =>
+          sum + num(first(row, [
+            "available workers",
+            "available workers count",
+            "worker availability",
+            "headcount available"
+          ])),
+        0
+      ),
+    },
 
-    monthEndProjection: num(metrics.Month_End_Projection),
+    essentials: {
+      eligible: num(metrics.Members_Active),
+      purchasing: num(metrics.Attach),
+    },
+  },
 
-    askRateMultiple: 1,
+  spine: [
+    {
+      id: "contracted",
+      label: "Demand contracted",
+      lane: "Demand",
+      actual: num(metrics.Demand_Contracted),
+      plan: 0,
+      unit: "members",
+    },
+    {
+      id: "capacity",
+      label: "Capacity live",
+      lane: "Shram Park",
+      actual: num(metrics.Capacity_Live),
+      plan: 0,
+      unit: "Nests",
+    },
+    {
+      id: "active",
+      label: "Members active",
+      lane: "FONO",
+      actual: num(metrics.Members_Active),
+      plan: 0,
+      unit: "members",
+    },
+    {
+      id: "attach",
+      label: "Attach",
+      lane: "Essentials",
+      actual: num(metrics.Attach),
+      plan: 0,
+      unit: "percent",
+    },
+    {
+      id: "arpu",
+      label: "ARPU",
+      lane: "Economics",
+      actual: num(metrics.ARPU),
+      plan: 0,
+      unit: "INR",
+    },
+    {
+      id: "cm",
+      label: "CM",
+      lane: "Economics",
+      actual: num(metrics.CM),
+      plan: 0,
+      unit: "INR",
+    },
+  ],
 
-    spine: [
-      {
-        id: "contracted",
-        label: "Demand contracted",
-        lane: "Demand",
-        actual: num(metrics.Demand_Contracted),
-        plan: 0,
-        unit: "members",
-      },
-      {
-        id: "capacity",
-        label: "Capacity live",
-        lane: "Śram Park",
-        actual: num(metrics.Capacity_Live),
-        plan: 0,
-        unit: "nests",
-      },
-      {
-        id: "active",
-        label: "Members active",
-        lane: "FONO",
-        actual: num(metrics.Members_Active),
-        plan: 0,
-        unit: "members",
-      },
-      {
-        id: "attach",
-        label: "Attach",
-        lane: "Essentials",
-        actual: num(metrics.Attach),
-        plan: 0,
-        unit: "%",
-      },
-      {
-        id: "arpu",
-        label: "ARPU",
-        lane: "Economics",
-        actual: num(metrics.ARPU),
-        plan: 0,
-        unit: "₹",
-      },
-      {
-        id: "cm",
-        label: "CM",
-        lane: "Economics",
-        actual: num(metrics.CM),
-        plan: 0,
-        unit: "₹",
-      },
-    ],
-
-    constraints: [],
-
-history: finance
-  .filter(
-    (row) =>
-      first(row, ["Day", "day"]) !== "" &&
-      first(row, ["CM", "Contribution Margin", "cm"]) !== ""
-  )
-  .map((row) => ({
-    day: num(first(row, ["Day", "day"])),
-    actual: num(first(row, ["CM", "Contribution Margin", "cm"])),
+  rootCause: rootCause.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    rootCause: row.rootCause,
+    evidence: row.evidence,
+    owner: row.owner,
+    nextStep: row.nextStep,
   })),
 
-previousBlock: {
-  cm: num(metrics.Previous_Block_CM),
+  actions: actions.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    action: row.action,
+    owner: row.owner,
+    status: row.status,
+    dueDate: row.dueDate,
+  })),
 
-  contracted: num(metrics.Previous_Block_Demand),
+  executionQueue: executionQueue.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    priority: row.priority,
+    cmRisk: num(row.cmRisk),
+    owner: row.owner,
+    status: row.status,
+  })),
 
-  membersActive: num(metrics.Previous_Block_Active),
-
-  attach: num(metrics.Previous_Block_Attach),
-
-  closures: num(metrics.Previous_Block_Closures),
-
-  stockoutsClearedStudios: num(
-    metrics.Previous_Block_Stockouts_Cleared
-  ),
-
-  stalledTheatre:
-    metrics.Previous_Block_Stalled_Theatre ?? "",
-
-  staleOwner:
-    metrics.Previous_Block_Stale_Owner ?? "",
-
-  staleHours: num(metrics.Previous_Block_Stale_Hours),
-
-  staleOwners:
-    metrics.Previous_Block_Stale_Owner
-      ? [metrics.Previous_Block_Stale_Owner]
-      : [],
-},
-
-    // First mapped entity from Studio_Master
-    studios: studioSummary,
-  };
+  constraints: constraints.map((row) => ({
+  id: row.id,
+  title: row.title,
+  where: row.where,
+  idleUnits:
+    num(row.idleUnits) ||
+    Number(String(row.detail).match(/\d+/)?.[0] || 0),
+  cmPerUnit:
+    row.lane === "FONO" || row.lane === "Shram Park"
+      ? 300
+      : row.lane === "Essentials"
+        ? 200
+        : 0,
+  riskHours: num(row.riskHours) || 24,
+  detail: row.detail,
+  owner: row.owner,
+  next: row.next,
+  lane: row.lane,
+  stalledBlocks: num(row.stalledBlocks),
+})),
+  history: history.map((row) => ({
+  day: new Date(row.business_date).getDate(),
+  actual: num(row.actual),
+})),
+previousBlock: previousBlocks.length
+  ? {
+      cm: num(previousBlocks[0].cm),
+      contracted: num(previousBlocks[0].contracted),
+      membersActive: num(previousBlocks[0].membersActive),
+      attach: num(previousBlocks[0].attach),
+      closures: num(previousBlocks[0].closures),
+      stockoutsClearedStudios: num(previousBlocks[0].stockoutsClearedStudios),
+      stalledTheatre: previousBlocks[0].stalledTheatre || "",
+      staleOwner: previousBlocks[0].staleOwner || "",
+      staleHours: num(previousBlocks[0].staleHours),
+    }
+  : {
+      cm: 0,
+      contracted: 0,
+      membersActive: 0,
+      attach: 0,
+      closures: 0,
+      stockoutsClearedStudios: 0,
+      stalledTheatre: "",
+      staleOwner: "",
+      staleHours: 0,
+    },
+  dashboardContent: parseDashboardContent(data.dashboardContent),
+};
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

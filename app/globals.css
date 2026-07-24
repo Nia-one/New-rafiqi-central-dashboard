@@ -1324,6 +1324,10 @@
   .reconciliation-strip > i { display: flex; align-items: center; justify-content: center; color: var(--interactive-blue); font-style: normal; } .reconciliation-strip > i svg { width: 20px; } .reconciliation-strip > i svg + svg { display: none; }
   .work-screen { display: grid; min-height: 520px; place-items: center; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-subtle); }
   .work-empty { display: flex; max-width: 680px; flex-direction: column; align-items: center; padding: 48px 28px; text-align: center; }
+  .work-live-screen { display: block; min-height: 0; }
+  .work-live { padding: 28px; }
+  .work-live > svg { width: 30px; height: 30px; margin-bottom: 14px; color: var(--interactive-blue); }
+  .work-live .work-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 22px 0; }
   .work-empty > svg { width: 30px; height: 30px; margin-bottom: 18px; color: var(--interactive-blue); } .work-empty > p:not(.pillar-kicker) { margin: 12px 0 0; color: var(--muted); }
   .required-fields { width: 100%; margin-top: 28px; padding: 20px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-blue); text-align: left; }
   .required-fields > div { display: flex; align-items: center; gap: 8px; } .required-fields svg { width: 17px; color: var(--interactive-blue); }
@@ -1382,7 +1386,7 @@
   .channel-grid > section, .living-section { padding: 18px; }
   .fono-funnel li { width: 100%; min-width: 0; grid-template-columns: 28px minmax(110px, 1.2fr) repeat(3, minmax(60px, .72fr)) minmax(110px, 1fr); }
   .demand-bar { width: 100%; min-width: 0; } .demand-detail { grid-template-columns: 1fr 1fr; } .reconciliation-strip article { min-height: 128px; padding: 20px; }
-  .work-screen { min-height: 430px; } .work-empty { padding: 36px 18px; }
+  .work-screen { min-height: 430px; } .work-empty { padding: 36px 18px; } .work-live { padding: 18px; } .work-live .work-metrics { grid-template-columns: 1fr; }
   .flywheel-intro { align-items: flex-start; flex-direction: column; gap: 14px; padding: 2px 4px 10px; }
   .flywheel-intro h2 { font-size: 27px; }
   .flywheel-intro > div > p:not(.story-kicker) { font-size: 13px; }

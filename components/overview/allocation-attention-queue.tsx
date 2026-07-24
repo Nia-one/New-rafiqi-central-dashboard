@@ -55,7 +55,7 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
     <section className="story-section allocation-queue-section" aria-labelledby="queue-title">
       <header className="story-heading">
         <div>
-          <p className="story-kicker">03 Â· EXECUTION QUEUE</p>
+          <p className="story-kicker">03 · EXECUTION QUEUE</p>
           <h2 id="queue-title">Fix the biggest problem first.</h2>
         </div>
         <p>Read-only report. The system creates each action and tags the owner from the reviewed root cause.</p>
@@ -68,8 +68,8 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
             <div className="constraint-copy">
               <span className="commitment-source commitment-source-system_detected">System detected</span>
               <strong>{mismatch.label}</strong>
-              <p>{mismatch.theatre} Â· {mismatch.where} Â· <span className={isNoData(mismatch.gapQty) ? "" : "queue-gap"}>{gapLabel(mismatch)}</span></p>
-              <small>{mismatch.accountableOwner} Â· owner tagged Â· alert queued</small>
+              <p>{mismatch.theatre} · {mismatch.where} · <span className={isNoData(mismatch.gapQty) ? "" : "queue-gap"}>{gapLabel(mismatch)}</span></p>
+              <small>{mismatch.accountableOwner} · owner tagged · alert queued</small>
               <p className="queue-generated-action">{mismatch.nextAction}</p>
               <ul className="queue-facts">
                 <li><span>CM at risk in 24 hours</span><b>{cmLabel(mismatch)}</b></li>
@@ -78,7 +78,10 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
             </div>
             <div className="queue-actions">
               <button className="queue-review" onClick={() => setSelectedId(mismatch.id)}>View root cause</button>
-              <button className="queue-open" onClick={() => onNavigate(mismatch.laneTarget, mismatch.id)} aria-label={`Open ${mismatch.laneTarget.screen}${mismatch.laneTarget.subsection ? ` ${mismatch.laneTarget.subsection}` : ""} for ${mismatch.label}`}>Open lane<ArrowUpRight aria-hidden /></button>
+              <button className="queue-open" onClick={() => {
+  console.log("OPEN LANE CLICK", mismatch.laneTarget, mismatch.id);
+  onNavigate(mismatch.laneTarget, mismatch.id);
+}} aria-label={`Open ${mismatch.laneTarget.screen}${mismatch.laneTarget.subsection ? ` ${mismatch.laneTarget.subsection}` : ""} for ${mismatch.label}`}>Open lane<ArrowUpRight aria-hidden /></button>
             </div>
           </li>
         ))}
@@ -87,7 +90,7 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
       {meetingCommitments.length > 0 ? <div className="meeting-queue-block">
         <header><div><span className="commitment-source commitment-source-meeting_commitment">Meeting commitment</span><h3>Agreed actions in the same queue</h3></div><button type="button" onClick={onShowExecution}>Open Execution Control <ArrowUpRight aria-hidden /></button></header>
         <ol>{meetingCommitments.map((action) => <li key={action.id}>
-          <div><strong>{action.title}</strong><p>{action.owner} Â· {action.team} Â· {action.status}</p></div>
+          <div><strong>{action.title}</strong><p>{action.owner} · {action.team} · {action.status}</p></div>
           <span>{action.carryForward ? "Carry-forward" : action.result}</span>
         </li>)}</ol>
       </div> : null}
@@ -97,7 +100,7 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
       {rest.length > 0 && (
         <details className="more-constraints">
           <summary>+{rest.length} more in queue</summary>
-          <ul>{rest.map((mismatch) => <li key={mismatch.id}><button onClick={() => setSelectedId(mismatch.id)}><span className="tnum">{scoreLabel(mismatch)}</span> Â· {mismatch.label} Â· {mismatch.theatre} Â· {cmLabel(mismatch)} Â· {mismatch.actionStatus}</button></li>)}</ul>
+          <ul>{rest.map((mismatch) => <li key={mismatch.id}><button onClick={() => setSelectedId(mismatch.id)}><span className="tnum">{scoreLabel(mismatch)}</span> · {mismatch.label} · {mismatch.theatre} · {cmLabel(mismatch)} · {mismatch.actionStatus}</button></li>)}</ul>
         </details>
       )}
 
@@ -112,6 +115,7 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
     </section>
   )
 }
+
 
 
 

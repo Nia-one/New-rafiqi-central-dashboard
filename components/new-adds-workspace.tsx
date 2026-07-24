@@ -8,7 +8,7 @@ import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./new-adds-workspace.module.css"
 
-type Props = { preview: NewAddsPreview }
+type Props = { preview: NewAddsPreview; liveData?: any }
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
 const outcomes: readonly RecoveryOutcome[] = ["No answer", "Failed evidence", "Billing-live evidence received"]
@@ -135,7 +135,23 @@ function FeedFreshness({ feeds }: { feeds: readonly { label: string; ageLabel: s
   </ul>
 }
 
-export function NewAddsWorkspace({ preview }: Props) {
+export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const liveTarget = Math.max(1, liveData?.summary?.readyNests ?? fixturePreview.taskSummary.target)
+  const liveCurrent = liveData?.summary?.verifiedActivations ?? fixturePreview.taskSummary.current
+  const liveOwner = liveData?.enterpriseDemand?.[0]?.["owner actor id"] || fixturePreview.taskSummary.owner
+  const preview: NewAddsPreview = {
+    ...fixturePreview,
+    headline: liveData ? `${liveCurrent} verified billing-live Members against ${liveTarget} activation-ready Nests.` : fixturePreview.headline,
+    taskSummary: {
+      ...fixturePreview.taskSummary,
+      target: liveTarget,
+      current: liveCurrent,
+      gap: Math.max(0, liveTarget - liveCurrent),
+      owner: liveOwner,
+      progressPercent: Math.min(100, Math.round(liveCurrent / liveTarget * 100)),
+      verifiedResult: `${liveCurrent} independently verified billing-live Members`,
+    },
+  }
   const [tasks, setTasks] = useState<readonly FillTask[]>(() => preview.actions)
   const [selected, setSelected] = useState<Record<string, RecoveryOutcome>>(() => Object.fromEntries(preview.actions.map((task) => [task.actionId, "No answer"])) as Record<string, RecoveryOutcome>)
   const [audit, setAudit] = useState<readonly { eventId: string; actionId: string; outcome: RecoveryOutcome; verification: VerificationStatus | "Not submitted"; route: string; occurredAt: string }[]>([])

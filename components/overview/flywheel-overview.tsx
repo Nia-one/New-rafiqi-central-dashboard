@@ -1,4 +1,4 @@
-﻿import { ArrowRight, ArrowUpRight, CircleAlert } from "lucide-react"
+import { ArrowRight, ArrowUpRight, CircleAlert } from "lucide-react"
 import { THEATRES, type DashboardRoute } from "@/lib/dashboard-model"
 import { ACTION_GRID_CATEGORIES, buildDailyActionGrid, buildRankedQueue, isNoData } from "@/lib/allocation-engine"
 import type { AllocationDomain, RankedMismatch } from "@/lib/allocation-types"
@@ -63,7 +63,7 @@ function DailyAction({ mismatch, onNavigate }: { mismatch: RankedMismatch; onNav
   </article>
 }
 
-function DailyActionMatrix({ onNavigate }: { onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+function DailyActionMatrix({ allocationData, onNavigate }: { allocationData?: any; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
   const grid = buildDailyActionGrid({}, allocationData?.mismatchInputs)
 
   return <section className="daily-action-grid-section" aria-labelledby="daily-action-grid-title">
@@ -77,7 +77,8 @@ function DailyActionMatrix({ onNavigate }: { onNavigate: (route: DashboardRoute,
           {THEATRES.map((theatre) => {
             const actions = grid[category][theatre]
             return <td key={theatre} className={actions === null ? "daily-action-unavailable" : ""}>
-              {actions === null ? <div className="daily-action-empty"><strong>Not yet instrumented</strong><p>Connect Work demand and worker availability.</p></div> : actions.length > 0 ? <div className="daily-action-list">{actions.map((action) => <DailyAction key={action.id} mismatch={action} onNavigate={onNavigate} />)}</div> : <div className="daily-action-empty"><strong>No open action</strong><p>No unresolved action in the current queue.</p></div>}
+              {actions === null ? <div className="daily-action-empty"><strong>Not yet instrumented</strong><p>Connect Work demand and worker availability.</p></div> : actions.length > 0 ? <div className="daily-action-list">{actions.map((action) => <DailyAction key={action.id} mismatch={action}
+    onNavigate={onNavigate} />)}</div> : <div className="daily-action-empty"><strong>No open action</strong><p>No unresolved action in the current queue.</p></div>}
             </td>
           })}
         </tr>)}</tbody>
@@ -87,7 +88,7 @@ function DailyActionMatrix({ onNavigate }: { onNavigate: (route: DashboardRoute,
 }
 
 function PillarCard({ pillar, index }: { pillar: Pillar; index: number }) {
-  return <article className={`flywheel-pillar flywheel-${pillar.name.toLowerCase()}`}>
+  return <article id={pillar.name.toLowerCase().replaceAll(" ", "-")} className={`flywheel-pillar flywheel-${pillar.name.toLowerCase()}`}>
     <header><span className="flywheel-pillar-number">0{index + 1}</span><div><h3>{pillar.name}</h3><p>{pillar.description}</p></div></header>
     <div className="flywheel-pairs">{pillar.pairs.map((pair) => <div className={`flywheel-pair semantic-${pair.side.toLowerCase()}`} key={pair.side}><span>{pair.side}</span><strong>{pair.value}</strong><p>{pair.label}</p><small>{pair.note}</small></div>)}</div>
   </article>
@@ -102,7 +103,7 @@ export function FlywheelOverview({ liveOpsData, allocationData, commitments, onS
       { side: "Demand", label: "Named enterprise requirement", value: spineValue(liveOpsData.spine, "contracted"), note: "Members contracted" },
       { side: "Supply", label: "Live Nests", value: spineValue(liveOpsData.spine, "capacity"), note: "Capacity live" },
     ],
-    domains: ["Śram Park", "FONO"],
+    domains: ["Sram Park", "FONO"],
   },
   {
     name: "Work",
@@ -141,16 +142,33 @@ const queue = buildRankedQueue({}, allocationData?.mismatchInputs)
 
     <section className="flywheel-bottlenecks-section" aria-labelledby="bottleneck-title">
       <header className="flywheel-section-heading"><div><p className="story-kicker">02 · WHAT TO FIX TODAY</p><h2 id="bottleneck-title">Start with the largest demand–supply gap.</h2></div><p>Each line has one action, one owner, and the metric it should move.</p></header>
-      <div className="flywheel-bottleneck-groups">{bottlenecks.map(({ pillar, items }) => <section className={`flywheel-bottleneck-group flywheel-${pillar.name.toLowerCase()}`} key={pillar.name}><header><div><h3>{pillar.name}</h3><p>{pillar.name === "Work" ? "Work: not yet instrumented." : `${items.length} bottleneck${items.length === 1 ? "" : "s"} found in the current data.`}</p></div>{pillar.name !== "Work" && <span>{items.length} open</span>}</header>{pillar.name === "Work" ? <div className="flywheel-not-instrumented"><strong>Not yet instrumented</strong><p>No Work demand or supply feed is connected. Add employer requests and worker availability before ranking bottlenecks.</p></div> : items.length > 0 ? items.map((item) => <Bottleneck key={item.id} mismatch={item} priority={item.id === top?.id} onNavigate={onNavigate} />) : <div className="flywheel-not-instrumented"><strong>No open mismatch</strong><p>There is no open demand–supply gap in the current data.</p></div>}</section>)}</div>
+      <div className="flywheel-bottleneck-groups">{bottlenecks.map(({ pillar, items }) => <section id={pillar.name} className={`flywheel-bottleneck-group flywheel-${pillar.name.toLowerCase()}`} key={pillar.name}><header><div><h3>{pillar.name}</h3><p>{pillar.name === "Work" ? "Work: not yet instrumented." : `${items.length} bottleneck${items.length === 1 ? "" : "s"} found in the current data.`}</p></div>{pillar.name !== "Work" && <span>{items.length} open</span>}</header>{pillar.name === "Work" ? <div className="flywheel-not-instrumented"><strong>Not yet instrumented</strong><p>No Work demand or supply feed is connected. Add employer requests and worker availability before ranking bottlenecks.</p></div> : items.length > 0 ? items.map((item) => <Bottleneck key={item.id} mismatch={item} priority={item.id === top?.id}     onNavigate={onNavigate} />) : <div className="flywheel-not-instrumented"><strong>No open mismatch</strong><p>There is no open demand–supply gap in the current data.</p></div>}</section>)}</div>
     </section>
 
     <AllocationAttentionQueue allocationData={allocationData} commitments={commitments} onShowExecution={onShowExecution} onNavigate={(route, mismatchId) => onNavigate(route, mismatchId)} />
 
-    <DailyActionMatrix onNavigate={onNavigate} />
+    <DailyActionMatrix     
+    allocationData={allocationData}
+    onNavigate={onNavigate} />
 
     <BlockRecap liveOpsData={liveOpsData} />
   </div>
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

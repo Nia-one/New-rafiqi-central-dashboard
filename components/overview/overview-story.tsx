@@ -19,7 +19,10 @@ export function OverviewStory({ mode, commitments, loopHealth, liveOpsData, allo
     ? { title: "Reporting & Insights", description: "What happened and what needs attention" }
     : { title: "Execution Control & Member Satisfaction", description: "What was done, by whom, with what proof" }
 
-  return <DashboardSectionAccordion key={mode} ariaLabel="Overview sections" sections={[
+  return <DashboardSectionAccordion
+  key={mode}
+  ariaLabel="Overview sections"
+  defaultOpenIndex={-1} sections={[
     ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
     { title: "Overview mode", summary: `${modeCopy.title} · ${modeCopy.description}` },
     { title: mode === "reporting" ? "Reporting and insights" : "Execution control", summary: mode === "reporting" ? "Flywheel performance, bottlenecks and actions." : `${commitments.length} commitments with proof and ownership.` },
@@ -75,7 +78,4 @@ export function OverviewStory({ mode, commitments, loopHealth, liveOpsData, allo
       : <ExecutionControlPanel commitments={commitments} onNavigate={onNavigate} />}
   </DashboardSectionAccordion>
 }
-
-
-
 

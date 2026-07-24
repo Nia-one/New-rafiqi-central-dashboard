@@ -26,7 +26,7 @@ const workspaces = [
     description: "Turn demand, supply, locations, and open issues into a clear mandate for the people doing the work today.",
     icon: ClipboardCheck,
     accent: "var(--ink)",
-    tags: ["Operations Mandate", "Śram Park Scout Route Plan", "Tasks"],
+    tags: ["Operations Mandate", "Shram Park Scout Route Plan", "Tasks"],
   },
 ]
 

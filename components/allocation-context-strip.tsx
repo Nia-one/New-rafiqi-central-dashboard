@@ -7,13 +7,18 @@ import { formatInr } from "@/lib/ops-data"
  * redesigning or removing any existing lane content.
  */
 export function AllocationContextStrip({ mismatchId, allocationData }: { mismatchId?: string; allocationData?: any }) {
-  const mismatch = mismatchId ? mismatchById(mismatchId, {}, allocationData?.mismatchInputs) : undefined
+  // A selected issue must come from a supplied live allocation dataset.  Do not
+  // fall back to the sample allocation registry when the sheet has no row.
+  if (!allocationData?.mismatchInputs) return null
+  const defaultLivingMismatch = allocationData.mismatchInputs.find((item: any) => ["FONO", "Shram Park", "Supply"].includes(item.domain))
+  const selectedMismatchId = mismatchId || defaultLivingMismatch?.id
+  const mismatch = selectedMismatchId ? mismatchById(selectedMismatchId, {}, allocationData.mismatchInputs) : undefined
   if (!mismatch) return null
   const cm = isNoData(mismatch.forwardCmAtRisk24h) ? "No data" : formatInr(mismatch.forwardCmAtRisk24h, true)
 
   return (
     <aside className="allocation-context" aria-label="Issue selected from the Overview page">
-      <p className="allocation-context-tag">SELECTED ISSUE Â· SAMPLE DATA</p>
+      <p className="allocation-context-tag">SELECTED ISSUE · LIVE DATA</p>
       <div className="allocation-context-body">
         <div><span>ISSUE</span><strong>{mismatch.label}</strong><small>{mismatch.theatre} Â· {mismatch.where}</small></div>
         <div><span>OWNER</span><strong>{mismatch.accountableOwner}</strong><small>Due by {mismatch.deadlineAt}</small></div>

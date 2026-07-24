@@ -1,5 +1,7 @@
 ﻿import { getDashboardData } from "./dashboardService";
 
+import { parseDashboardContent } from "./dashboard-content";
+
 function toObjects(rows: any[][]) {
   if (!rows?.length) return [];
 
@@ -20,7 +22,7 @@ function num(value: any) {
   if (value === null || value === undefined || value === "") return 0;
 
   const parsed = Number(
-    String(value).replace(/[â‚¹,%]/g, "").trim()
+    String(value).replace(/[?,%]/g, "").trim()
   );
 
   return Number.isFinite(parsed) ? parsed : 0;
@@ -44,6 +46,86 @@ function studioNumber(row: Record<string, any>, keys: string[]) {
   return num(first(row, keys));
 }
 
+function summarizeLiving(rows: Record<string, any>[]) {
+  const contracted = rows.reduce(
+    (s, r) =>
+      s +
+      num(
+        first(r, [
+          "contracted nests",
+          "Contracted Nests",
+          "capacity",
+        ])
+      ),
+    0
+  );
+
+  const activationReady = rows.reduce(
+    (s, r) =>
+      s +
+      num(
+        first(r, [
+          "activation ready nests",
+          "Activation Ready Nests",
+        ])
+      ),
+    0
+  );
+
+  const occupied = rows.reduce(
+    (s, r) =>
+      s +
+      num(
+        first(r, [
+          "occupied nests",
+          "Occupied Nests",
+        ])
+      ),
+    0
+  );
+
+  const billed = rows.reduce(
+    (s, r) =>
+      s +
+      num(
+        first(r, [
+          "living billed",
+          "living billed inr",
+          "Living Billed",
+          "billed",
+        ])
+      ),
+    0
+  );
+
+  const collected = rows.reduce(
+    (s, r) =>
+      s +
+      num(
+        first(r, [
+          "living collected",
+          "living collected inr",
+          "Living Collected",
+          "collected",
+        ])
+      ),
+    0
+  );
+
+  return {
+    contracted,
+    activationReady,
+    occupied,
+    occupancy:
+      activationReady === 0
+        ? 0
+        : occupied / activationReady,
+    billed,
+    collected,
+    leakage: billed - collected,
+  };
+}
+
 export async function buildOpsData() {
   console.log('OPS_MAPPER_START');
   const data = await getDashboardData();
@@ -64,6 +146,16 @@ console.log(data.financeDaily?.slice(0, 5));
 
 console.log("Dashboard Overview (first 5 rows):");
 console.log(data.dashboardOverview?.slice(0, 5));
+
+console.log("DASHBOARD CONTENT RAW");
+console.log(JSON.stringify(data.dashboardContent?.slice(0,10), null, 2));
+
+console.log("CM HISTORY RAW");
+console.log(JSON.stringify(data.cmHistory?.slice(0,5), null, 2));
+
+console.log("ENTERPRISE DEMAND RAW");
+console.log(JSON.stringify(data.enterpriseDemand?.slice(0,5), null, 2));
+
 console.log("Enterprise Demand (first 5 rows):");
 console.log(data.enterpriseDemand?.slice(0, 5));
 
@@ -81,11 +173,71 @@ console.log(data.evidenceLog?.slice(0, 5));
   const studios = toObjects(data.studioMaster);
   const people = toObjects(data.peopleRoster);
   const living = toObjects(data.livingHourly);
+  const livingDashboard = toObjects(data.livingDashboard);
+
+console.log("LIVING HOURLY SAMPLE");
+console.log(JSON.stringify(living.slice(0,5), null, 2));
+
+const occupiedNests = living.reduce(
+  (sum, row) =>
+    sum + num(first(row, [
+      "occupied nests",
+      "Occupied Nests",
+      "occupied",
+    ])),
+  0
+);
+
+const fonoOccupancyLive = living
+  .filter((row) => first(row, [
+    "supply model",
+    "Supply Model"
+  ]) === "FONO")
+  .map((row) => ({
+    studio: first(row, ["studio id", "Studio ID", "studio"]),
+    theatre: first(row, ["theatre id", "Theatre ID", "theatre"]),
+    available: num(first(row, ["activation ready nests", "Activation Ready Nests"])),
+    occupied: num(first(row, ["occupied nests", "Occupied Nests"])),
+    occupancy: num(first(row, ["occupancy ratio", "Occupancy Ratio"])),
+  }));
+
+const fonoRows = living.filter(
+  (row) =>
+    String(
+      first(row, [
+        "supply model",
+        "Supply Model",
+      ])
+    ).trim().toUpperCase() === "FONO"
+);
+
+const spRows = living.filter(
+  (row) =>
+    String(
+      first(row, [
+        "supply model",
+        "Supply Model",
+      ])
+    ).trim().toUpperCase() !== "FONO"
+);
+
+const livingSummary = {
+  fono: summarizeLiving(fonoRows),
+  sp: summarizeLiving(spRows),
+  combined: summarizeLiving(living),
+};
+
   const work = toObjects(data.workHourly);
   const essentials = toObjects(data.essentialsHourly);
   const finance = toObjects(data.financeDaily);
   const history = toObjects(data.cmHistory);
 const constraints = toObjects(data.constraints);
+const actionLog = toObjects(data.actionLog);
+console.log("ACTION LOG OBJECTS SAMPLE");
+console.log(JSON.stringify(actionLog.slice(0,5), null, 2));
+const rootCause = toObjects(data.rootCause);
+const actions = toObjects(data.actions);
+const executionQueue = toObjects(data.executionQueue);
 const previousBlocks = toObjects(data.previousBlock);
 const enterpriseDemand = toObjects(data.enterpriseDemand);
 console.log("Enterprise Demand Objects (first 3):");
@@ -153,6 +305,22 @@ console.log(
   "GOOGLE METRICS\n" +
   JSON.stringify(metrics, null, 2)
 );
+
+console.log("POLICY REGISTRY RAW");
+console.log(JSON.stringify(data.policyRegistry, null, 2));
+
+console.log("SOURCE REGISTRY RAW");
+console.log(JSON.stringify(data.sourceRegistry, null, 2));
+
+const plans = {
+  Demand_Contracted: num(metrics.Demand_Contracted),
+  Capacity_Live: num(metrics.Capacity_Live),
+  Members_Active: num(metrics.Members_Active),
+  Attach: num(metrics.Attach),
+  ARPU: num(metrics.ARPU),
+  CM: num(metrics.Monthly_CM_Target),
+};
+
   return {
   meta: {
     block: "",
@@ -182,12 +350,26 @@ console.log(
 
   monthlyCMTarget: num(metrics.Monthly_CM_Target),
   monthEndProjection: num(metrics.Month_End_Projection),
+
+  living,
+  finance,
+  studios,
+  enterpriseDemand,
+  memberActivation: toObjects(data.memberActivation),
+  incidentLog: toObjects(data.incidentLog),
+  actionLog,
+  evidenceLog: toObjects(data.evidenceLog),
+  approvalLog: toObjects(data.approvalLog),
+  work,
+  essentials,
+  people,
   askRateMultiple: 1,
 
   flywheel: {
     living: {
       demand: num(metrics.Demand_Contracted),
       supply: num(metrics.Capacity_Live),
+      occupied: occupiedNests,
     },
 
     work: {
@@ -216,7 +398,7 @@ console.log(
       label: "Demand contracted",
       lane: "Demand",
       actual: num(metrics.Demand_Contracted),
-      plan: 0,
+      plan: plans.Demand_Contracted,
       unit: "members",
     },
     {
@@ -224,7 +406,7 @@ console.log(
       label: "Capacity live",
       lane: "Shram Park",
       actual: num(metrics.Capacity_Live),
-      plan: 0,
+      plan: plans.Capacity_Live,
       unit: "Nests",
     },
     {
@@ -232,7 +414,7 @@ console.log(
       label: "Members active",
       lane: "FONO",
       actual: num(metrics.Members_Active),
-      plan: 0,
+      plan: plans.Members_Active,
       unit: "members",
     },
     {
@@ -240,7 +422,7 @@ console.log(
       label: "Attach",
       lane: "Essentials",
       actual: num(metrics.Attach),
-      plan: 0,
+      plan: plans.Attach,
       unit: "percent",
     },
     {
@@ -248,7 +430,7 @@ console.log(
       label: "ARPU",
       lane: "Economics",
       actual: num(metrics.ARPU),
-      plan: 0,
+      plan: plans.ARPU,
       unit: "INR",
     },
     {
@@ -256,16 +438,49 @@ console.log(
       label: "CM",
       lane: "Economics",
       actual: num(metrics.CM),
-      plan: 0,
+      plan: plans.CM,
       unit: "INR",
     },
   ],
+
+  rootCause: rootCause.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    rootCause: row.rootCause,
+    evidence: row.evidence,
+    owner: row.owner,
+    nextStep: row.nextStep,
+  })),
+
+  actions: actions.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    action: row.action,
+    owner: row.owner,
+    status: row.status,
+    dueDate: row.dueDate,
+  })),
+
+  executionQueue: executionQueue.map((row) => ({
+    id: row.id,
+    constraintId: row.constraintId,
+    priority: row.priority,
+    cmRisk: num(row.cmRisk),
+    owner: row.owner,
+    status: row.status,
+  })),
 
   constraints: constraints.map((row) => ({
   id: row.id,
   title: row.title,
   where: row.where,
-  impact: num(row.impact),
+  idleUnits:
+    num(row.idleUnits),
+  cmPerUnit: num(row.cmPerUnit),
+  riskHours: num(row.riskHours),
+  ageHours: num(row.ageHours),
+  thresholdHours: num(row.thresholdHours) || num(row.riskHours),
+  deadlineAt: row.deadlineAt || "",
   detail: row.detail,
   owner: row.owner,
   next: row.next,
@@ -299,8 +514,37 @@ previousBlock: previousBlocks.length
       staleOwner: "",
       staleHours: 0,
     },
+
+    livingSummary,
+  fonoOccupancy: fonoOccupancyLive,
+  livingDashboard,
+  workDashboard: toObjects(data.workDashboard),
+
+  dashboardContent: parseDashboardContent(data.dashboardContent),
 };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

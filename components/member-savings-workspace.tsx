@@ -10,7 +10,7 @@ import { compactAge } from "@/lib/operating-loop/loop-health"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./member-savings-workspace.module.css"
 
-type Props = { preview: MemberSavingsPreview }
+type Props = { preview: MemberSavingsPreview; liveData?: any }
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
 
@@ -34,7 +34,26 @@ function DualGateMatrix({ preview }: Props) {
   </div>
 }
 
-export function MemberSavingsWorkspace({ preview }: Props) {
+export function MemberSavingsWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const essentials = liveData?.essentials?.[0]
+  const finance = liveData?.finance?.[0]
+  const savings = Number(essentials?.["member savings inr"] ?? 0)
+  const margin = Number(essentials?.["nia margin inr"] ?? finance?.["cm2 inr"] ?? 0)
+  const owner = essentials?.["next action owner actor id"] || fixturePreview.summary.owner
+  const gap = savings > 0 && margin > 0 ? 0 : 1
+  const preview: MemberSavingsPreview = {
+    ...fixturePreview,
+    headline: liveData ? `Members saved ₹${savings.toLocaleString("en-IN")}; Nia margin is ₹${margin.toLocaleString("en-IN")}.` : fixturePreview.headline,
+    summary: {
+      ...fixturePreview.summary,
+      target: "Savings and margin above ₹0",
+      current: `₹${savings.toLocaleString("en-IN")} / ₹${margin.toLocaleString("en-IN")}`,
+      gap: String(gap),
+      owner,
+      progress: gap === 0 ? "100%" : "0%",
+      verifiedResult: gap === 0 ? "Both live data gates passed" : "One or more live data gates failed",
+    },
+  }
   const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])

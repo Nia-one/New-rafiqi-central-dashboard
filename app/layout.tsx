@@ -1,4 +1,5 @@
 import { Analytics } from "@vercel/analytics/next"
+import Script from "next/script"
 import type { Metadata, Viewport } from "next"
 import "./globals.css"
 
@@ -25,10 +26,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body>
-        <script id="nia-theme-bootstrap" dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <Script id="nia-theme-bootstrap" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
         {process.env.VERCEL === "1" ? <Analytics /> : null}
       </body>
     </html>
   )
 }
+
+
+
+

@@ -10,7 +10,7 @@ import { compactAge } from "@/lib/operating-loop/loop-health"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./member-engagement-workspace.module.css"
 
-type Props = { preview: MemberEngagementPreview }
+type Props = { preview: MemberEngagementPreview; liveData?: any }
 
 const months = ["M0", "M1", "M2", "M3", "M4", "M5", "M6"]
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
@@ -46,7 +46,23 @@ function RetentionCurve({ preview }: Props) {
   </div>
 }
 
-export function MemberEngagementWorkspace({ preview }: Props) {
+export function MemberEngagementWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const openIncidents = liveData?.summary?.openIncidents ?? 0
+  const openActions = liveData?.summary?.openActions ?? 0
+  const owner = liveData?.incidents?.[0]?.["owner actor id"] || liveData?.actions?.[0]?.["owner actor id"] || fixturePreview.summary.owner
+  const preview: MemberEngagementPreview = {
+    ...fixturePreview,
+    headline: liveData ? `${openIncidents} open Member-impacting incidents need verified recovery.` : fixturePreview.headline,
+    summary: {
+      ...fixturePreview.summary,
+      target: `${openActions} actions due`,
+      current: `${openIncidents} incidents open`,
+      gap: String(Math.max(0, openIncidents - openActions)),
+      owner,
+      progress: `${openActions === 0 ? 100 : Math.min(100, Math.round((openActions - openIncidents) / openActions * 100))}%`,
+      verifiedResult: `${liveData?.summary?.verifiedActivations ?? 0} verified activations`,
+    },
+  }
   const [selected, setSelected] = useState<Record<string, MemberEngagementShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberEngagementShadowOutcome>)
   const [tasks, setTasks] = useState<readonly MemberEngagementTask[]>(preview.tasks)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberEngagementShadowOutcome; verification: VerificationResult["status"]; route: string; at: string }[]>([])

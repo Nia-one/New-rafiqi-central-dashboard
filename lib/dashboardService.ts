@@ -1,4 +1,4 @@
-﻿import { batchGet } from "./googleSheets";
+import { batchGet } from "./googleSheets";
 
 export async function getDashboardData() {
   const [
@@ -22,6 +22,12 @@ export async function getDashboardData() {
     cmHistory,
     constraints,
     previousBlock,
+    rootCause,
+    actions,
+    executionQueue,
+    dashboardContent,
+    livingDashboard,
+    workDashboard,
   ] = await batchGet([
     "Source_Registry!A:Z",
     "Policy_Registry!A:Z",
@@ -36,18 +42,20 @@ export async function getDashboardData() {
     "Evidence_Log!A:Z",
     "Approval_Log!A:Z",
     "Living_Hourly!A:Z",
-    "Work_Hourly!A:Z",
+    "Work_Hourly!A:AZ",
     "Essentials_Hourly!A:Z",
     "Finance_Daily!A:Z",
-    "Dashboard_Overview!A:D",
+    "Dashboard_Overview!A:Z",
     "CM_History!A:Z",
     "Constraints!A:Z",
     "Previous_Block!A:Z",
+    "rootCause!A:Z",
+    "actions!A:Z",
+    "executionQueue!A:Z",
+    "Dashboard_Content!A:I",
+    "Living_Dashboard!A:J",
+    "Work_Dashboard!A:J",
   ]);
-
-  console.log("CONSTRAINTS SHEET DATA:");
-  console.log(constraints);
-
 
   return {
     sourceRegistry,
@@ -70,6 +78,12 @@ export async function getDashboardData() {
     cmHistory,
     constraints,
     previousBlock,
+    rootCause,
+    actions,
+    executionQueue,
+    dashboardContent,
+    livingDashboard,
+    workDashboard,
   };
 }
 
@@ -94,9 +108,18 @@ export async function buildOpsData() {
     constraints: [],
     history: [],
     previousBlock: {},
+    rootCause: data.rootCause,
+    actions: data.actions,
+    executionQueue: data.executionQueue,
 
     // Temporary reference to the raw sheet data while we build the mapper
     _raw: data,
   };
 }
+
+
+
+
+
+
 

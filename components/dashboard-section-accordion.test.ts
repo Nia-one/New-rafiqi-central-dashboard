@@ -10,12 +10,22 @@ const sections = [
 ] as const
 
 function renderAccordion() {
-  return renderToStaticMarkup(createElement(DashboardSectionAccordion, { sections, ariaLabel: "Test sections" },
-    createElement("div", null, "First body"),
-    createElement("div", null, "Second body"),
-  ))
+  return renderToStaticMarkup(
+    createElement(
+      DashboardSectionAccordion,
+      {
+  sections,
+  ariaLabel: "Test sections",
+  children: createElement(
+    "div",
+    null,
+    "First body",
+    createElement("div", null, "Second body")
+  ),
+},
+    )
+  )
 }
-
 test("dashboard accordion opens only the first section by default", () => {
   const html = renderAccordion()
   assert.equal((html.match(/aria-expanded="true"/g) ?? []).length, 1)

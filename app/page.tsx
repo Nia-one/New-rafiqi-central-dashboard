@@ -3,7 +3,7 @@ import { financeExpansionControlEnabled, selfDrivePlatformEnabled } from "@/lib/
 import { buildEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import { buildFinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
 import { buildControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
-import { buildNiaMarginsPreview, NIA_MARGINS_SYNTHETIC_INPUTS } from "@/lib/operating-loop/nia-margins-loop"
+import { buildNiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
 import { buildNewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import { buildMemberEngagementPreview } from "@/lib/operating-loop/member-engagement-loop"
 import { buildMemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
@@ -15,6 +15,7 @@ import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessi
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildAllocationData } from "@/lib/allocation-data-live"
+import { buildLiveMarginInputs, buildLiveSelfDriveSnapshot } from "@/lib/live-mappers/self-drive"
 
 export const dynamic = "force-dynamic"
 
@@ -31,7 +32,9 @@ export default async function Page() {
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const enterpriseDemandPreview = buildEnterpriseDemandLoopPreview()
   const financeExpansionPreview = financeAllowed ? buildFinanceExpansionPreview() : null
-  const niaMarginsPreview = buildNiaMarginsPreview(NIA_MARGINS_SYNTHETIC_INPUTS)
+  const liveOpsData = await buildOpsData()
+  const liveSelfDriveData = buildLiveSelfDriveSnapshot(liveOpsData)
+  const niaMarginsPreview = buildNiaMarginsPreview(buildLiveMarginInputs(liveSelfDriveData))
   const newAddsPreview = buildNewAddsPreview()
   const memberEngagementPreview = buildMemberEngagementPreview()
   const memberSavingsPreview = buildMemberSavingsPreview()
@@ -39,13 +42,11 @@ export default async function Page() {
   const cashControlPreview = financeAllowed ? buildCashControlPreview() : null
   const learningQueue = buildPlatformLearningQueue({ enterpriseDemand: enterpriseDemandPreview, newAdds: newAddsPreview, memberEngagement: memberEngagementPreview, memberSavings: memberSavingsPreview, niaMargins: niaMarginsPreview, niaGrowth: niaGrowthPreview, cashControl: cashControlPreview })
   const controlledAutonomyPreview = buildControlledAutonomyPreview(learningQueue)
-  const liveOpsData = await buildOpsData()
   const allocationData = await buildAllocationData()
 
-console.log("===== LIVE OPS DATA =====")
-console.dir(liveOpsData, { depth: null })
   return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed}
 liveOpsData={liveOpsData}
+liveSelfDriveData={liveSelfDriveData}
 allocationData={allocationData}
 />
 }

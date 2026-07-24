@@ -10,8 +10,22 @@ const chartConfig = {
   projection: { label: "Projection", color: "var(--chart-3)" },
 } satisfies ChartConfig
 
+type CmTrajectoryPoint = {
+  day: number
+  actual: number | null
+  target: number
+  projection: number | null
+}
+
 export function CmTrajectory({ liveOpsData }: { liveOpsData: any }) {
-  const run = {
+  const run: {
+  current: number
+  target: number
+  projection: number
+  askRate: number
+  askRateMultiple: number
+  points: CmTrajectoryPoint[]
+} = {
     current: liveOpsData.previousBlock.cm,
     target: liveOpsData.monthlyCMTarget,
     projection: liveOpsData.monthEndProjection,

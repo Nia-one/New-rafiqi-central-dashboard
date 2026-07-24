@@ -1,142 +1,31 @@
-import { ArrowRight, Clock3, Database, RefreshCw, ShieldCheck } from "lucide-react"
-import { buildLivingSupplyPreview, livingOccupancyBand, type GovernedMetricValue, type LivingSupplyPolicies } from "@/lib/operating-loop/living-supply-model"
+import { ArrowRight, Database, RefreshCw, ShieldCheck } from "lucide-react"
 
-const number = (value: number) => value.toLocaleString("en-IN")
-const money = (value: number) => `₹${Math.round(value).toLocaleString("en-IN")}`
-const percent = (value: number) => `${Math.round(value * 100)}%`
+const num = (v: unknown) => Number.isFinite(Number(v)) ? Number(v) : 0
+const value = (r: any, k: string) => String(r?.[k] ?? "").trim()
+const fmt = (v: number) => v.toLocaleString("en-IN")
+const inr = (v: number) => `₹${Math.round(v).toLocaleString("en-IN")}`
+const pct = (v: number) => `${Math.round(v * 100)}%`
+function Funnel({ contracted, ready, occupied }: { contracted: number; ready: number; occupied: number }) { const base = Math.max(1, contracted); return <td className="living-funnel"><span className="living-funnel-bars">{[["Contracted", contracted], ["Ready", ready], ["Occupied", occupied], ["Paying", occupied]].map(([label, amount]) => <span className="living-funnel-row" key={String(label)}><small>{label}</small><i className="living-funnel-track"><b style={{ width: `${num(amount) / base * 100}%` }} /></i><strong>{fmt(num(amount))}</strong></span>)}</span></td> }
+function Metric({ children, label }: { children: React.ReactNode; label: string }) { return <span className="living-metric-value"><strong>{children}</strong><small>{label}</small></span> }
+function Readiness({ state }: { state: string }) { return <span className={`living-readiness state-${state.toLowerCase().replaceAll(" ", "-")}`}>{state}</span> }
 
-// "SP" is the governed data key, but it is opaque to new joiners, so the rest of the
-// Living surface already reads "Śram Park". This maps the stored supply_model to the
-// human label without touching the data value the CSS and lineage still key on.
-const MODEL_LABELS: Record<string, string> = { FONO: "FONO", SP: "Śram Park", Combined: "COMBINED" }
-const modelLabel = (supplyModel: string) => MODEL_LABELS[supplyModel] ?? supplyModel
-
-// Renders the contracted -> ready -> occupied -> paying funnel as four shrinking bars
-// with the counts kept alongside. Consolidating the four numeric columns into one keeps
-// the table inside its width, and the worst stage-to-stage drop is flagged so the leak is
-// obvious without reading every figure.
-function funnelCell(contracted: number, ready: number, occupied: number, paying: number) {
-  const base = Math.max(1, contracted)
-  const stages = [
-    { key: "contracted", label: "Contracted", value: contracted },
-    { key: "ready", label: "Ready", value: ready },
-    { key: "occupied", label: "Occupied", value: occupied },
-    { key: "paying", label: "Paying", value: paying },
-  ] as const
-  let leakIndex = -1
-  let worstDrop = 0
-  for (let i = 1; i < stages.length; i += 1) {
-    const drop = stages[i - 1].value - stages[i].value
-    if (drop > worstDrop) {
-      worstDrop = drop
-      leakIndex = i
-    }
-  }
-  const conversion = Math.round((paying / base) * 100)
-  const label = `Supply funnel: ${number(contracted)} contracted, ${number(ready)} ready, ${number(occupied)} occupied, ${number(paying)} paying. ${conversion}% contracted to paying.`
-  return (
-    <td className="living-funnel">
-      <span className="living-funnel-bars" role="img" aria-label={label}>
-        {stages.map((stage, index) => (
-          <span className="living-funnel-row" key={stage.key} data-leak={index === leakIndex ? "" : undefined}>
-            <small>{stage.label}</small>
-            <i className="living-funnel-track"><b data-stage={stage.key} style={{ width: `${Math.round((stage.value / base) * 100)}%` }} /></i>
-            <strong>{number(stage.value)}</strong>
-          </span>
-        ))}
-      </span>
-    </td>
-  )
-}
-
-function metric(metric: GovernedMetricValue, format: "percent" | "money") {
-  if (metric.state === "No data" || metric.value === null) return <span className="living-no-data"><strong>No data</strong><small>Source coverage absent</small></span>
-  return <span className="living-metric-value"><strong>{format === "percent" ? percent(metric.value) : money(metric.value)}</strong><small>{metric.definitionRef}</small></span>
-}
-
-function occupancyCell(value: GovernedMetricValue, policies: LivingSupplyPolicies) {
-  if (value.state === "No data" || value.value === null) return <span className="living-no-data"><strong>No data</strong><small>Source coverage absent</small></span>
-  const pct = Math.round(value.value * 100)
-  return <span className="living-occupancy" data-band={livingOccupancyBand(value.value, policies)}>
-    <strong>{pct}%</strong>
-    <span className="living-occupancy-bar" role="img" aria-label={`Occupancy ${pct} percent`}><i style={{ width: `${pct}%` }} /></span>
-    <small>{value.definitionRef}</small>
-  </span>
-}
-
-function Readiness({ state }: { state: string }) {
-  return <span className={`living-readiness state-${state.toLowerCase().replaceAll(" ", "-")}`}>{state}</span>
-}
-
-export function LivingSupplyModelReport() {
-  const preview = buildLivingSupplyPreview()
-  const { report, policies } = preview
-  const combined = report.combined
+export function LivingSupplyModelReport({ liveOpsData }: { liveOpsData: any }) {
+  const summary = liveOpsData?.livingSummary ?? { fono: {}, sp: {}, combined: {} }
+  const rows = liveOpsData?.livingDashboard ?? []
+  const metricRow = (key: string) => rows.find((row: any) => value(row, "key") === key)
+  const metric = (key: string) => num(metricRow(key)?.["value number"])
+  const text = (key: string) => value(metricRow(key), "value text") || "No data"
+  const studios = liveOpsData?.studios ?? []
+  const spParks = studios.filter((s: any) => value(s, "supply model").toUpperCase() === "SP")
+  const models = [{ key: "FONO", label: "FONO", data: summary.fono, count: liveOpsData?.fonoOccupancy?.length ?? 0, cm1: metric("cm1_fono"), cm2: metric("cm2_fono") }, { key: "SP", label: "Shram Park", data: summary.sp, count: spParks.length, cm1: metric("cm1_sp"), cm2: metric("cm2_sp") }]
+  const combined = { cm1: metric("cm1_fono") + metric("cm1_sp"), cm2: metric("cm2_fono") + metric("cm2_sp") }
+  const sourceTotal = Math.max(1, metric("franchisee_sourced") + metric("nia_filled"))
+  const updatedAt = rows.map((row: any) => value(row, "updated at")).find(Boolean) || "No timestamp"
   return <section className="living-supply-report" aria-labelledby="living-supply-report-title">
-    <header className="living-supply-report-head">
-      <div>
-        <p className="section-kicker">LIVING REPORT · GOVERNED SUPPLY VIEW</p>
-        <h2 id="living-supply-report-title">FONO first. Śram Park second. Then the combined Living view.</h2>
-        <p>Both channels refresh independently from Studio Master before any combined roll-up is allowed.</p>
-      </div>
-      <dl>
-        <div><dt><RefreshCw /> Refresh</dt><dd>17 Jul · 08:00</dd></div>
-        <div><dt><ShieldCheck /> Mode</dt><dd>{report.mode}</dd></div>
-      </dl>
-    </header>
-
-    <ol className="living-refresh-order" aria-label="Required Living report refresh order">
-      <li><span>01</span><strong>FONO</strong><small>Franchise-owned supply</small></li>
-      <li aria-hidden><ArrowRight /></li>
-      <li><span>02</span><strong>Śram Park</strong><small>Nia-capital-exposed parks</small></li>
-      <li aria-hidden><ArrowRight /></li>
-      <li><span>03</span><strong>COMBINED</strong><small>Only after both are visible</small></li>
-    </ol>
-
-    <div className="living-supply-table-card">
-    <div className="living-supply-table-wrap" tabIndex={0} role="region" aria-label="Living FONO and SP report table">
-      <table className="living-supply-table">
-        <caption className="sr-only">Living report with FONO first, SP second, and the combined roll-up last</caption>
-        <thead><tr><th scope="col">SUPPLY MODEL</th><th scope="col">SUPPLY FUNNEL</th><th scope="col">OCCUPANCY</th><th scope="col">BILLED ARPU</th><th scope="col">COLLECTION LEAKAGE</th><th scope="col">CM1</th><th scope="col">CM2</th></tr></thead>
-        <tbody>{report.channels.map((channel, index) => <tr key={channel.supplyModel} data-supply-model={channel.supplyModel}>
-          <th scope="row"><span>{String(index + 1).padStart(2, "0")}</span><strong>{modelLabel(channel.supplyModel)}</strong><small>{channel.studioCount} governed Studios</small></th>
-          {funnelCell(channel.contractedNests, channel.activationReadyNests, channel.occupiedNests, channel.payingNests)}
-          <td>{occupancyCell(channel.occupancy, policies)}</td><td>{metric(channel.billedArpu, "money")}</td><td>{metric(channel.collectionLeakage, "money")}</td><td>{metric(channel.cm1, "money")}</td><td>{metric(channel.cm2, "money")}</td>
-        </tr>)}</tbody>
-        {combined && <tfoot><tr data-supply-model="Combined"><th scope="row"><span>03</span><strong>COMBINED</strong><small>FONO + Śram Park, shown last</small></th>
-          {funnelCell(combined.contractedNests, combined.activationReadyNests, combined.occupiedNests, combined.payingNests)}
-          <td>{occupancyCell(combined.occupancy, policies)}</td><td>{metric(combined.billedArpu, "money")}</td><td>{metric(combined.collectionLeakage, "money")}</td><td>{metric(combined.cm1, "money")}</td><td>{metric(combined.cm2, "money")}</td>
-        </tr></tfoot>}
-      </table>
-    </div>
-    </div>
-
-    <div className="living-channel-detail-grid">
-      <article className="living-channel-detail fono-detail">
-        <header><div><p className="section-kicker">01 · FONO</p><h3>Who filled occupied Nests?</h3></div><strong>{report.channels[0] ? percent(report.channels[0].occupancy.value ?? 0) : "No data"}<small>occupancy</small></strong></header>
-        <div className="fono-source-bars">
-          <div><span>Franchisee-sourced Members</span><strong>{number(report.fono?.franchiseeSourcedMembers ?? 0)}</strong><i style={{ width: `${Math.round(((report.fono?.franchiseeSourcedMembers ?? 0) / Math.max(1, (report.fono?.franchiseeSourcedMembers ?? 0) + (report.fono?.niaFilledMembers ?? 0))) * 100)}%` }} /></div>
-          <div><span>Nia-filled Members</span><strong>{number(report.fono?.niaFilledMembers ?? 0)}</strong><i style={{ width: `${Math.round(((report.fono?.niaFilledMembers ?? 0) / Math.max(1, (report.fono?.franchiseeSourcedMembers ?? 0) + (report.fono?.niaFilledMembers ?? 0))) * 100)}%` }} /></div>
-        </div>
-        <dl><div><dt>Vacant Nests at cycle start</dt><dd>{number(report.fono?.vacantNestsAtCycleStart ?? 0)}</dd></div><div><dt>Nia fill rate</dt><dd>{report.fono ? metric(report.fono.niaFillRate, "percent") : "No data"}</dd></div></dl>
-      </article>
-
-      <article className="living-channel-detail sp-detail">
-        <header><div><p className="section-kicker">02 · ŚRAM PARK</p><h3>Capital-exposed capacity by park</h3></div><strong>{report.spParks.length}<small>parks</small></strong></header>
-        <div className="living-sp-table-wrap" tabIndex={0} role="region" aria-label="SP park readiness">
-          <table><thead><tr><th>PARK</th><th>BUILD</th><th>HARDWARE</th><th>SUKH</th><th>UFD</th><th>COVERAGE</th><th>CAPEX</th></tr></thead><tbody>{report.spParks.map((park) => <tr key={park.studioId}><th scope="row"><strong>{park.studioName}</strong><small>{park.blockingMilestone}</small></th><td><Readiness state={park.readiness.buildOut} /></td><td><Readiness state={park.readiness.hardwareAmenities} /></td><td><Readiness state={park.readiness.sukh} /></td><td><Readiness state={park.readiness.ufd} /></td><td>{metric(park.contractCoverage, "percent")}</td><td><strong>{money(park.capexExposureInr)}</strong><small>{number(park.enterpriseContractCoveredNests)} / {number(park.activationReadyNests)} covered / ready</small></td></tr>)}</tbody></table>
-        </div>
-      </article>
-    </div>
-
-    <div className="living-route-grid">
-      {preview.routes.map((event, index) => <article key={event.eventId} data-supply-model={event.supplyModel}>
-        <span>{String(index + 1).padStart(2, "0")} · {modelLabel(event.supplyModel).toUpperCase()} GAP</span>
-        <strong>{event.route.primaryRoute}</strong>
-        <p>{event.route.blockingMilestone}</p>
-        <small><Clock3 /> Escalate after {event.route.escalationAfterCycles} unresolved {event.route.escalationAfterCycles === 1 ? "cycle" : "cycles"} · {event.route.escalationOwner}</small>
-      </article>)}
-      <aside><Database /><div><strong>Studio Master is authoritative.</strong><span>Missing or conflicting supply_model is quarantined. No name inference.</span><small>Lineage visible: Studio_Master rows 3, 5 (FONO) · 2, 4 (Śram Park). {policies.policyVersions.join(" · ")} · Provisional; {policies.calibrationNote}.</small></div></aside>
-    </div>
+    <header className="living-supply-report-head"><div><p className="section-kicker">{text("living_report_kicker")}</p><h2 id="living-supply-report-title">{text("living_report_title")}</h2><p>{text("living_report_description")}</p></div><dl><div><dt><RefreshCw /> Refresh</dt><dd>{updatedAt}</dd></div><div><dt><ShieldCheck /> Mode</dt><dd>Live sheet</dd></div></dl></header>
+    <ol className="living-refresh-order"><li><span>01</span><strong>FONO</strong><small>{text("living_report_fono_description")}</small></li><li aria-hidden><ArrowRight /></li><li><span>02</span><strong>Shram Park</strong><small>{text("living_report_sp_description")}</small></li><li aria-hidden><ArrowRight /></li><li><span>03</span><strong>COMBINED</strong><small>{text("living_report_combined_description")}</small></li></ol>
+    <div className="living-supply-table-card"><div className="living-supply-table-wrap"><table className="living-supply-table"><thead><tr><th>SUPPLY MODEL</th><th>SUPPLY FUNNEL</th><th>OCCUPANCY</th><th>BILLED ARPU</th><th>COLLECTION LEAKAGE</th><th>CM1</th><th>CM2</th></tr></thead><tbody>{models.map((model, i) => <tr key={model.key} data-supply-model={model.key}><th><span>{String(i + 1).padStart(2, "0")}</span><strong>{model.label}</strong><small>{model.count} governed Studios</small></th><Funnel contracted={num(model.data.contracted)} ready={num(model.data.activationReady)} occupied={num(model.data.occupied)} /><td><Metric label="Live sheet">{pct(num(model.data.occupancy))}</Metric></td><td><Metric label="Billed ÷ occupied">{inr(num(model.data.occupied) ? num(model.data.billed) / num(model.data.occupied) : 0)}</Metric></td><td><Metric label="Live sheet">{inr(num(model.data.leakage))}</Metric></td><td><Metric label="Living_Dashboard">{inr(model.cm1)}</Metric></td><td><Metric label="Living_Dashboard">{inr(model.cm2)}</Metric></td></tr>)}</tbody><tfoot><tr data-supply-model="Combined"><th><span>03</span><strong>COMBINED</strong><small>FONO + Shram Park, shown last</small></th><Funnel contracted={num(summary.combined.contracted)} ready={num(summary.combined.activationReady)} occupied={num(summary.combined.occupied)} /><td><Metric label="Live sheet">{pct(num(summary.combined.occupancy))}</Metric></td><td><Metric label="Billed ÷ occupied">{inr(num(summary.combined.occupied) ? num(summary.combined.billed) / num(summary.combined.occupied) : 0)}</Metric></td><td><Metric label="Live sheet">{inr(num(summary.combined.leakage))}</Metric></td><td><Metric label="Living_Dashboard">{inr(combined.cm1)}</Metric></td><td><Metric label="Living_Dashboard">{inr(combined.cm2)}</Metric></td></tr></tfoot></table></div></div>
+    <div className="living-channel-detail-grid"><article className="living-channel-detail fono-detail"><header><div><p className="section-kicker">01 · FONO</p><h3>{text("living_report_fono_detail_title")}</h3></div><strong>{pct(num(summary.fono.occupancy))}<small>occupancy</small></strong></header><div className="fono-source-bars"><div><span>Franchisee-sourced Members</span><strong>{fmt(metric("franchisee_sourced"))}</strong><i style={{ width: `${metric("franchisee_sourced") / sourceTotal * 100}%` }} /></div><div><span>Nia-filled Members</span><strong>{fmt(metric("nia_filled"))}</strong><i style={{ width: `${metric("nia_filled") / sourceTotal * 100}%` }} /></div></div><dl><div><dt>Vacant Nests at cycle start</dt><dd>{fmt(metric("vacant_cycle_start"))}</dd></div><div><dt>Nia fill rate</dt><dd>{pct(metric("nia_fill_rate"))}</dd></div></dl></article><article className="living-channel-detail sp-detail"><header><div><p className="section-kicker">02 · SHRAM PARK</p><h3>{text("living_report_sp_detail_title")}</h3></div><strong>{spParks.length}<small>parks</small></strong></header><div className="living-sp-table-wrap"><table><thead><tr><th>PARK</th><th>BUILD</th><th>HARDWARE</th><th>SUKH</th><th>UFD</th><th>COVERAGE</th><th>CAPEX</th></tr></thead><tbody>{spParks.map((park: any) => <tr key={value(park, "studio id")}><th><strong>{value(park, "studio name")}</strong><small>{value(park, "readiness status")}</small></th><td><Readiness state={value(park, "readiness status") || "No data"} /></td><td><Readiness state={text("hardware")} /></td><td><Readiness state={text("sukh")} /></td><td><Readiness state={text("ufd")} /></td><td>{pct(metric("coverage"))}</td><td><strong>{inr(metric("sp_capex"))}</strong><small>Living_Dashboard</small></td></tr>)}</tbody></table></div></article></div>
+    <div className="living-route-grid"><aside><Database /><div><strong>{text("living_report_source_note")}</strong><span>Living_Hourly · Studio_Master · Enterprise_Demand · People_Roster · Living_Dashboard.</span></div></aside></div>
   </section>
 }

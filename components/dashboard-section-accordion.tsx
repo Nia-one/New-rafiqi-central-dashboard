@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { Children, isValidElement, useId, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react"
 import { ChevronDown } from "lucide-react"
@@ -14,14 +14,16 @@ export function DashboardSectionAccordion({
   sections,
   className,
   ariaLabel = "Dashboard sections",
+  defaultOpenIndex,
   ...props
 }: {
   children: ReactNode
   sections: readonly DashboardSectionMeta[]
   ariaLabel?: string
+  defaultOpenIndex?: number
 } & Omit<HTMLAttributes<HTMLDivElement>, "children" | "aria-label">) {
   const items = Children.toArray(children)
-  const [openIndex, setOpenIndex] = useState(0)
+ const [openIndex, setOpenIndex] = useState(defaultOpenIndex ?? -1)
   const baseId = useId()
 
   function focusTrigger(index: number) {
@@ -52,7 +54,7 @@ export function DashboardSectionAccordion({
       const panelId = `${baseId}-panel-${index}`
       return <section className="dashboard-accordion-item" data-open={expanded ? "true" : "false"} key={isValidElement(child) && child.key ? child.key : index}>
         <h2 className="dashboard-accordion-heading">
-          <button id={triggerId} type="button" className="dashboard-accordion-trigger" aria-expanded={expanded} aria-controls={panelId} onClick={() => setOpenIndex(index)} onKeyDown={(event) => handleKeyDown(event, index)}>
+          <button id={triggerId} type="button" className="dashboard-accordion-trigger" aria-expanded={expanded} aria-controls={panelId} onClick={() => setOpenIndex(openIndex === index ? -1 : index)} onKeyDown={(event) => handleKeyDown(event, index)}>
             <span className="dashboard-accordion-title">{meta.title}</span>
             <span className="dashboard-accordion-summary">{meta.summary}</span>
             <ChevronDown className="dashboard-accordion-chevron" aria-hidden />
@@ -65,3 +67,8 @@ export function DashboardSectionAccordion({
     })}
   </div>
 }
+
+
+
+
+

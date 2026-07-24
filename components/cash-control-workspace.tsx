@@ -10,7 +10,7 @@ import { MeasureViz } from "@/components/measure-viz"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./cash-control-workspace.module.css"
 
-type Props = { preview: CashControlPreview }
+type Props = { preview: CashControlPreview; liveData?: any }
 type ShadowOutcome = "Unresolved" | "Evidence received" | "Failed evidence" | "Human approval required" | "Missed hour"
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
@@ -36,7 +36,16 @@ function FinancialRail({ rail }: { rail: CashControlPreview["financialRails"][nu
   </article>
 }
 
-export function CashControlWorkspace({ preview }: Props) {
+export function CashControlWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const finance = liveData?.finance?.[0]
+  const target = Number(finance?.["opex forecast inr"] ?? 0)
+  const current = Number(finance?.["cash balance inr"] ?? 0)
+  const owner = finance?.["reported by actor id"] || fixturePreview.summary.owner
+  const preview: CashControlPreview = {
+    ...fixturePreview,
+    headline: liveData ? `Live cash balance is ₹${current.toLocaleString("en-IN")} against the current finance plan.` : fixturePreview.headline,
+    summary: { ...fixturePreview.summary, target: `₹${target.toLocaleString("en-IN")} forecast opex`, current: `₹${current.toLocaleString("en-IN")} cash`, gap: `₹${Math.max(0, target - current).toLocaleString("en-IN")}`, owner, progress: target ? `${Math.min(100, Math.round(current / target * 100))}%` : "No data", verifiedResult: `${liveData?.summary?.openActions ?? 0} open live actions` },
+  }
   const [tasks, setTasks] = useState<readonly CashControlTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: ShadowOutcome; route: string; at: string }[]>([])

@@ -1,4 +1,4 @@
-﻿import { formatInr } from "@/lib/ops-data"
+import { formatInr } from "@/lib/ops-data"
 import {
   NO_DATA,
   type ActionStatus,
@@ -28,7 +28,7 @@ export const SCORE_CONFIG = {
   attention: { Unassigned: 1.15, Blocked: 1.1, Assigned: 1, "In progress": 0.75 } as Record<AttentionBucket, number>,
 } as const
 
-/** Åšram Park eligibility: within 2km, inside the 24h sourcing SLA, and produced by the required date. */
+/** Shram Park eligibility: within 2km, inside the 24h sourcing SLA, and produced by the required date. */
 export const SHRAM_PARK_MAX_KM = 2
 export const SHRAM_PARK_SLA_HOURS = 24
 /** Essentials classification thresholds in days of cover. */
@@ -53,9 +53,16 @@ export function essentialsMatchKey(key: JoinKey) {
   return [key.theatreId, key.studioId ?? "no-studio", key.skuId ?? "no-sku", key.dateBucket ?? "no-date"].join(" | ")
 }
 export function matchKeyFor(domain: AllocationDomain, key: JoinKey) {
-  if (domain === "Åšram Park") return shramParkMatchKey(key)
-  if (domain === "FONO") return fonoMatchKey(key)
-  return essentialsMatchKey(key)
+  switch (domain) {
+    case "FONO":
+      return fonoMatchKey(key)
+
+    case "Essentials":
+      return essentialsMatchKey(key)
+
+    default:
+      return shramParkMatchKey(key)
+  }
 }
 
 export type ActionLogContext = {
@@ -98,7 +105,7 @@ export function isEligibleSupply(option: SupplyOption) {
   )
 }
 
-/** Index eligible options by their Åšram Park match key for repeated lookups. */
+/** Index eligible options by their Shram Park match key for repeated lookups. */
 export function eligibleSupplyByKey(options: SupplyOption[] = supplyOptions) {
   const map = new Map<string, SupplyOption[]>()
   for (const option of options) {
@@ -129,7 +136,7 @@ export function essentialsDeadStockCm(units: number, markdownPerUnit: number) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Workflow status â†’ attention bucket, and the score multipliers.      */
+/* Workflow status → attention bucket, and the score multipliers.      */
 /* ------------------------------------------------------------------ */
 
 export function isUnresolved(status: ActionStatus) {
@@ -215,12 +222,20 @@ export function toMismatch(input: MismatchInput): Mismatch {
 }
 
 export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
+
+console.log("SCORE DEBUG", {
+  id: mismatch.id,
+  status: mismatch.actionStatus,
+  cm: mismatch.forwardCmAtRisk24h,
+  recoverable: mismatch.recoverableShare,
+})
+
   if (!isUnresolved(mismatch.actionStatus) || isNoData(mismatch.forwardCmAtRisk24h)) return NO_DATA
   const forwardCmAtRisk24h = mismatch.forwardCmAtRisk24h
   const urgency = urgencyMultiplier(mismatch.ageHours, mismatch.thresholdHours)
   const confidence = SCORE_CONFIG.confidence[mismatch.confidence]
   const attention = SCORE_CONFIG.attention[mismatch.attentionBucket]
-  const rawPriority = forwardCmAtRisk24h * urgency * mismatch.recoverableShare * confidence * attention
+  const rawPriority = Number.isFinite(forwardCmAtRisk24h) && Number.isFinite(urgency) && Number.isFinite(mismatch.recoverableShare) && Number.isFinite(confidence) && Number.isFinite(attention) ? forwardCmAtRisk24h * urgency * mismatch.recoverableShare * confidence * attention : 0
   return {
     forwardCmAtRisk24h,
     urgencyMultiplier: urgency,
@@ -234,8 +249,22 @@ export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
 /** Open queue. Closed and Dismissed rows are excluded from scoring. */
 export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): RankedMismatch[] {
   const unresolved = liveInputs
-    .map((input) => getMismatchForStage(input.domain, input.joinKey, context))
-    .filter((mismatch): mismatch is Mismatch => mismatch !== undefined)
+    .map((input) => {
+      const existing = getMismatchForStage(input.domain, input.joinKey, context)
+
+      if (existing) return existing
+
+      return {
+        ...input,
+        actionStatus: input.actionStatus ?? "Detected",
+        attentionBucket: "Assigned",
+        recoverableShare: input.recoverableShare ?? 1,
+        confidence: input.confidence ?? "Medium",
+        forwardCmAtRisk24h: input.forwardCmAtRisk24h ?? 0,
+        nextAction: "Review and resolve mismatch",
+        actionBlocked: false,
+      } as Mismatch
+    })
     .filter((mismatch) => isUnresolved(mismatch.actionStatus))
 
   const components = new Map<string, Measured<ScoreComponents>>()
@@ -269,15 +298,15 @@ export type DailyActionGrid = Record<ActionGridCategory, Record<(typeof THEATRES
 
 /**
  * Preserves the audited queue order while grouping open actions for the daily
- * Theatre Ã— category matrix. A null cell means the feed is not instrumented.
+ * Theatre × category matrix. A null cell means the feed is not instrumented.
  */
-export async function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): Promise<DailyActionGrid> {
+export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): DailyActionGrid {
   const grid = Object.fromEntries(ACTION_GRID_CATEGORIES.map((category) => [
     category,
     Object.fromEntries(THEATRES.map((theatre) => [theatre, category === "Work" ? null : []])),
   ])) as DailyActionGrid
 
-  for (const mismatch of await buildRankedQueue(context, liveInputs)) {
+  for (const mismatch of buildRankedQueue(context, liveInputs)) {
     const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : "Living"
     const theatre = THEATRES.find((name) => name === mismatch.theatre)
     if (!theatre) continue
@@ -294,8 +323,16 @@ export function topUnresolved(context: ActionLogContext = {}, liveInputs: Mismat
 
 export function mismatchById(id: string, context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): Mismatch | undefined {
   const input = liveInputs.find((item) => item.id === id)
-  return input ? getMismatchForStage(input.domain, input.joinKey, context) : undefined
+  return input ? getMismatchForStage(input.domain, input.joinKey, context, liveInputs) : undefined
 }
+
+
+
+
+
+
+
+
 
 
 

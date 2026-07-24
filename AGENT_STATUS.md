@@ -1,5 +1,25 @@
 # Agent status
 
+## Live Google Sheets migration — current progress
+
+Updated: 24 July 2026 (IST)
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Google Sheet access | Complete | Existing service account is reading the connected workbook. |
+| Sheet setup | Complete | `Dashboard_Content` and `DATA_ENTRY_GUIDE` have been created. |
+| Test data | Complete | Clearly labelled test records were added only to previously empty operational tabs. |
+| Operations guidance | Complete | Yellow columns mark Operations-editable fields; `DATA_ENTRY_GUIDE` specifies format and update rhythm. |
+| Overview/header live data | Complete | Freshness, reporting period, key overview data and editable page content read from the Sheet. |
+| Self Drive detailed workspaces | In progress | The app still directly invokes synthetic preview builders for Enterprise Demand, Member Adds, Engagement, Savings, Margins, Growth, Cash Control and Sign-Off. |
+| Self Learn detailed screens | In progress | Overview and Living are sheet-backed. Work, Essentials, People, NPS, Economics and Learning History still contain static/fixture rendering. |
+| Input protections | Pending | Apply after final mappings so only Operations input columns are editable. |
+| Final verification | Pending | Production build plus live-sheet smoke test after all components are mapped. |
+
+Latest audit: Self Learn → Living was remapped on 24 July 2026. Its funnels, report, tables, proximity view, summaries and copy now calculate from `Living_Hourly`, `Studio_Master`, `Enterprise_Demand` and `People_Roster`; unavailable metrics show `No data`. The production build passed. This does not mean the remaining pages are component-live.
+
+The project currently has live Sheet connectivity and seeded test data, but it is **not yet fully component-live**. Do not treat fixture-backed cards/charts as final until the two “In progress” rows are complete.
+
 Updated: 17 July 2026 (IST)
 
 Branch: `feat/enterprise-demand-report`

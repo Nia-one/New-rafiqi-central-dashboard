@@ -36,7 +36,7 @@ test("visual system uses semantic tones and reserves blue for interaction", () =
 test("top navigation uses exact business-model order without former screens", () => {
   assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
   assert.equal(DASHBOARD_TABS.at(-1), "Despatch")
-  for (const former of ["Śram Park", "FONO", "Demand"]) assert.equal((DASHBOARD_TABS as readonly string[]).includes(former), false)
+  for (const former of ["Shram Park", "FONO", "Demand"]) assert.equal((DASHBOARD_TABS as readonly string[]).includes(former), false)
 })
 
 test("release-off navigation preserves the exact legacy tabs and landing route", () => {
@@ -105,7 +105,7 @@ test("Today and MTD use tapered funnel segments rather than progress bars", () =
 })
 
 test("Living exposes all required subsections and Overview routes", () => {
-  assert.deepEqual(LIVING_SECTIONS, ["FONO", "Śram Park demand", "Śram Park supply", "Reconciliation"])
+  assert.deepEqual(LIVING_SECTIONS, ["FONO", "Shram Park demand", "Shram Park supply", "Reconciliation"])
   assert.deepEqual(OVERVIEW_ROUTES.contracted, { screen: "Living", subsection: "demand" })
   assert.deepEqual(OVERVIEW_ROUTES.capacity, { screen: "Living", subsection: "supply" })
   assert.deepEqual(OVERVIEW_ROUTES.active, { screen: "Living", subsection: "fono" })
