@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Clock3, FileCheck2, LockKeyhole, ShieldCheck } from "lucide-react"
 import { recoverMemberSavingsTask, type MemberSavingsPreview, type MemberSavingsShadowOutcome, type SavingsTaskPreview, type SavingsVerification } from "@/lib/operating-loop/member-savings-loop"
 import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/components/operational-card"
@@ -9,7 +9,8 @@ import { MeasureViz } from "@/components/measure-viz"
 import { compactAge } from "@/lib/operating-loop/loop-health"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { approvalsForDomain } from "@/lib/live-approvals"
-import { buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth } from "@/lib/live-mappers/self-drive"
+import { buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveMemberSavingsTasks } from "@/lib/live-mappers/self-drive"
+import { resolveMemberSavingsAskDueAt, synchronizeMemberSavingsTaskState } from "./member-savings-workspace-helpers"
 import styles from "./member-savings-workspace.module.css"
 
 type Props = { preview: MemberSavingsPreview; liveData?: any }
@@ -61,6 +62,7 @@ export function MemberSavingsWorkspace({ preview: fixturePreview, liveData }: Pr
   const isLive = Boolean(liveData)
   const liveFreshness = isLive ? buildLiveMemberSavingsFreshness(liveData) : null
   const liveHealth = isLive ? buildLiveMemberSavingsHealth(liveData) : null
+  const liveTasks = isLive ? buildLiveMemberSavingsTasks(liveData) : []
   const essentials = liveData?.essentials?.[0]
   const finance = liveData?.finance?.[0]
   const savings = Number(essentials?.["member savings inr"] ?? 0)
@@ -158,10 +160,19 @@ export function MemberSavingsWorkspace({ preview: fixturePreview, liveData }: Pr
     },
     measures: isLive ? liveMeasures : fixturePreview.measures,
     services: isLive ? liveServices : fixturePreview.services,
+    tasks: isLive ? liveTasks : fixturePreview.tasks,
   }
   const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])
+
+  useEffect(() => {
+    setSelected((currentSelection) => {
+      const nextSelection = Object.fromEntries(preview.tasks.map((task) => [task.actionId, currentSelection[task.actionId] ?? "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>
+      setTasks((currentTasks) => synchronizeMemberSavingsTaskState(currentTasks, preview.tasks, nextSelection).tasks)
+      return nextSelection
+    })
+  }, [preview.tasks, isLive])
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -282,7 +293,10 @@ export function MemberSavingsWorkspace({ preview: fixturePreview, liveData }: Pr
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time></dd></div>
+        <div><dt>By</dt><dd>{(() => {
+          const askDueAt = resolveMemberSavingsAskDueAt(tasks, preview.tasks[0]?.dueAt, isLive)
+          return askDueAt ? <time dateTime={askDueAt}>{date(askDueAt)}</time> : <span>{isLive ? "No live task due date" : "No task due date"}</span>
+        })()}</dd></div>
       </dl>
     </section>
 

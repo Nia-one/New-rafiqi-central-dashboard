@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveNiaGrowthProjection, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
+import { buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveMemberSavingsTasks, buildLiveNiaGrowthProjection, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
 
 const snapshot = buildLiveSelfDriveSnapshot({
   meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
@@ -543,4 +543,15 @@ test("Member Savings uses the Sheet snapshot time when an awaiting row has no ev
   assert.equal(health.verification.awaiting, 1)
   assert.equal(health.verification.oldestAwaitingAt, asOf)
   assert.equal(health.verification.backlogAgeHours, 0)
+})
+
+test("Member Savings tasks derive from governed Action_Log rows instead of the preview fixture", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-07-26T16:55:00+05:30" },
+    essentials: [{ "essentials hourly id": "ESS-1", "member savings inr": "2400", "nia margin inr": "3500", "captured at": "2026-07-26T16:55:00+05:30" }],
+    actionLog: [{ "action id": "SD-ACTION-SAV-2", "operating objective": "Member Savings recovery", "expected metric": "Attach", "owner actor id": "ACT-PRIYA", state: "Detected", "due at": "2026-07-27T14:00:00+05:30", "proposed at": "2026-07-26T16:50:00+05:30" }],
+    people: [{ "actor id": "ACT-PRIYA", "display name": "Priya Rao" }],
+  })
+  const tasks = buildLiveMemberSavingsTasks(live)
+  assert.deepEqual(tasks.map((task) => ({ actionId: task.actionId, owner: task.owner, expectedMetric: task.expectedMetric })), [{ actionId: "SD-ACTION-SAV-2", owner: "Priya Rao", expectedMetric: "Attach" }])
 })

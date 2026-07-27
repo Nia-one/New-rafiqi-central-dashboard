@@ -1,11 +1,44 @@
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
-import { buildMemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
+import { buildMemberSavingsPreview, type SavingsTaskPreview, type MemberSavingsShadowOutcome } from "@/lib/operating-loop/member-savings-loop"
+import { resolveMemberSavingsAskDueAt, synchronizeMemberSavingsTaskState } from "./member-savings-workspace-helpers"
 
 const componentSource = readFileSync(new URL("./member-savings-workspace.tsx", import.meta.url), "utf8")
 const styleSource = readFileSync(new URL("./member-savings-workspace.module.css", import.meta.url), "utf8")
 const preview = buildMemberSavingsPreview()
+
+const taskFixture = (actionId: string, state: SavingsTaskPreview["state"] = "Detected"): SavingsTaskPreview => ({
+  actionId,
+  issue: `Issue ${actionId}`,
+  service: "Studio A",
+  owner: "Alex",
+  dueAt: "2026-07-27T00:00:00.000Z",
+  expectedMetric: "Dual gate",
+  progress: "Pending",
+  verifiedResult: "Not yet independently verified",
+  state,
+  engineAction: {} as SavingsTaskPreview["engineAction"],
+})
+
+test("synchronizeMemberSavingsTaskState preserves shadow state for surviving tasks and resets new ones to unresolved", () => {
+  const priorTasks = [taskFixture("A", "Detected")]
+  const nextTasks = [taskFixture("A", "Detected"), taskFixture("B", "Awaiting verification")]
+  const priorSelection: Record<string, MemberSavingsShadowOutcome> = { A: "Evidence received" }
+  const result = synchronizeMemberSavingsTaskState(priorTasks, nextTasks, priorSelection)
+
+  assert.equal(result.tasks[0].state, "Detected")
+  assert.equal(result.tasks[0].progress, "Pending")
+  assert.equal(result.selected.A, "Evidence received")
+  assert.equal(result.selected.B, "Unresolved")
+  assert.equal(result.tasks[1].actionId, "B")
+})
+
+test("resolveMemberSavingsAskDueAt returns an honest empty-state value for live task lists with no due date", () => {
+  assert.equal(resolveMemberSavingsAskDueAt([], "2026-07-27T01:00:00.000Z", true), null)
+  assert.equal(resolveMemberSavingsAskDueAt([], "2026-07-27T01:00:00.000Z", false), "2026-07-27T01:00:00.000Z")
+  assert.equal(resolveMemberSavingsAskDueAt([taskFixture("A")], undefined, true), "2026-07-27T00:00:00.000Z")
+})
 
 test("standalone workspace has one content heading and no shared shell changes", () => {
   assert.equal((componentSource.match(/<h2/g) ?? []).length, 1)

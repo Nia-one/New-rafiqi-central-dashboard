@@ -9,6 +9,7 @@ import type { MarginStudioInput } from "@/lib/operating-loop/nia-margins-loop"
 import type { FillTask, NewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engagement-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
+import type { SavingsAction, SavingsTaskPreview } from "@/lib/operating-loop/member-savings-loop"
 import { buildLoopHealth, type LoopHealth } from "@/lib/operating-loop/loop-health"
 
 const text = (row: SheetRow, key: string) => String(row[key] ?? "").trim()
@@ -508,6 +509,36 @@ export function buildLiveMemberSavingsHealth(snapshot: LiveSelfDriveSnapshot): L
     verification: Object.freeze({ claimed, verified, awaiting, reopened, oldestAwaitingAt }),
     quarantinedRecords: freshness.quarantinedRecords,
   })
+}
+
+export function buildLiveMemberSavingsTasks(snapshot: LiveSelfDriveSnapshot): readonly SavingsTaskPreview[] {
+  const actions = snapshot.actions.filter(isMemberSavingsAction)
+  const peopleById = new Map(snapshot.people.map((row) => [text(row, "actor id"), row]))
+
+  return Object.freeze(actions.map((action) => {
+    const actionId = text(action, "action id")
+    const ownerActorId = text(action, "owner actor id")
+    const owner = text(peopleById.get(ownerActorId) ?? {}, "display name") || ownerActorId || "Unassigned"
+    const expectedMetric = text(action, "expected metric") || "Dual gate"
+    const issue = text(action, "operating objective") || "Member Savings recovery"
+    const service = `${text(action, "studio id") || text(action, "studio") || "Unmapped Studio"}`
+    const progress = text(action, "next action") || text(action, "operating objective") || "Recovery is pending"
+    const verifiedResult = text(action, "verification result") || "Not yet independently verified"
+    const state = (text(action, "state") || "Detected") as SavingsTaskPreview["state"]
+
+    return Object.freeze({
+      actionId,
+      issue,
+      service,
+      owner,
+      dueAt: text(action, "due at"),
+      expectedMetric,
+      progress,
+      verifiedResult,
+      state,
+      engineAction: action as unknown as SavingsAction,
+    })
+  }))
 }
 
 /** Sheet-backed command for Member Engagement > Retention command. */

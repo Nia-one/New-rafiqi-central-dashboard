@@ -122,9 +122,16 @@ Previously validated values included:
 - Repeat: 61%
 - Repeat baseline: 58%
 
-Previously reported tests:
+Verified hardening completed:
 
-- 18/18 passed
+- Local task state now synchronizes with incoming live task projections so surviving tasks retain their shadow state and newly introduced tasks default to Unresolved.
+- The ask-band due-date rendering now uses an honest empty-state-safe value when live data contains no governed task due date.
+- Focused regression tests for the new behaviors pass.
+
+Verified tests:
+
+- npx tsx --test components/member-savings-workspace.test.ts (20/20 passed)
+- npm run build (succeeded)
 
 ### Known Dashboard Metrics
 
@@ -220,7 +227,7 @@ The audit must report:
 
 | Workspace | Page | Component | Status | Live Source | Existing Data Reused | Missing Sheet Fields | Tests | Build | Notes |
 |-----------|------|-----------|--------|-------------|----------------------|----------------------|-------|-------|-------|
-| Self Drive | Member Savings | MemberSavingsWorkspace | VERIFY | Pending audit | Pending audit | Pending audit | Pending | Pending | Verify every accordion section before sign-off |
+| Self Drive | Member Savings | MemberSavingsWorkspace | COMPLETE | Live Essentials_Hourly + Action_Log + Evidence_Log + Approval_Log + People_Roster | Reused live freshness/loop-health plumbing and the existing live summary wiring | None | components/member-savings-workspace.test.ts | npm run build | Member Savings action cards now derive from governed Action_Log rows in live mode; focused component tests passed (20/20) and the production build succeeded |
 | Self Drive | Member Engagement | MemberEngagementWorkspace | COMPLETE | Live Action_Log + Evidence_Log + Member_NPS_Feedback + Member_NPS_Responses + People_Roster + Policy_Registry + Learning_History | Reused live mapper and existing approval/loop-health plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Live command now requires a governed Action_Log row before it reports a recovery command; focused mapper tests passed (22/22) |
 | Self Drive | New Adds | NewAddsWorkspace | COMPLETE | Live Living_Hourly + Action_Log + Evidence_Log + Studio_Master + People_Roster | Reused existing fill-status/proof/live-task plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Direct FONO-scope Action_Log rows now contribute to the live fill-task queue; focused mapper tests passed (24/24) |
 | Self Drive | Nia Growth | NiaGrowthWorkspace | COMPLETE | Live Living_Hourly + People_Roster + approvals | Reused live mapper and dashboard approval plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Live summary, measures and owner now derive from the live Living feed; focused mapper tests passed (21/21) |
