@@ -262,32 +262,41 @@ export function buildLiveNewAddsFillTasks(snapshot: LiveSelfDriveSnapshot): read
     .map((row) => text(row, "studio id"))
     .filter(Boolean))
   const incidentById = new Map(snapshot.incidents.map((row) => [text(row, "incident id"), row]))
+  const actionStudioIds = new Set(snapshot.actions
+    .map((row) => text(row, "studio id"))
+    .filter((value) => fonoStudioIds.has(value)))
 
   return Object.freeze(snapshot.actions.flatMap((action) => {
-    const incident = incidentById.get(text(action, "incident id"))
-    if (!incident || text(incident, "domain").toLowerCase() !== "living" || !fonoStudioIds.has(text(incident, "studio id"))) return []
-    const theatreId = text(incident, "theatre id")
-    const studioId = text(incident, "studio id")
-    const ownerActorId = text(action, "owner actor id") || text(incident, "owner actor id")
+    const actionId = text(action, "action id")
+    const linkedIncidentId = text(action, "incident id")
+    const incident = linkedIncidentId ? incidentById.get(linkedIncidentId) : undefined
+    const actionStudioId = text(action, "studio id")
+    const incidentStudioId = text(incident ?? {}, "studio id")
+    const studioId = actionStudioId || incidentStudioId
+    const isFonoAction = Boolean(studioId && fonoStudioIds.has(studioId)) || actionStudioIds.has(actionStudioId)
+    const incidentIsLiving = text(incident ?? {}, "domain").toLowerCase() === "living"
+    const isGovernedByIncident = Boolean(incident && incidentIsLiving && studioId && fonoStudioIds.has(studioId))
+    if (!isFonoAction || (!isGovernedByIncident && !actionStudioId)) return []
+    const theatreId = text(incident ?? {}, "theatre id") || text(action, "theatre id")
+    const ownerActorId = text(action, "owner actor id") || text(incident ?? {}, "owner actor id")
     const owner = snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"]
     const theatre = snapshot.theatres.find((row) => text(row, "theatre id") === theatreId)?.["theatre name"]
     const studio = snapshot.studios.find((row) => text(row, "studio id") === studioId)?.["studio name"]
     const expectedMetric = text(action, "expected metric")
     const targetValue = text(action, "target value")
     const requiredEvidence = text(action, "required evidence")
-    const actionId = text(action, "action id")
-    const nextAction = text(action, "operating objective") || text(incident, "action required") || "Action required"
+    const nextAction = text(action, "operating objective") || text(incident ?? {}, "action required") || "Action required"
 
     return [Object.freeze({
       actionId,
       idempotencyKey: actionId,
-      eventId: text(incident, "incident id"),
+      eventId: linkedIncidentId || actionId,
       supplyModel: "FONO" as const,
       theatre: String(theatre || theatreId || "Unmapped Theatre").trim(),
       studioId: String(studio || studioId || "Unmapped Studio").trim(),
       channel: "Nia field" as const,
       ownerRole: String(owner || ownerActorId || "Unassigned").trim(),
-      dueAt: text(action, "due at") || text(incident, "due at"),
+      dueAt: text(action, "due at") || text(incident ?? {}, "due at"),
       expectedOutcome: requiredEvidence || [targetValue, expectedMetric].filter(Boolean).join(" ") || "Verified billing-live result",
       state: fillTaskState(text(action, "state")),
       nextAction,

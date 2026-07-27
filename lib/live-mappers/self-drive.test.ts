@@ -210,6 +210,31 @@ test("Nia Growth summary derives its target, current and owner from the live Liv
   assert.match(projection.measures[2].value, /FONO 96/)
 })
 
+test("Member Adds proof stays honest when only non-FONO Living rows are present", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
+    living: [{ "theatre id": "T1", "studio id": "SP-1", "supply model": "SP", "activation ready nests": "20", "occupied nests": "10" }],
+    incidentLog: [{ "incident id": "I-SP", domain: "Living", "theatre id": "T1", "studio id": "SP-1" }],
+    actionLog: [{ "action id": "A-SP", "incident id": "I-SP", "operating objective": "Complete park readiness", state: "Detected" }],
+  })
+  const proof = buildLiveNewAddsProof(live)
+  assert.equal(proof.measures[0].primary, "0 / 0 today")
+  assert.equal(proof.loopHealth.verification.claimed, 0)
+  assert.equal(proof.loopHealth.quarantinedRecords, 1)
+})
+
+test("Member Adds fill tasks also use Action_Log rows that point directly to a FONO studio", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
+    studios: [{ "studio id": "FONO-1", "studio name": "Nia Nest Menaka", "theatre id": "T1" }],
+    living: [{ "theatre id": "T1", "studio id": "FONO-1", "supply model": "FONO" }],
+    people: [{ "actor id": "P1", "display name": "Priya" }],
+    actionLog: [{ "action id": "A-DIRECT", "studio id": "FONO-1", "operating objective": "Recover FONO fill readiness", "owner actor id": "P1", "due at": "2026-07-27T16:00:00+05:30", state: "Detected" }],
+  })
+
+  assert.deepEqual(buildLiveNewAddsFillTasks(live).map((row) => row.actionId), ["A-DIRECT"])
+})
+
 test("Member Adds fill tasks come only from FONO Living incidents and Action_Log", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
