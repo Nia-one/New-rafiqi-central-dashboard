@@ -2,6 +2,7 @@ import { BriefcaseBusiness, Database } from "lucide-react"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { DataTable } from "@/components/data-table"
 import { WORK_EMPTY_STATE } from "@/lib/dashboard-model"
+import { AllocationContextStrip } from "@/components/allocation-context-strip"
 
 type SheetRow = Record<string, unknown>
 
@@ -36,7 +37,7 @@ function emptyState() {
   return <div className="work-empty"><BriefcaseBusiness aria-hidden /><p className="pillar-kicker">WORK · DATA REQUIREMENT</p><h2 id="work-title">{WORK_EMPTY_STATE.title}</h2><p>{WORK_EMPTY_STATE.description}</p><div className="required-fields"><div><Database aria-hidden /><strong>Required source fields</strong></div><ul>{WORK_EMPTY_STATE.fields.map((item) => <li key={item}>{item}</li>)}</ul></div></div>
 }
 
-export function WorkScreen({ liveOpsData }: { liveOpsData?: { work?: SheetRow[]; enterpriseDemand?: SheetRow[]; workDashboard?: SheetRow[] } | null }) {
+export function WorkScreen({ liveOpsData, allocationFocus, allocationData }: { liveOpsData?: { work?: SheetRow[]; enterpriseDemand?: SheetRow[]; workDashboard?: SheetRow[] } | null; allocationFocus?: string; allocationData?: any }) {
   const demandRows = liveOpsData?.enterpriseDemand ?? []
   const dashboardRows = liveOpsData?.workDashboard ?? []
   const copy = (key: string, fallback: string, tokens: Record<string, string | number> = {}) => {
@@ -67,7 +68,8 @@ export function WorkScreen({ liveOpsData }: { liveOpsData?: { work?: SheetRow[];
   const employerRevenue = new Map<string, number>()
   records.forEach((record) => employerRevenue.set(record.employer, (employerRevenue.get(record.employer) ?? 0) + record.revenue))
 
-  return <DashboardSectionAccordion className="work-screen work-live-screen" ariaLabel="Work sections" sections={[{ title: copy("work_live_accordion_title", "Work performance"), summary: copy("work_live_accordion_summary", "{recordCount} live Studio record(s) loaded from Work_Hourly.", { recordCount: records.length }) }]}>
+  return <DashboardSectionAccordion className="work-screen work-live-screen" ariaLabel="Work sections" sections={[{ title: copy("work_live_accordion_title", "Work performance"), summary: copy("work_live_accordion_summary", "{recordCount} live Studio record(s) loaded from Work_Hourly.", { recordCount: records.length }) }]}> 
+    {allocationFocus ? <AllocationContextStrip mismatchId={allocationFocus} allocationData={allocationData} /> : null}
     <section className="work-live" aria-labelledby="work-title">
       <BriefcaseBusiness aria-hidden />
       <p className="pillar-kicker">{copy("work_live_kicker", "WORK · LIVE PERFORMANCE")}</p>

@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const data = await buildOpsData();
+    const serializableData = {
+      ...data,
+      dashboardContent: Array.from(data.dashboardContent.values()),
+    };
 
     return NextResponse.json({
       success: true,
-      data,
-    });
+      data: serializableData,
+    }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" } });
   } catch (error) {
     console.error("Ops Data API Error:", error);
 
@@ -17,7 +23,7 @@ export async function GET() {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" } }
     );
   }
 }

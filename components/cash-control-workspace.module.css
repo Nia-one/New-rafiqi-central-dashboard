@@ -17,6 +17,19 @@
 .freshness { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); color: var(--muted); font-size: 12px; }
 .freshness svg { width: 16px; }
 .freshness b { margin-left: auto; }
+.freshnessPanel { display: grid; gap: 12px; }
+.freshnessFeeds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.freshnessFeeds article { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.freshnessFeeds article[data-stale="true"] { border-left: 3px solid var(--status-bad, #c4342a); }
+.freshnessFeeds header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.freshnessFeeds header strong { font-size: 11px; line-height: 1.35; }
+.freshnessFeeds header b { color: var(--tone-verified); font-size: 9px; text-transform: uppercase; }
+.freshnessFeeds article[data-stale="true"] header b { color: var(--status-bad, #c4342a); }
+.freshnessFeeds dl { display: grid; gap: 7px; margin: 12px 0 0; }
+.freshnessFeeds dl div { display: flex; justify-content: space-between; gap: 8px; }
+.freshnessFeeds dt { color: var(--muted); font-size: 9px; }
+.freshnessFeeds dd { margin: 0; font-size: 9px; font-weight: var(--weight-semibold); text-align: right; }
+.freshnessFeeds p { margin: 11px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
 
 .decision { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); gap: 24px; padding: 22px 26px; border: 1px solid var(--border); border-left: 3px solid var(--nia-blue); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }
 .decision[data-state="at-risk"] { border-left-color: var(--status-bad, #c4342a); }
@@ -36,6 +49,14 @@
 .askMetaTop dd { margin: 3px 0 0; font-size: 14px; font-weight: var(--weight-semibold); }
 
 .soWhat { margin: -6px 2px 0; padding: 10px 14px; border-left: 3px solid var(--nia-blue); border-radius: 0 8px 8px 0; background: var(--surface-subtle); color: var(--ink); font-size: 12px; line-height: 1.5; }
+.implicationPanel { display: grid; gap: 12px; }
+.implicationPanel .soWhat { margin-top: 0; }
+.implicationFacts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.implicationFacts dl { min-width: 0; margin: 0; padding: 15px 16px; }
+.implicationFacts dl + dl { border-left: 1px solid var(--border); }
+.implicationFacts dt { color: var(--muted); font-size: 9px; font-weight: var(--weight-semibold); letter-spacing: .05em; text-transform: uppercase; }
+.implicationFacts dd { margin: 7px 0 4px; font-size: 16px; font-weight: var(--weight-semibold); }
+.implicationFacts small { display: block; color: var(--muted); font-size: 9px; line-height: 1.4; }
 
 .askBand { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 22px; border: 1px solid var(--nia-blue); border-radius: 16px; background: var(--surface-blue); }
 .askCopy span { display: block; color: var(--nia-blue); font-size: 10px; font-weight: var(--weight-semibold); letter-spacing: .06em; text-transform: uppercase; }
@@ -137,15 +158,8 @@
 .shadowControl button { border-color: var(--indigo); background: var(--indigo); color: #fff; cursor: pointer; font-weight: var(--weight-semibold); }
 
 .approvalPanel > div { display: grid; grid-template-columns: 1fr 1fr; }
-.approvalPanel article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; padding: 18px 20px; }
 .approvalPanel article + article { border-left: 1px solid var(--line); }
-.approvalPanel article > svg { width: 19px; color: var(--indigo); }
-.approvalPanel article div span, .approvalPanel article div strong, .approvalPanel article div small, .approvalPanel article div b { display: block; }
-.approvalPanel article div span { color: var(--muted); font-size: 9px; text-transform: uppercase; }
-.approvalPanel article div strong { margin-top: 4px; font-size: 12px; }
-.approvalPanel article div small, .approvalPanel article div b { margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.4; }
-.approvalPanel article div:last-child { min-width: 140px; padding-left: 12px; border-left: 1px solid var(--line); }
-.approvalPanel article div:last-child b { color: var(--indigo); }
+.emptyState { grid-column: 1 / -1; margin: 0; padding: 22px 20px; color: var(--muted); font-size: 11px; }
 
 .auditDetails { overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .auditDetails summary { display: flex; align-items: center; gap: 9px; padding: 16px 18px; cursor: pointer; font-size: 12px; font-weight: var(--weight-semibold); list-style: none; }
@@ -173,6 +187,10 @@
 .sourceNote svg:nth-of-type(2) { margin-left: auto; }
 
 @media (max-width: 1100px) {
+  .freshnessFeeds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .implicationFacts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .implicationFacts dl:nth-child(3) { border-left: 0; }
+  .implicationFacts dl:nth-child(n+3) { border-top: 1px solid var(--border); }
   .flow { grid-template-columns: repeat(3, 1fr); }
   .flow > div:nth-child(3) { border-right: 0; }
   .flow > div:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
@@ -193,6 +211,9 @@
 
 @media (max-width: 700px) {
   .workspace { gap: 12px; }
+  .freshnessFeeds { grid-template-columns: 1fr; }
+  .implicationFacts { grid-template-columns: 1fr; }
+  .implicationFacts dl + dl { border-top: 1px solid var(--border); border-left: 0; }
   .decision { padding: 18px 20px; }
   .scqa div { grid-template-columns: 1fr; gap: 3px; }
   .askBand { flex-direction: column; align-items: flex-start; }
@@ -215,8 +236,6 @@
   .mixRows dl, .mixRows article > b { grid-column: 2; }
   .mixRows dl { grid-template-columns: repeat(3, 1fr); }
   .mixRows article > b { text-align: left; }
-  .approvalPanel article { grid-template-columns: auto minmax(0, 1fr); }
-  .approvalPanel article div:last-child { grid-column: 2; min-width: 0; padding: 10px 0 0; border-top: 1px solid var(--line); border-left: 0; }
   .auditBody { padding: 12px; }
   .auditBody .learningGrid { grid-template-columns: 1fr; }
   .sourceNote { align-items: flex-start; flex-wrap: wrap; }

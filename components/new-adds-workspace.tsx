@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, type CSSProperties } from "react"
+import { useEffect, useMemo, useState, type CSSProperties } from "react"
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, FileCheck2, LockKeyhole, MessageSquareDashed, ShieldCheck } from "lucide-react"
 import { resolveNewAddsShadowOutcome, type FillTask, type NewAddsMeasureChart, type NewAddsPreview, type RecoveryOutcome, type VerificationStatus } from "@/lib/operating-loop/new-adds-loop"
 import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/components/operational-card"
 import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { approvalsForDomain } from "@/lib/live-approvals"
+import { buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress } from "@/lib/live-mappers/self-drive"
 import styles from "./new-adds-workspace.module.css"
 
 type Props = { preview: NewAddsPreview; liveData?: any }
@@ -45,9 +47,11 @@ function TaskSummary({ preview }: Props) {
 }
 
 function TheatreVisual({ preview }: Props) {
+  const belowTarget = preview.theatres.filter((theatre) => theatre.dailyTarget > theatre.verifiedBillingLiveFills)
+  const theatreCountLabel = `${belowTarget.length || "No"} Theatre${belowTarget.length === 1 ? " is" : "s are"} below today’s target.`
   return <section className={styles.theatrePanel} aria-label="Empty spots by location">
     <div className={styles.sectionHeader}>
-      <div><span>Empty spots by location</span><strong>Two Theatres are below today’s target.</strong></div>
+      <div><span>Empty spots by location</span><strong>{theatreCountLabel}</strong></div>
       <p><i className={styles.fillKey} />Members billing <i className={styles.targetKey} />Today’s target</p>
     </div>
     <div className={styles.theatreCards}>
@@ -65,7 +69,7 @@ function TheatreVisual({ preview }: Props) {
           <dl className={styles.theatreStats}>
             <div><dt>Still needed</dt><dd>{remainingToday} <small>Members</small></dd></div>
             <div><dt>Vacant Nests</dt><dd>{theatre.vacantNests}</dd></div>
-            <div><dt>Average fill time</dt><dd>{theatre.daysToFill} <small>days</small></dd></div>
+            <div><dt>Average fill time</dt><dd>{theatre.averageFillTimeLabel ?? theatre.daysToFill} {!theatre.averageFillTimeLabel ? <small>days</small> : null}</dd></div>
           </dl>
         </article>
       })}
@@ -136,25 +140,53 @@ function FeedFreshness({ feeds }: { feeds: readonly { label: string; ageLabel: s
 }
 
 export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
-  const liveTarget = Math.max(1, liveData?.summary?.readyNests ?? fixturePreview.taskSummary.target)
-  const liveCurrent = liveData?.summary?.verifiedActivations ?? fixturePreview.taskSummary.current
-  const liveOwner = liveData?.enterpriseDemand?.[0]?.["owner actor id"] || fixturePreview.taskSummary.owner
+  const fillStatus = liveData ? buildLiveNewAddsFillStatus(liveData) : null
+  const liveProof = liveData ? buildLiveNewAddsProof(liveData) : null
+  const liveTheatres = liveData ? buildLiveNewAddsTheatreProgress(liveData) : fixturePreview.theatres
+  const liveTarget = fillStatus?.target ?? fixturePreview.taskSummary.target
+  const liveCurrent = fillStatus?.verified ?? fixturePreview.taskSummary.current
+  const liveGap = fillStatus?.gap ?? fixturePreview.taskSummary.gap
+  const liveOwner = fillStatus?.owner ?? fixturePreview.taskSummary.owner
+  const liveApprovals = approvalsForDomain(liveData, "new-adds")
+  const liveMemberAddsPolicies = liveData?.policies.filter((row) => String(row["policy id"] ?? "").startsWith("POL-NEW-ADDS-") && String(row.status ?? "").toLowerCase() === "active") ?? []
+  const liveControlPolicies = liveMemberAddsPolicies.filter((row) => !String(row["policy id"] ?? "").includes("-BLOCK-"))
+  const liveSafetyPolicies = liveMemberAddsPolicies.filter((row) => String(row["policy id"] ?? "").includes("-BLOCK-"))
+  const liveGovernanceRows = [
+    ...liveControlPolicies.map((row) => ({ policy: String(row["policy name"] ?? row["policy id"] ?? "Policy"), value: `${String(row["policy value"] ?? "Not recorded")} ${String(row.unit ?? "")}`.trim(), version: String(row["policy id"] ?? "—"), approver: `${String(row["approved by"] ?? "Not recorded")} · ${String(row.status ?? "Not recorded")}` })),
+    ...liveApprovals.map((approval) => ({ policy: String(approval.approvalRow["decision type"] || approval.title), value: approval.currentTerms && approval.proposedTerms ? `${approval.currentTerms} → ${approval.proposedTerms}` : approval.proposedTerms || approval.expectedResult || "No value recorded", version: approval.approvalId, approver: `${approval.owner} · ${approval.decision}` })),
+  ]
+  const liveSignOffs = liveApprovals.filter((approval) => approval.pending)
   const preview: NewAddsPreview = {
     ...fixturePreview,
-    headline: liveData ? `${liveCurrent} verified billing-live Members against ${liveTarget} activation-ready Nests.` : fixturePreview.headline,
+    question: liveData
+      ? fillStatus?.hasData
+        ? `Are ${liveGap} vacant FONO Nests filling at the approved run rate, cost and billing standard?`
+        : "No FONO vacancy data is available for the selected filters."
+      : fixturePreview.question,
+    headline: liveData ? `${liveCurrent} verified billing-live Members in a ${liveTarget}-fill FONO loop; ${liveGap} vacancies remain.` : fixturePreview.headline,
     taskSummary: {
       ...fixturePreview.taskSummary,
       target: liveTarget,
       current: liveCurrent,
-      gap: Math.max(0, liveTarget - liveCurrent),
+      gap: liveGap,
       owner: liveOwner,
-      progressPercent: Math.min(100, Math.round(liveCurrent / liveTarget * 100)),
+      progressPercent: fillStatus?.progressPercent ?? fixturePreview.taskSummary.progressPercent,
       verifiedResult: `${liveCurrent} independently verified billing-live Members`,
     },
+    measures: liveProof?.measures ?? fixturePreview.measures,
+    loopHealth: liveProof?.loopHealth ?? fixturePreview.loopHealth,
+    theatres: liveTheatres,
+    quarantineCount: liveProof?.loopHealth.quarantinedRecords ?? fixturePreview.quarantineCount,
   }
-  const [tasks, setTasks] = useState<readonly FillTask[]>(() => preview.actions)
-  const [selected, setSelected] = useState<Record<string, RecoveryOutcome>>(() => Object.fromEntries(preview.actions.map((task) => [task.actionId, "No answer"])) as Record<string, RecoveryOutcome>)
+  const projectedTasks = useMemo<readonly FillTask[]>(() => liveData ? buildLiveNewAddsFillTasks(liveData) : preview.actions, [liveData, preview.actions])
+  const [tasks, setTasks] = useState<readonly FillTask[]>(() => projectedTasks)
+  const [selected, setSelected] = useState<Record<string, RecoveryOutcome>>(() => Object.fromEntries(projectedTasks.map((task) => [task.actionId, "No answer"])) as Record<string, RecoveryOutcome>)
   const [audit, setAudit] = useState<readonly { eventId: string; actionId: string; outcome: RecoveryOutcome; verification: VerificationStatus | "Not submitted"; route: string; occurredAt: string }[]>([])
+
+  useEffect(() => {
+    setTasks(projectedTasks)
+    setSelected(Object.fromEntries(projectedTasks.map((task) => [task.actionId, "No answer"])) as Record<string, RecoveryOutcome>)
+  }, [projectedTasks])
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "No answer"
@@ -167,19 +199,53 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
   }
 
   const { target, current, gap, progressPercent, owner } = preview.taskSummary
-  const behind = gap > 0
+  const hasLiveData = !liveData || Boolean(fillStatus?.hasData)
+  const behind = hasLiveData && gap > 0
   const verdictState = behind ? "behind" : "on-track"
-  const verdictLabel = behind ? `Behind · ${gap} to go` : "On track"
-  const openSignOff = preview.despatchEscalations.length
+  const verdictLabel = !hasLiveData ? "No FONO data" : behind ? `Behind · ${gap} to go` : "On track"
+  const openSignOff = liveData ? liveSignOffs.length : preview.despatchEscalations.length
+  const theatresBehind = preview.theatres.filter((theatre) => theatre.dailyTarget > theatre.verifiedBillingLiveFills)
+  const theatreRecoveryScope = theatresBehind.length === 0
+    ? "the selected FONO scope"
+    : theatresBehind.length === 1
+      ? theatresBehind[0].theatre
+      : theatresBehind.map((row) => row.theatre).join(" and ")
+  const theatreProgressImplication = theatresBehind.length === 0
+    ? "So what: no FONO vacancy is currently recorded for the selected filters."
+    : theatresBehind.length === 1
+      ? `So what: the ${theatresBehind[0].vacantNests}-Nest gap is in ${theatresBehind[0].theatre}, so recovery effort belongs there.`
+      : `So what: the gap is concentrated in ${theatresBehind.map((row) => row.theatre).join(" and ")}, so recovery effort belongs there first, not spread evenly.`
+  const fillTaskCountLabel = `${tasks.length} fill${tasks.length === 1 ? "" : "s"} awaiting verified billing`
+  const signOffCountLabel = openSignOff === 0
+    ? "No decisions are blocked"
+    : `${openSignOff} decision${openSignOff === 1 ? " is" : "s are"} blocked`
+  const signOffImplication = openSignOff === 0
+    ? "So what: no Member Adds approval currently blocks the verified-fill plan."
+    : openSignOff === 1
+      ? `So what: ${liveData ? liveSignOffs[0].title : "this decision"} is holding the governed fill plan; ${liveData ? liveSignOffs[0].owner : owner} must record the decision before the blocked work can advance.`
+      : `So what: ${openSignOff} governed decisions are holding the fill plan; their named owners must record the decisions before the blocked work can advance.`
+  const unconfirmedOutcomes = preview.loopHealth.verification.awaiting + preview.loopHealth.verification.reopened
+  const proofImplication = `So what: ${preview.loopHealth.verification.verified} of ${preview.loopHealth.verification.claimed} recorded outcomes are independently confirmed; ${unconfirmedOutcomes} unconfirmed outcome${unconfirmedOutcomes === 1 ? " does" : "s do"} not close the ${gap}-fill gap.`
+  const decisionActions = [
+    openSignOff > 0 ? `clear ${openSignOff} blocked sign-off${openSignOff === 1 ? "" : "s"}` : null,
+    gap > 0 ? `recover ${gap} verified fill${gap === 1 ? "" : "s"} in ${theatreRecoveryScope}` : null,
+  ].filter(Boolean)
+  const decisionHeadline = decisionActions.length > 0
+    ? `${decisionActions.join(" and ").replace(/^./, (value) => value.toUpperCase())}.`
+    : "Maintain the independently verified billing-live target."
+  const staleLiveFeeds = liveProof?.loopHealth.feeds.filter((feed) => feed.stale).length ?? 0
+  const sourceConfidenceSummary = liveData
+    ? `${staleLiveFeeds > 0 ? `${staleLiveFeeds} stale` : `${liveProof?.loopHealth.feeds.length ?? 0} current`} feeds · ${preview.quarantineCount} quarantined`
+    : `${preview.source.freshness} inputs · ${preview.quarantineCount} quarantined`
 
   return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-supply-model="FONO" ariaLabel="Member Adds sections" sections={[
     { title: "Fill status", summary: verdictLabel },
     { title: "Theatre progress", summary: `${current}/${target} verified · ${gap} still needed` },
-    { title: "Spots to fill", summary: `${tasks.length} fills awaiting verified billing` },
+    { title: "Spots to fill", summary: fillTaskCountLabel },
     { title: "Your sign-off", summary: `${openSignOff} blocked decision${openSignOff === 1 ? "" : "s"}` },
     { title: "Proof and controls", summary: `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes confirmed` },
     { title: "Decision required", summary: `${gap} verified fill${gap === 1 ? "" : "s"} to recover · owner ${owner}` },
-    { title: "Source and confidence", summary: `${preview.source.freshness} inputs · ${preview.quarantineCount} quarantined` },
+    { title: "Source and confidence", summary: sourceConfidenceSummary },
   ]}>
     <section className={styles.questionBand} data-state={verdictState}>
       <div className={styles.questionMain}>
@@ -201,27 +267,27 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       <p className={styles.stepLabel}><span>02</span>Theatre Progress</p>
       <TaskSummary preview={preview} />
       <TheatreVisual preview={preview} />
-      <p className={styles.soWhat}>So what: the gap is concentrated in the two Theatres below target, so recovery effort belongs there first, not spread evenly.</p>
+      <p className={styles.soWhat}>{theatreProgressImplication}</p>
     </div>
 
     <div className={styles.zone}>
       <p className={styles.stepLabel}><span>03</span>Spots to fill today · {owner}</p>
       <section className={styles.workPanel} aria-label="Spots to fill today">
         <div className={styles.sectionHeader}>
-          <div><span>Spots to fill today</span><strong>{tasks.length} fills awaiting verified billing</strong></div>
-          <p><MessageSquareDashed aria-hidden />WhatsApp stays shadow-only</p>
+          <div><span>Spots to fill today</span><strong>{fillTaskCountLabel}</strong></div>
+          <p><MessageSquareDashed aria-hidden />{liveData ? "Google Sheet · read-only" : "WhatsApp stays shadow-only"}</p>
         </div>
-        <OperationalCardStack label="Member Adds synthetic fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · ${task.channel} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>
+        <OperationalCardStack label="Member Adds fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: task.dueAt ? <time dateTime={task.dueAt}>{date(task.dueAt)}</time> : "No deadline recorded" }, { label: "Expected outcome", value: task.expectedOutcome }]}>{liveData ? <div className={styles.shadowControls}><small>Read-only · status updates automatically from Action_Log and Evidence_Log.</small></div> : <div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div>}</OperationalCard>)}</OperationalCardStack>
       </section>
     </div>
 
     <div className={styles.zone}>
       <p className={styles.stepLabel}><span>04</span>Your Sign-Off{openSignOff > 0 ? ` · ${openSignOff} open` : ""}</p>
       <section className={styles.exceptionPanel} aria-label="Decisions blocking progress">
-        <div className={styles.sectionHeader}><div><span>Decisions blocking progress</span><strong>{preview.despatchEscalations.length} decisions are blocked</strong></div><p>Human decision</p></div>
-        <OperationalCardStack label="Decisions blocking progress">{preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Adds" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Detected the repeated failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover the fill outcome and submit billing-live proof for independent verification." }]} />)}</OperationalCardStack>
+        <div className={styles.sectionHeader}><div><span>Decisions blocking progress</span><strong>{signOffCountLabel}</strong></div><p>Human decision</p></div>
+        <OperationalCardStack label="Decisions blocking progress">{liveData ? liveSignOffs.map((approval) => <OperationalCard key={approval.approvalId} title={approval.title} status="Pending human approval" domain={approval.approvalId} action={approval.action} fields={[{ label: "Owner", value: approval.owner }, { label: "Due", value: approval.dueAt ? <time dateTime={approval.dueAt}>{date(approval.dueAt)}</time> : "No deadline recorded" }, { label: "Amount", value: approval.amountInr ? `₹${approval.amountInr.toLocaleString("en-IN")}` : "No amount" }, { label: "Expected result", value: approval.expectedResult || "Not recorded" }]} />) : preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Adds" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Detected the repeated failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover the fill outcome and submit billing-live proof for independent verification." }]} />)}</OperationalCardStack>
       </section>
-      <p className={styles.soWhat}>So what: these blocked decisions cap today&apos;s recoverable fills, so clearing them is the fastest way to close the gap.</p>
+      <p className={styles.soWhat}>{signOffImplication}</p>
     </div>
 
     <div className={styles.zone}>
@@ -229,22 +295,22 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       <p className={styles.subLabel}>Data and check status</p>
       <section className={styles.loopHealthStrip} data-health-state={preview.loopHealth.state} aria-label="Data and check status">
         <article data-status={preview.loopHealth.feeds.some((feed) => feed.stale) ? "bad" : "ok"}><span>Data freshness</span><strong>{preview.loopHealth.feeds.some((feed) => feed.stale) ? `${preview.loopHealth.feeds.filter((feed) => feed.stale).length} stale feeds` : "All feeds current"}</strong><FeedFreshness feeds={preview.loopHealth.feeds} /></article>
-        <article data-status={preview.loopHealth.clocks.some((clock) => clock.breached) ? "bad" : "ok"}><span>Clocks running</span><strong>{preview.loopHealth.clocks.filter((clock) => clock.state === "Running").length} active · {preview.loopHealth.clocks.filter((clock) => clock.breached).length} breached</strong><LoopBar label="Clocks on track versus breached" parts={[{ label: "On track", value: preview.loopHealth.clocks.filter((clock) => clock.state === "Running" && !clock.breached).length, tone: "ok" }, { label: "Breached", value: preview.loopHealth.clocks.filter((clock) => clock.breached).length, tone: "bad" }]} /><small>{preview.loopHealth.clocks.find((clock) => clock.breached)?.ownerRole ?? "No breached owner wait"}</small></article>
+        <article data-status={preview.loopHealth.clocks.some((clock) => clock.breached) ? "bad" : "ok"}><span>Clocks running</span><strong>{preview.loopHealth.clocks.filter((clock) => clock.state === "Running").length} running · {preview.loopHealth.clocks.filter((clock) => clock.breached).length} breached</strong><LoopBar label="Clocks on track versus breached" parts={[{ label: "On track", value: preview.loopHealth.clocks.filter((clock) => clock.state === "Running" && !clock.breached).length, tone: "ok" }, { label: "Breached", value: preview.loopHealth.clocks.filter((clock) => clock.breached).length, tone: "bad" }]} /><small>{preview.loopHealth.clocks.find((clock) => clock.breached)?.ownerRole ?? "No breached owner wait"}</small></article>
         <article data-status={preview.loopHealth.verification.reopened > 0 ? "bad" : preview.loopHealth.verification.awaiting > 0 ? "warn" : "ok"}><span>Outcome checks</span><strong>{preview.loopHealth.verification.verified} of {preview.loopHealth.verification.claimed} confirmed</strong><LoopBar label="Confirmed, waiting and reopened outcomes" parts={[{ label: "Confirmed", value: preview.loopHealth.verification.verified, tone: "ok" }, { label: "Waiting", value: preview.loopHealth.verification.awaiting, tone: "warn" }, { label: "Reopened", value: preview.loopHealth.verification.reopened, tone: "bad" }]} /><small>{preview.loopHealth.verification.awaiting} waiting · {preview.loopHealth.verification.reopened} reopened</small></article>
       </section>
       <p className={styles.subLabel}>Four key numbers</p>
       <section className={styles.measures} data-kpi-group aria-label="Four key numbers">
         {preview.measures.map((measure) => <article data-measure={measure.id} key={measure.id}><span>{measure.label}</span><strong>{measure.primary}</strong><MeasureChart chart={measure.chart} /><small>{measure.secondary}</small></article>)}
       </section>
-      <p className={styles.soWhat}>So what: only billing-live, independently verified fills count toward target, so claimed-but-unverified activity does not close the gap.</p>
+      <p className={styles.soWhat}>{proofImplication}</p>
 
     <details className={styles.auditDetails}>
       <summary><FileCheck2 aria-hidden />Full background record</summary>
       <div className={styles.auditBody}>
-        <section><strong>Approved cost rules</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Approver</th></tr></thead><tbody>{preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.policyId}</td><td>{policy.value} {policy.unit}</td><td>v{policy.version}</td><td>{policy.approver}</td></tr>)}</tbody></table></div></section>
-        <section><strong>Behind-the-scenes setup</strong><p>{preview.loopHealthInputs.feeds.length} feed inputs · {preview.loopHealthInputs.clocks.length} action clocks · {preview.despatchEscalations.length} governed Despatch emissions. Shared R-0 projection state: {preview.loopHealth.state}.</p></section>
-        <section><strong>Append-only local preview audit</strong>{audit.length > 0 ? <ol>{audit.map((event) => <li key={event.eventId}><b>{event.outcome} · {event.verification}</b><span>{event.actionId} · {event.route}</span><time dateTime={event.occurredAt}>{date(event.occurredAt)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
-        <section><strong>Safety boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>Policy calibration may be proposed from verified outcomes, but CAC controls, pricing, commercial terms, templates, people decisions and safety changes remain human-approved.</p></section>
+        <section><strong>Governed cost rules and approvals</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Approver</th></tr></thead><tbody>{liveData ? (liveGovernanceRows.length ? liveGovernanceRows.map((row) => <tr key={row.version}><td>{row.policy}</td><td>{row.value}</td><td>{row.version}</td><td>{row.approver}</td></tr>) : <tr><td>No linked policy or approval</td><td>No Policy_Registry or Approval_Log record</td><td>—</td><td>Not recorded</td></tr>) : preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.policyId}</td><td>{policy.value} {policy.unit}</td><td>v{policy.version}</td><td>{policy.approver}</td></tr>)}</tbody></table></div></section>
+        <section><strong>Behind-the-scenes setup</strong><p>{liveProof ? liveProof.feedInputCount : preview.loopHealthInputs.feeds.length} feed inputs · {liveProof ? liveProof.clockInputCount : preview.loopHealthInputs.clocks.length} action clocks · {liveProof ? liveProof.governedActionCount : preview.despatchEscalations.length} governed actions. Shared R-0 projection state: {preview.loopHealth.state}.</p></section>
+        <section><strong>{liveData ? "Append-only Sheet audit" : "Append-only local preview audit"}</strong>{liveData ? <p>{liveProof?.auditEventCount ?? 0} linked Action_Log, Evidence_Log and Approval_Log records are included; no duplicate Operations entry is required.</p> : audit.length > 0 ? <ol>{audit.map((event) => <li key={event.eventId}><b>{event.outcome} · {event.verification}</b><span>{event.actionId} · {event.route}</span><time dateTime={event.occurredAt}>{date(event.occurredAt)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
+        <section><strong>Safety boundary</strong><p>{liveData ? (liveSafetyPolicies.length ? liveSafetyPolicies.map((row) => `${String(row["policy name"] ?? row["policy id"])}: ${String(row["policy value"] ?? "Not recorded")}`).join(" · ") : "No active Member Adds capability boundary is recorded in Policy_Registry.") : Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>{liveData ? `${liveSafetyPolicies.length} active Member Adds capability boundaries are registered in Policy_Registry; changes still require governed approval.` : "Policy calibration may be proposed from verified outcomes, but CAC controls, pricing, commercial terms, templates, people decisions and safety changes remain human-approved."}</p></section>
       </div>
     </details>
     </div>
@@ -252,15 +318,15 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     <section className={styles.askBand} aria-label="Decision required" data-state={verdictState}>
       <div className={styles.askCopy}>
         <span>Decision required</span>
-        <strong>Clear the {openSignOff} blocked sign-off{openSignOff === 1 ? "" : "s"} and recover {gap} verified fill{gap === 1 ? "" : "s"} in the two Theatres below target.</strong>
-        <p>Each recovery needs billing-live proof before it closes; accountability sits with {owner} until the gap is verified to zero.</p>
+        <strong>{decisionHeadline}</strong>
+        <p>Each recovery needs billing-live proof before it closes; accountability sits with {owner} until the verified gap reaches zero.</p>
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{owner}</dd></div>
-        <div><dt>Done when</dt><dd>{gap} gap reaches 0 verified</dd></div>
+        <div><dt>Done when</dt><dd>Verified gap reaches 0</dd></div>
       </dl>
     </section>
 
-    <footer className={styles.footer} aria-label="Synthetic Member Adds source status"><CheckCircle2 aria-hidden /><span>{preview.source.freshness} synthetic inputs · refresh {date(preview.source.lastRefreshAt)} · no live connection · FONO only · {preview.quarantineCount} rows quarantined</span><ShieldCheck aria-hidden /><span>{displayLabel(preview.source.name)} · protected synthetic references · billing-live outcomes only</span><Clock3 aria-hidden /><span>{preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change</span><LockKeyhole aria-hidden /><span>No live WhatsApp, external action or Production write</span></footer>
+    <footer className={styles.footer} aria-label="Member Adds source status"><CheckCircle2 aria-hidden /><span>{liveData ? `Google Sheet live · refresh ${date(liveData.asOf)} · FONO only · ${preview.quarantineCount} quarantined` : `${preview.source.freshness} synthetic inputs · refresh ${date(preview.source.lastRefreshAt)} · no live connection · FONO only · ${preview.quarantineCount} rows quarantined`}</span><ShieldCheck aria-hidden /><span>{liveData ? "Living_Hourly · Member_Activation · Action_Log · Evidence_Log · Approval_Log · Policy_Registry · Studio_Master · People_Roster" : `${displayLabel(preview.source.name)} · protected synthetic references · billing-live outcomes only`}</span><Clock3 aria-hidden /><span>{liveData ? `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes independently confirmed` : `${preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change`}</span><LockKeyhole aria-hidden /><span>No automatic approval, external action or Production write</span></footer>
   </DashboardSectionAccordion>
 }

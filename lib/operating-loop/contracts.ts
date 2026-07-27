@@ -33,7 +33,7 @@ export const WORKBOOK_FIELD_COUNTS: Record<OperatingIntakeTab, number> = {
   Approval_Log: 15,
   Living_Hourly: 26,
   Work_Hourly: 21,
-  Essentials_Hourly: 26,
+  Essentials_Hourly: 30,
   Finance_Daily: 31,
   Member_Activation: 17,
 }

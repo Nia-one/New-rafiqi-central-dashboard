@@ -286,7 +286,7 @@ export type CashControlPreview = {
     { id: "closure-integrity"; label: string; value: string; target: string; detail: string },
   ]
   controlPath: readonly { id: string; label: string; value: string; state: "Complete" | "Pending" | "Blocked" }[]
-  financialRails: readonly { id: "opex" | "cash"; label: string; value: string; threshold: string; progressPct: number; state: "Within control" | "Protected" }[]
+  financialRails: readonly { id: "opex" | "cash"; label: string; value: string; threshold: string; progressPct: number; state: "Within control" | "Protected" | "Over control" | "At risk" | "Pending" }[]
   closureCounts: { claimed: number; verified: number; awaitingVerification: number; reopened: number }
   channelRecommendations: readonly RankedChannelCandidate[]
   tasks: readonly CashControlTaskPreview[]

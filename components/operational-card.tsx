@@ -45,7 +45,7 @@ export function operationalTone(value: string): OperationalTone {
 export function actionStageFromStatus(value: string): ActionStage {
   const state = value.toLowerCase()
   if (/(verified|closed|complete|recovered|billing.live)/.test(state)) return "verified"
-  if (/(evidence|proof|submitted)/.test(state)) return "evidence"
+  if (/(evidence|proof|submitted|awaiting verification|verification pending)/.test(state)) return "evidence"
   if (/(working|progress|underway|reopened|retry|chased|acknowledged|escalated)/.test(state)) return "working"
   if (/(assigned|queued|open|pending|waiting|routed|gated)/.test(state)) return "assigned"
   return "detected"

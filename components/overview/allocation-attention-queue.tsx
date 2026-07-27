@@ -1,12 +1,11 @@
 ﻿"use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { ArrowUpRight } from "lucide-react"
 import { buildRankedQueue, isNoData } from "@/lib/allocation-engine"
-import { ACTION_LOG_REFERENCE_AT, seedActionLog, type ActionLogEntry } from "@/lib/action-log"
+import type { ActionLogEntry } from "@/lib/action-log"
 import type { RankedMismatch } from "@/lib/allocation-types"
 import type { DashboardRoute } from "@/lib/dashboard-model"
-import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildExecutionReport, type ExecutionAction } from "@/lib/execution-control"
 import { formatInr } from "@/lib/ops-data"
 import { AllocationReviewPanel } from "./allocation-review-panel"
@@ -20,33 +19,37 @@ function gapLabel(mismatch: RankedMismatch) {
 function cmLabel(mismatch: RankedMismatch) {
   return isNoData(mismatch.forwardCmAtRisk24h) ? "No data" : formatInr(mismatch.forwardCmAtRisk24h, true)
 }
+function timingLabel(mismatch: RankedMismatch) {
+  return mismatch.timingAvailable === false ? "No data" : `${mismatch.ageHours}h / ${mismatch.thresholdHours}h`
+}
 
-export function AllocationAttentionQueue({ allocationData, commitments, onShowExecution, onNavigate }: { allocationData?: any; commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
-  const [entries, setEntries] = useState<ActionLogEntry[]>(seedActionLog)
+export function AllocationAttentionQueue({ allocationData, commitments, liveOpsData, onShowExecution, onNavigate }: { allocationData?: any; commitments: ExecutionAction[]; liveOpsData?: any; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
+  const entries = useMemo<ActionLogEntry[]>(() => {
+    const actionLogEntries = (liveOpsData?.executionActions ?? []).flatMap((action: ExecutionAction) => action.actionLog ?? [])
+    const queueEntries = (allocationData?.mismatchInputs ?? []).flatMap((item: RankedMismatch) =>
+      item.alertQueuedAt && item.alertQueuedAt !== "No data"
+        ? [{
+            id: `${item.id}-alert-queued`,
+            queue_item_id: item.id,
+            actor_id: item.accountableOwner === "No data" ? null : item.accountableOwner,
+            action_type: "detect" as const,
+            previous_status: null,
+            new_status: item.actionStatus,
+            executed_at: item.alertQueuedAt,
+            note: item.nextAction,
+          }]
+        : []
+    )
+    const existingIds = new Set(actionLogEntries.map((entry: ActionLogEntry) => entry.id))
+    return [...actionLogEntries, ...queueEntries.filter((entry: ActionLogEntry) => !existingIds.has(entry.id))]
+  }, [allocationData, liveOpsData])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [error, setError] = useState("")
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch("/api/action-log", { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("The action history could not be loaded.")
-        return response.json() as Promise<{ entries: ActionLogEntry[] }>
-      })
-      .then((body) => {
-        setEntries(body.entries)
-      })
-      .catch((reason: unknown) => {
-        if (reason instanceof DOMException && reason.name === "AbortError") return
-        setError(reason instanceof Error ? reason.message : "The action history could not be loaded.")
-      })
-    return () => controller.abort()
-  }, [])
-
-  const context = useMemo(() => ({ actionLog: entries, now: ACTION_LOG_REFERENCE_AT }), [entries])
+  const snapshotAt = String(liveOpsData?.meta?.snapshotAt ?? "")
+  const context = useMemo(() => ({ actionLog: entries, now: snapshotAt }), [entries, snapshotAt])
   const queue = useMemo(() => buildRankedQueue(context, allocationData?.mismatchInputs), [context, allocationData])
   const selected = queue.find((item) => item.id === selectedId) ?? null
-  const meetingCommitments = useMemo(() => buildExecutionReport(commitments, EXECUTION_REPORT_AS_OF).actions.filter((action) => action.source === "meeting_commitment" && action.status !== "Verified" && action.status !== "Dismissed"), [commitments])
+  const meetingCommitments = useMemo(() => buildExecutionReport(commitments, snapshotAt || "1970-01-01T00:00:00.000Z").actions.filter((action) => action.source === "meeting_commitment" && action.status !== "Verified" && action.status !== "Dismissed"), [commitments, snapshotAt])
 
   const top = queue.slice(0, 3)
   const rest = queue.slice(3)
@@ -69,17 +72,16 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
               <span className="commitment-source commitment-source-system_detected">System detected</span>
               <strong>{mismatch.label}</strong>
               <p>{mismatch.theatre} · {mismatch.where} · <span className={isNoData(mismatch.gapQty) ? "" : "queue-gap"}>{gapLabel(mismatch)}</span></p>
-              <small>{mismatch.accountableOwner} · owner tagged · alert queued</small>
+              <small>{mismatch.accountableOwner} · {mismatch.accountableOwner === "No data" ? "owner not tagged" : "owner tagged"} · {mismatch.alertStatus === "No data" || !mismatch.alertStatus ? "alert status not recorded" : mismatch.alertStatus}</small>
               <p className="queue-generated-action">{mismatch.nextAction}</p>
               <ul className="queue-facts">
                 <li><span>CM at risk in 24 hours</span><b>{cmLabel(mismatch)}</b></li>
-                <li><span>Open / time limit</span><b className="tnum">{mismatch.ageHours}h / {mismatch.thresholdHours}h</b></li>
+                <li><span>Open / time limit</span><b className="tnum">{timingLabel(mismatch)}</b></li>
               </ul>
             </div>
             <div className="queue-actions">
               <button className="queue-review" onClick={() => setSelectedId(mismatch.id)}>View root cause</button>
               <button className="queue-open" onClick={() => {
-  console.log("OPEN LANE CLICK", mismatch.laneTarget, mismatch.id);
   onNavigate(mismatch.laneTarget, mismatch.id);
 }} aria-label={`Open ${mismatch.laneTarget.screen}${mismatch.laneTarget.subsection ? ` ${mismatch.laneTarget.subsection}` : ""} for ${mismatch.label}`}>Open lane<ArrowUpRight aria-hidden /></button>
             </div>
@@ -94,8 +96,6 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
           <span>{action.carryForward ? "Carry-forward" : action.result}</span>
         </li>)}</ol>
       </div> : null}
-
-      {error ? <p className="queue-read-error" role="status">{error}</p> : null}
 
       {rest.length > 0 && (
         <details className="more-constraints">
@@ -115,7 +115,3 @@ export function AllocationAttentionQueue({ allocationData, commitments, onShowEx
     </section>
   )
 }
-
-
-
-

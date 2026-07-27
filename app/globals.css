@@ -1036,7 +1036,7 @@
   .hero h1 { margin: 8px 0 0; color: var(--ink); font-size: 32px; font-weight: 600; line-height: 1.15; letter-spacing: -.025em; }
   .subtitle { margin: 9px 0 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
   .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); max-width: 720px; }
-  .controls button, .filters button { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-soft); box-shadow: var(--shadow-subtle); font-size: var(--text-label); font-weight: var(--weight-medium); cursor: pointer; }
+  .controls button, .filters button, .filters .dashboard-filter { display: flex; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); color: var(--ink-soft); box-shadow: var(--shadow-subtle); font-size: var(--text-label); font-weight: var(--weight-medium); cursor: pointer; }
   .controls button:hover, .filters button:hover { border-color: var(--interactive-blue-soft); background: var(--surface-blue); }
   .controls svg, .filters svg, .add svg { width: 16px; height: 16px; }
   .freshness { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 2px; margin-right: var(--space-1); padding-right: var(--space-3); border-right: 1px solid var(--border); text-align: right; white-space: nowrap; }
@@ -1064,7 +1064,18 @@
   .nav > button:focus-visible { outline: none !important; }
   .nav > button.active > span:last-child::after, .nav > button:focus-visible > span:last-child::after { content: ""; position: absolute; right: 0; bottom: -7px; left: 0; height: 2px; border-radius: 2px; background: var(--interactive-blue-deep); }
   .filters { display: flex; width: calc(100% + 64px); flex-basis: calc(100% + 64px); gap: 8px; margin: 6px -32px 0; padding: 12px 32px; border-top: 1px solid var(--border); background: var(--surface-blue); }
-  .filters button { min-width: 168px; box-shadow: none; }
+  .filters button, .filters .dashboard-filter { min-width: 168px; box-shadow: none; }
+  .filters .dashboard-filter { position: relative; display: block; padding: 0; }
+  .filters .dashboard-filter summary { display: flex; min-height: 40px; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); list-style: none; cursor: pointer; }
+  .filters .dashboard-filter summary::-webkit-details-marker { display: none; }
+  .filters .dashboard-filter summary span { flex: 0 0 auto; }
+  .filters .dashboard-filter summary strong { min-width: 0; flex: 1; overflow: hidden; color: var(--ink); font-weight: var(--weight-semibold); white-space: nowrap; text-overflow: ellipsis; }
+  .filters .dashboard-filter[open] { z-index: 30; border-color: var(--interactive-blue-soft); box-shadow: 0 0 0 2px var(--surface-blue); }
+  .filters .dashboard-filter[open] summary svg { transform: rotate(180deg); }
+  .filters .dashboard-filter svg { width: 16px; height: 16px; flex: 0 0 auto; pointer-events: none; transition: transform .15s ease; }
+  .dashboard-filter-menu { position: absolute; top: calc(100% + 6px); left: -1px; display: grid; width: max(100%, 260px); max-height: 320px; overflow-y: auto; padding: 6px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-card); }
+  .filters .dashboard-filter .dashboard-filter-menu button { display: block; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-soft); box-shadow: none; text-align: left; white-space: normal; }
+  .filters .dashboard-filter .dashboard-filter-menu button:hover, .filters .dashboard-filter .dashboard-filter-menu button.selected { background: var(--surface-blue); color: var(--interactive-blue-deep); }
   .content { max-width: 1440px; margin: 0 auto; padding: 28px 32px 80px; }
   .decision-bar { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(240px, .8fr); gap: 24px; margin-bottom: 28px; padding: 22px 24px; border: 1px solid var(--border); border-left: 4px solid var(--interactive-blue); border-radius: 12px; background: var(--surface-blue); color: var(--ink); box-shadow: var(--shadow-subtle); }
   .decision-bar span { color: var(--interactive-blue-deep); font-size: 11px; font-weight: 600; letter-spacing: .08em; }
@@ -3161,3 +3172,10 @@
 .report-kit-preview-switch button { padding: 6px 16px; border: 0; background: var(--surface); color: var(--report-eyebrow-ink); font-size: var(--text-label); font-weight: var(--weight-semibold); cursor: pointer; }
 .report-kit-preview-switch button[data-active="true"] { background: var(--report-accent); color: var(--surface); }
 .report-kit-preview-shell .report-meaning { max-width: 880px; margin: 0 auto; }
+
+.pricing-issue-trigger { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.pricing-issue-trigger h2 { display: inline; }
+.pricing-issue-trigger span { display: block; margin-top: 6px; color: var(--interactive-blue-deep); font-size: 12px; font-weight: 700; }
+.pricing-issue-list { margin: 14px 0 0; padding: 0; list-style: none; border-top: 1px solid var(--border); }
+.pricing-issue-list li { display: grid; gap: 3px; padding: 10px 0; }
+.pricing-issue-list span { color: var(--muted); font-size: 12px; }

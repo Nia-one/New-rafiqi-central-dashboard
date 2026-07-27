@@ -16,7 +16,59 @@ test("standalone workspace has one content heading and no shared shell changes",
 
 test("task band carries a recoverable-risk dual-gate verdict pill", () => {
   assert.match(componentSource, /verdictPill/)
-  assert.match(componentSource, /Dual-gate breach · \{preview\.summary\.gap\} failing/)
+  assert.match(componentSource, /Dual gate passed/)
+  assert.match(componentSource, /Dual-gate breach/)
+  assert.match(componentSource, /\{preview\.summary\.gap\} failing/)
+})
+
+test("live savings command resolves its owner and sentences from Sheet-backed values", () => {
+  assert.match(componentSource, /ownerPerson/)
+  assert.match(componentSource, /display name/)
+  assert.match(componentSource, /liveQuestion/)
+  assert.match(componentSource, /pendingApprovals/)
+  assert.match(componentSource, /approvalNote/)
+})
+
+test("live headline measures replace every fixture KPI with governed Sheet calculations", () => {
+  assert.match(componentSource, /liveMeasures/)
+  assert.match(componentSource, /liveGateRows/)
+  assert.match(componentSource, /passingGateRows/)
+  assert.match(componentSource, /verifiedSavingsOutcomes/)
+  assert.match(componentSource, /openSavingsActions/)
+  assert.match(componentSource, /averageRecordedPercent/)
+  assert.match(componentSource, /attach pct/)
+  assert.match(componentSource, /attach floor pct/)
+  assert.match(componentSource, /repeat pct/)
+  assert.match(componentSource, /repeat baseline pct/)
+  assert.match(componentSource, /hasAttachRepeatComparators/)
+  assert.match(componentSource, /Calculated from Essentials_Hourly/)
+  assert.match(componentSource, /Calculated from Action_Log and Evidence_Log/)
+  assert.doesNotMatch(componentSource, /value: "36% \/ 59%"/)
+  assert.match(componentSource, /measures: isLive \? liveMeasures : fixturePreview\.measures/)
+})
+
+test("savings margin and repeat panels use Essentials_Hourly service rows in live mode", () => {
+  assert.match(componentSource, /const liveServices: MemberSavingsPreview\["services"\]/)
+  assert.match(componentSource, /essentials hourly id/)
+  assert.match(componentSource, /member savings inr/)
+  assert.match(componentSource, /nia margin inr/)
+  assert.match(componentSource, /attach pct/)
+  assert.match(componentSource, /repeat pct/)
+  assert.match(componentSource, /services: isLive \? liveServices : fixturePreview\.services/)
+  assert.match(componentSource, /Google Sheet · live read-only/)
+  assert.match(componentSource, /Essentials_Hourly observations/)
+  assert.match(componentSource, /serviceGateSummary/)
+  assert.match(componentSource, /serviceGateImplication/)
+})
+
+test("dual-gate implication is derived from the same live service rows as the headline measure", () => {
+  assert.match(componentSource, /const failingGateRows = Math\.max\(0, liveGateRows\.length - passingGateRows\)/)
+  assert.match(componentSource, /const dualGateImplicationSummary = isLive/)
+  assert.match(componentSource, /const dualGateImplication = isLive/)
+  assert.match(componentSource, /summary: dualGateImplicationSummary/)
+  assert.match(componentSource, /<p className=\{styles\.soWhat\}>\{dualGateImplication\}<\/p>/)
+  assert.match(componentSource, /no dual-gate recovery is currently required/)
+  assert.match(componentSource, /not a category-wide reprice/)
 })
 
 test("every headline exhibit closes with a so-what implication", () => {

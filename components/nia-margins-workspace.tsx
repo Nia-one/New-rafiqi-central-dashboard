@@ -4,6 +4,7 @@ import type { NiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
 import { dashboardDisplayLabel } from "@/lib/dashboard-model"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "@/components/nia-margins-workspace.module.css"
+import { approvalsForDomain } from "@/lib/live-approvals"
 
 function inr(value: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
@@ -15,7 +16,7 @@ function date(value: string) {
   return `${dateFormatter.format(new Date(value))} IST`
 }
 
-export function NiaMarginsWorkspace({ preview }: { preview: NiaMarginsPreview }) {
+export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMarginsPreview; liveData?: any }) {
   const pillarRows = [
     { label: "Living", value: preview.measures.pillarCm2Inr.living, target: 300 },
     { label: "Work", value: preview.measures.pillarCm2Inr.work, target: 1_000 },
@@ -24,21 +25,22 @@ export function NiaMarginsWorkspace({ preview }: { preview: NiaMarginsPreview })
   const behind = preview.measures.fullUseCm2Inr < preview.measures.fullUseTargetInr
   const gapInr = preview.measures.fullUseTargetInr - preview.measures.fullUseCm2Inr
   const verdictLabel = behind ? `Below control · ${inr(gapInr)}/unit to recover` : "At or above control"
-  const decisionOwner = preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO"
-  const decisionDue = preview.actions[0]?.dueAt
+  const marginApproval = approvalsForDomain(liveData, "nia-margins", true)[0]
+  const decisionOwner = marginApproval?.owner || (preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO")
+  const decisionDue = marginApproval?.dueAt || preview.actions[0]?.dueAt
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Nia Margins sections" sections={[
     { title: "Margin verdict", summary: verdictLabel },
     { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} verified` },
     { title: "Headline measures", summary: `${inr(preview.measures.fullUseCm2Inr)} full-use CM2 · ${preview.measures.occupancyPct}% occupancy` },
     { title: "Margin implication", summary: "The gap is concentrated in measured Studio causes." },
     { title: "Profit drivers and learning", summary: `${preview.actions.length} governed actions · ${preview.despatchEscalations.length} escalations` },
-    { title: "Decision required", summary: `Recover ${inr(gapInr)}/unit · owner ${decisionOwner}` },
+    { title: "Decision required", summary: marginApproval ? `${marginApproval.title} · owner ${decisionOwner}` : `Recover ${inr(gapInr)}/unit · owner ${decisionOwner}` },
   ]}>
     <header className={styles.headline}>
       <div><h2>{preview.answer}</h2><p>{preview.question}</p></div>
       <dl>
         <div className={styles.verdictCell}><dt>Verdict</dt><dd><b className={styles.verdictPill} data-state={behind ? "behind" : "on-track"}>{verdictLabel}</b></dd></div>
-        <div><dt>Owner</dt><dd>Finance JCO</dd></div>
+        <div><dt>Owner</dt><dd>{decisionOwner}</dd></div>
         <div><dt>Progress</dt><dd>{preview.loopHealth.verification.verified}/{preview.loopHealth.verification.claimed} verified</dd></div>
         <div><dt>Mode</dt><dd>{preview.mode}</dd></div>
       </dl>

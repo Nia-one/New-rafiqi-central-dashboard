@@ -15,16 +15,26 @@ export function DashboardSectionAccordion({
   className,
   ariaLabel = "Dashboard sections",
   defaultOpenIndex,
+  openIndex: controlledOpenIndex,
+  onOpenIndexChange,
   ...props
 }: {
   children: ReactNode
   sections: readonly DashboardSectionMeta[]
   ariaLabel?: string
   defaultOpenIndex?: number
+  openIndex?: number
+  onOpenIndexChange?: (index: number) => void
 } & Omit<HTMLAttributes<HTMLDivElement>, "children" | "aria-label">) {
   const items = Children.toArray(children)
- const [openIndex, setOpenIndex] = useState(defaultOpenIndex ?? -1)
+  const [uncontrolledOpenIndex, setUncontrolledOpenIndex] = useState(defaultOpenIndex ?? -1)
+  const openIndex = controlledOpenIndex ?? uncontrolledOpenIndex
   const baseId = useId()
+
+  function setOpenIndex(index: number) {
+    if (controlledOpenIndex === undefined) setUncontrolledOpenIndex(index)
+    onOpenIndexChange?.(index)
+  }
 
   function focusTrigger(index: number) {
     document.getElementById(`${baseId}-trigger-${index}`)?.focus()

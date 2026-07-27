@@ -5,7 +5,7 @@ export const NO_DATA = "No data" as const
 export type NoData = typeof NO_DATA
 export type Measured<T> = T | NoData
 
-export type AllocationDomain = "Shram Park" | "FONO" | "Essentials"
+export type AllocationDomain = "Shram Park" | "FONO" | "Work" | "Essentials"
 export type MismatchType = "shortfall" | "idle-capacity" | "stockout" | "dead-stock"
 export type Confidence = "High" | "Medium" | "Low"
 
@@ -49,7 +49,7 @@ export type RootCauseAnalysis = {
   recommendedSolution: string
   evidenceReferences: string[]
   review: {
-    status: "Evidence-backed authored"
+    status: string
     reviewedBy: string
     reviewedAt: string
   }
@@ -88,6 +88,15 @@ export type MismatchInput = {
   accountableOwner: string
   actionStatus: ActionStatus
   actionTemplateId: string
+  /** Sheet-authored action copy takes precedence over a generated template. */
+  nextAction?: string
+  /** Alert-delivery state recorded by the connected execution queue. */
+  alertStatus?: string
+  alertQueuedAt?: string
+  /** False when the connected sources do not contain age/SLA timing. */
+  timingAvailable?: boolean
+  /** False when recoverability or confidence is absent from the Sheet. */
+  scoringInputsAvailable?: boolean
   laneTarget: DashboardRoute
   evidence: string[]
   rootCauseAnalysis: RootCauseAnalysis

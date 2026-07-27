@@ -10,9 +10,11 @@ import {
   type JourneyStep,
 } from "@/lib/operating-loop/enterprise-demand-loop"
 import { LoopHealthStrip } from "@/components/loop-health-strip"
+import { buildLoopHealth, type LoopHealth, type LoopHealthFeedInput } from "@/lib/operating-loop/loop-health"
 import { actionStageFromStatus, ActionSegment, type ActionSegmentKey, OperationalCard, OperationalCardStack } from "@/components/operational-card"
 import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { approvalsForDomain } from "@/lib/live-approvals"
 
 type Props = { preview: EnterpriseDemandLoopPreview; liveData?: any }
 
@@ -20,6 +22,89 @@ const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: 
 
 function date(value: string) {
   return `${dateFormatter.format(new Date(value))} IST`
+}
+
+function liveText(row: Record<string, unknown> | null | undefined, keys: readonly string[]) {
+  if (!row) return ""
+  for (const key of keys) {
+    const value = row[key]
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim()
+  }
+  return ""
+}
+
+function validTimestamp(value: unknown) {
+  const timestamp = String(value ?? "").trim()
+  return timestamp && Number.isFinite(Date.parse(timestamp)) ? timestamp : ""
+}
+
+function sheetNumber(value: unknown) {
+  const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function distanceAndBearing(fromLat: number, fromLng: number, toLat: number, toLng: number) {
+  const radians = (degrees: number) => degrees * Math.PI / 180
+  const earthRadiusKm = 6371
+  const latitudeDelta = radians(toLat - fromLat)
+  const longitudeDelta = radians(toLng - fromLng)
+  const a = Math.sin(latitudeDelta / 2) ** 2 + Math.cos(radians(fromLat)) * Math.cos(radians(toLat)) * Math.sin(longitudeDelta / 2) ** 2
+  const distanceKm = earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  const y = Math.sin(longitudeDelta) * Math.cos(radians(toLat))
+  const x = Math.cos(radians(fromLat)) * Math.sin(radians(toLat)) - Math.sin(radians(fromLat)) * Math.cos(radians(toLat)) * Math.cos(longitudeDelta)
+  const bearing = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360
+  return { distanceKm, bearing }
+}
+
+function latestTimestamp(rows: readonly Record<string, unknown>[]) {
+  return rows.flatMap((row) => ["updated at", "captured at", "proposed at", "uploaded at", "decided at", "verified at", "closed at", "opened at"].map((key) => validTimestamp(row[key])))
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0] ?? ""
+}
+
+function liveEnterpriseDemandLoopHealth(liveData: any, approvals: ReturnType<typeof approvalsForDomain>, fallback: LoopHealth) {
+  const demand = Array.isArray(liveData?.enterpriseDemand) ? liveData.enterpriseDemand as Record<string, unknown>[] : []
+  const linkedActions = approvals.map((approval) => approval.actionRow).filter((row): row is Record<string, unknown> => Boolean(row))
+  const rawActions = Array.isArray(liveData?.actions) ? liveData.actions as Record<string, unknown>[] : []
+  const actionsById = new Map<string, Record<string, unknown>>()
+  for (const row of [...linkedActions, ...rawActions]) {
+    const actionId = liveText(row, ["action id", "id"])
+    const description = [liveText(row, ["operating objective", "title"]), liveText(row, ["expected metric"]), liveText(row, ["required evidence"])].join(" ").toLowerCase()
+    if (actionId && (linkedActions.includes(row) || /enterprise|named demand|headcount|demand|matching/.test(description))) actionsById.set(actionId, row)
+  }
+  const actions = [...actionsById.values()].filter((row) => liveText(row, ["state", "status"]).toLowerCase() !== "dismissed")
+  const actionIds = new Set(actions.map((row) => liveText(row, ["action id", "id"])))
+  const proofEvidenceIds = new Set(actions.map((row) => liveText(row, ["proof evidence id"])).filter(Boolean))
+  const allEvidence = Array.isArray(liveData?.evidence) ? liveData.evidence as Record<string, unknown>[] : []
+  const evidence = allEvidence.filter((row) => actionIds.has(liveText(row, ["linked id"])) || proofEvidenceIds.has(liveText(row, ["evidence id", "id"])))
+  const approvalRows = approvals.map((approval) => approval.approvalRow)
+  const asOf = validTimestamp(liveData?.asOf) || latestTimestamp([...demand, ...actions, ...evidence, ...approvalRows])
+  if (!liveData || !asOf || demand.length === 0) return { connected: false, health: fallback }
+
+  const feeds: LoopHealthFeedInput[] = [
+    { feedId: "enterprise-demand", label: "Enterprise Demand · signed arrival", lastUpdatedAt: latestTimestamp(demand) || asOf, cadenceMinutes: 1440, critical: true, affectedClaims: ["signed target", "arrival", "named demand"] },
+  ]
+  if (actions.length) feeds.push({ feedId: "enterprise-actions", label: "Action Log · demand recovery", lastUpdatedAt: latestTimestamp(actions) || asOf, cadenceMinutes: 240, critical: true, affectedClaims: ["owner", "next action", "closure state"] })
+  if (evidence.length) feeds.push({ feedId: "enterprise-evidence", label: "Evidence Log · readiness proof", lastUpdatedAt: latestTimestamp(evidence) || asOf, cadenceMinutes: 1440, critical: true, affectedClaims: ["verified ready"] })
+  if (approvalRows.length) feeds.push({ feedId: "enterprise-approvals", label: "Approval Log · demand exceptions", lastUpdatedAt: latestTimestamp(approvalRows) || latestTimestamp(actions) || asOf, cadenceMinutes: 1440, critical: false, affectedClaims: ["approval status"] })
+
+  const stateOf = (row: Record<string, unknown>) => liveText(row, ["state", "status"]).toLowerCase()
+  const verified = actions.filter((row) => ["verified", "closed", "resolved"].includes(stateOf(row))).length
+  const reopened = actions.filter((row) => stateOf(row) === "reopened").length
+  const awaitingRows = actions.filter((row) => !["verified", "closed", "resolved", "reopened"].includes(stateOf(row)))
+  const oldestAwaitingAt = awaitingRows.flatMap((row) => [validTimestamp(row["proposed at"]), validTimestamp(row["updated at"]), validTimestamp(row["due at"])]).filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? (awaitingRows.length ? asOf : null)
+  const clocks = awaitingRows.map((row, index) => ({
+    clockId: liveText(row, ["action id", "id"]) || `enterprise-action-${index}`,
+    label: liveText(row, ["operating objective", "title"]) || "Enterprise Demand action",
+    ownerRole: liveText(row, ["owner actor id", "owner"]) || "Unassigned",
+    dueAt: validTimestamp(row["due at"]),
+    state: "Running" as const,
+  })).filter((clock) => clock.dueAt)
+  const incidents = Array.isArray(liveData?.incidents) ? liveData.incidents as Record<string, unknown>[] : []
+  const quarantinedRecords = demand.filter((row) => /quarantined|rejected/.test(liveText(row, ["status", "state"]).toLowerCase())).length
+    + incidents.filter((row) => /enterprise|demand/.test(liveText(row, ["domain", "incident type"]).toLowerCase()) && liveText(row, ["state", "status"]).toLowerCase() === "quarantined").length
+
+  return { connected: true, health: buildLoopHealth({ asOf, feeds, clocks, verification: { claimed: actions.length, verified, awaiting: awaitingRows.length, reopened, oldestAwaitingAt }, quarantinedRecords }) }
 }
 
 function slicePath(index: number, total = 8) {
@@ -31,10 +116,10 @@ function slicePath(index: number, total = 8) {
   return `M 50 50 L ${first.x.toFixed(2)} ${first.y.toFixed(2)} A 42 42 0 0 1 ${last.x.toFixed(2)} ${last.y.toFixed(2)} Z`
 }
 
-function RingPlan({ steps }: { steps: readonly JourneyStep[] }) {
+function RingPlan({ steps, live = false }: { steps: readonly JourneyStep[]; live?: boolean }) {
   return <div className="enterprise-ring-visual">
-    <svg viewBox="0 0 420 238" role="img" aria-label="Synthetic demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres">
-      <title>Enterprise plant at the centre; Ring 1 is exhausted before Ring 2.</title>
+    <svg viewBox="0 0 420 238" role="img" aria-label={`${live ? "Sheet-driven" : "Synthetic"} demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres`}>
+      <title>Enterprise plant at the centre; plotted studios are calculated from recorded coordinates.</title>
       <circle className="enterprise-ring-two" cx="210" cy="119" r="96" />
       <circle className="enterprise-ring-one" cx="210" cy="119" r="43" />
       <text className="enterprise-ring-label" x="210" y="17" textAnchor="middle">Ring 2 · 2–5 km</text>
@@ -79,7 +164,7 @@ const JOURNEY_SEGMENT_ORDER: readonly ActionSegmentKey[] = ["fix-now", "due-toda
 function segmentForStep(step: JourneyStep): ActionSegmentKey {
   if (step.state === "Verified ready" || step.state === "Closed") return "verified"
   if (step.humanApprovalRequired || step.state === "Human-approved exception") return "waiting-sign-off"
-  if (step.state === "Reopened" || step.state === "Retry scheduled" || step.state === "Evidence pending") return "nia-recovering"
+  if (step.state === "Reopened" || step.state === "Retry scheduled" || step.state === "Evidence pending" || step.state === "Ring 2 gated") return "nia-recovering"
   return "due-today"
 }
 
@@ -93,36 +178,252 @@ function defaultNextAction(outcome: EnterpriseDisposition) {
 }
 
 export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }: Props) {
+  const hasLiveSnapshot = Boolean(liveData)
   const demand = liveData?.enterpriseDemand?.[0]
-  const committedNests = Number(demand?.["headcount required"] ?? fixturePreview.activeNode.committedNests) || fixturePreview.activeNode.committedNests
-  const verifiedReadyNests = liveData?.summary?.readyNests ?? fixturePreview.activeNode.verifiedReadyNests
+  const livePolicyApprovals = approvalsForDomain(liveData, "enterprise-demand")
+  const committedNests = demand ? sheetNumber(demand["headcount required"]) : hasLiveSnapshot ? 0 : fixturePreview.activeNode.committedNests
+  const verifiedReadyNests = demand ? sheetNumber(liveData?.summary?.readyNests) : hasLiveSnapshot ? 0 : fixturePreview.activeNode.verifiedReadyNests
   const preview: EnterpriseDemandLoopPreview = {
     ...fixturePreview,
-    headline: demand ? `${demand["enterprise name"] || "Enterprise"} needs ${committedNests} verified ready Nests.` : fixturePreview.headline,
+    headline: demand ? `${demand["enterprise name"] || "Enterprise"} needs ${committedNests} verified ready Nests.` : hasLiveSnapshot ? "No Enterprise Demand row matches the current filters." : fixturePreview.headline,
     activeNode: {
       ...fixturePreview.activeNode,
-      enterpriseName: demand?.["enterprise name"] || fixturePreview.activeNode.enterpriseName,
-      plantName: demand?.["plant name"] || fixturePreview.activeNode.plantName,
+      enterpriseName: demand?.["enterprise name"] || (hasLiveSnapshot ? "No matching enterprise" : fixturePreview.activeNode.enterpriseName),
+      plantName: demand?.["plant name"] || (hasLiveSnapshot ? "" : fixturePreview.activeNode.plantName),
       committedNests,
       verifiedReadyNests,
       readinessGap: Math.max(0, committedNests - verifiedReadyNests),
-      ownerActorId: demand?.["owner actor id"] || fixturePreview.activeNode.ownerActorId,
-      arrivalAt: demand?.["activation required at"] || fixturePreview.activeNode.arrivalAt,
+      ownerActorId: demand?.["owner actor id"] || (hasLiveSnapshot ? "Owner not recorded" : fixturePreview.activeNode.ownerActorId),
+      arrivalAt: demand?.["activation required at"] || (hasLiveSnapshot ? "" : fixturePreview.activeNode.arrivalAt),
     },
   }
-  const [steps, setSteps] = useState<readonly JourneyStep[]>(() => preview.journeyPlan.steps)
+  const [localSteps, setLocalSteps] = useState<readonly JourneyStep[]>(() => preview.journeyPlan.steps)
   const [selectedOutcomes, setSelectedOutcomes] = useState<Record<string, EnterpriseDisposition>>(() => Object.fromEntries(preview.journeyPlan.steps.map((step) => [step.stepId, "No answer"])) as Record<string, EnterpriseDisposition>)
   const [shadowAudit, setShadowAudit] = useState<readonly { eventId: string; stepId: string; outcome: EnterpriseDisposition; occurredAt: string; nextAction: string }[]>([])
-  const nextStep = steps.find((step) => step.state === "Next") ?? steps.find((step) => step.state !== "Ring 2 gated") ?? null
   const behind = preview.activeNode.readinessGap > 0
-  const verdictLabel = behind ? `Behind · ${preview.activeNode.readinessGap} Nests to close` : "On track for arrival"
+  const verdictLabel = !demand && hasLiveSnapshot ? "No matching Enterprise Demand data" : behind ? `Behind · ${preview.activeNode.readinessGap} Nests to close` : "On track for arrival"
+  const liveEnterpriseApproval = livePolicyApprovals[0]
+  const liveEnterpriseAction = liveEnterpriseApproval?.actionRow
+  const ownerActorId = preview.activeNode.ownerActorId
+  const ownerPerson = (liveData?.people ?? []).find((row: Record<string, unknown>) => liveText(row, ["actor id"]) === ownerActorId)
+  const ownerLabel = liveText(ownerPerson, ["display name"]) || ownerActorId
+  const taskProgressPercent = demand && committedNests > 0 ? Math.min(100, Math.max(0, Math.round((verifiedReadyNests / committedNests) * 100))) : hasLiveSnapshot ? 0 : preview.progressPercent
+  const taskState = demand
+    ? liveEnterpriseApproval?.pending ? "Pending approval" : liveText(liveEnterpriseAction, ["state", "status"]) || liveText(demand, ["status"]) || "Open"
+    : hasLiveSnapshot ? "No matching demand" : preview.activeNode.state
+  const taskSourceLabel = hasLiveSnapshot ? "Google Sheet · live read-only" : `${preview.fixtureLabel} · ${preview.mode}`
+  const taskGoverningCopy = demand
+    ? `${verifiedReadyNests} of ${committedNests} Nests are verified ready for ${liveText(demand, ["role required"]) || "the named role"}${liveText(demand, ["shift"]) ? ` on the ${liveText(demand, ["shift"])} shift` : ""}; close the remaining ${preview.activeNode.readinessGap} before ${date(preview.activeNode.arrivalAt)}.`
+    : hasLiveSnapshot ? "No signed Enterprise Demand row is available for the selected filters; no fixture value is substituted." : "Work Ring 1 (0–2 km) to exhaustion before opening the 5 km search; recover verified-ready capacity, then submit contract-matched proof."
+  const liveLoop = liveEnterpriseDemandLoopHealth(liveData, livePolicyApprovals, fixturePreview.loopHealth)
+  const loopHealth = hasLiveSnapshot && !demand ? buildLoopHealth({
+    asOf: validTimestamp(liveData?.asOf) || new Date().toISOString(),
+    feeds: [{ feedId: "enterprise-demand-empty", label: "Enterprise Demand · no matching row", lastUpdatedAt: "1970-01-01T00:00:00.000Z", cadenceMinutes: 1440, critical: true, affectedClaims: ["signed target", "arrival", "named demand"] }],
+    clocks: [],
+    verification: { claimed: 0, verified: 0, awaiting: 0, reopened: 0, oldestAwaitingAt: null },
+  }) : liveLoop.health
+  const livingRows = Array.isArray(liveData?.living) ? liveData.living as Record<string, unknown>[] : []
+  const readyBySupply = livingRows.reduce((totals, row) => {
+    const model = liveText(row, ["supply model"]).toUpperCase()
+    const ready = Number(row["activation ready nests"] ?? 0)
+    if (model === "FONO") totals.FONO += Number.isFinite(ready) ? ready : 0
+    if (model === "SP" || model === "SHRAM PARK") totals.SP += Number.isFinite(ready) ? ready : 0
+    return totals
+  }, { FONO: 0, SP: 0 })
+  const demandReference = demand ? liveText(demand, ["contract id", "demand id", "enterprise id"]) || "Reference not recorded" : hasLiveSnapshot ? "No demand reference" : preview.activeNode.contractId
+  const arrivalTimestamp = validTimestamp(preview.activeNode.arrivalAt)
+  const asOfTimestamp = validTimestamp(liveData?.asOf)
+  const hoursToArrival = arrivalTimestamp && asOfTimestamp ? Math.max(0, (Date.parse(arrivalTimestamp) - Date.parse(asOfTimestamp)) / 3_600_000) : null
+  const daysToArrival = hoursToArrival === null ? null : Math.ceil(hoursToArrival / 24)
+  const requiredRunRate = hoursToArrival === null
+    ? "No deadline"
+    : preview.activeNode.readinessGap <= 0
+      ? "0/hr"
+      : hoursToArrival > 0
+        ? `${Math.ceil(preview.activeNode.readinessGap / hoursToArrival)}/hr`
+        : "Overdue"
+  const overdueFollowUps = loopHealth.clocks.filter((clock) => clock.breached).length
+  const demandLatitude = sheetNumber(demand?.latitude)
+  const demandLongitude = sheetNumber(demand?.longitude)
+  const peopleRows = Array.isArray(liveData?.people) ? liveData.people as Record<string, unknown>[] : []
+  const personLabel = (actorId: string) => liveText(peopleRows.find((row) => liveText(row, ["actor id"]) === actorId), ["display name"]) || actorId || "Unassigned"
+  const actionRows = Array.isArray(liveData?.actions) ? liveData.actions as Record<string, unknown>[] : []
+  const enterpriseActionRows = actionRows.filter((row) => /enterprise|named demand|headcount|demand|matching/.test([liveText(row, ["operating objective", "title"]), liveText(row, ["expected metric"]), liveText(row, ["required evidence"])].join(" ").toLowerCase()))
+  const incidentRows = Array.isArray(liveData?.incidents) ? liveData.incidents as Record<string, unknown>[] : []
+  const incidentStudioById = new Map(incidentRows.map((row) => [liveText(row, ["incident id", "id"]), liveText(row, ["studio id"])]).filter(([incidentId, studioId]) => Boolean(incidentId && studioId)))
+  const actionByStudioId = new Map<string, Record<string, unknown>>()
+  for (const row of enterpriseActionRows) {
+    const studioId = liveText(row, ["studio id"]) || incidentStudioById.get(liveText(row, ["incident id"])) || ""
+    if (studioId) actionByStudioId.set(studioId, row)
+  }
+  const evidenceRows = Array.isArray(liveData?.evidence) ? liveData.evidence as Record<string, unknown>[] : []
+  const evidenceByActionId = new Map<string, Record<string, unknown>[]>()
+  for (const row of evidenceRows) {
+    const linkedId = liveText(row, ["linked id"])
+    if (!linkedId) continue
+    evidenceByActionId.set(linkedId, [...(evidenceByActionId.get(linkedId) ?? []), row])
+  }
+  const activationRows = (Array.isArray(liveData?.activations) ? liveData.activations as Record<string, unknown>[] : []).filter((row) => liveText(row, ["demand id"]) === liveText(demand || {}, ["demand id"]) || liveText(row, ["enterprise id"]) === liveText(demand || {}, ["enterprise id"]))
+  const livingByStudioId = new Map(livingRows.map((row) => [liveText(row, ["studio id"]), row]).filter(([studioId]) => Boolean(studioId)))
+  const liveCandidateRows = demand && demandLatitude && demandLongitude && Array.isArray(liveData?.studios)
+    ? (liveData.studios as Record<string, unknown>[]).flatMap((studio, index) => {
+        const latitude = sheetNumber(studio.latitude)
+        const longitude = sheetNumber(studio.longitude)
+        const capacityNests = sheetNumber(studio["activation ready nests"])
+        const supplyModel = liveText(studio, ["supply model", "operating model"]).toUpperCase()
+        if (!latitude || !longitude || capacityNests <= 0 || !["FONO", "SP"].includes(supplyModel)) return []
+        const geo = distanceAndBearing(demandLatitude, demandLongitude, latitude, longitude)
+        if (geo.distanceKm > 5) return []
+        return [{ studio, index, capacityNests, supplyModel: supplyModel as "FONO" | "SP", ...geo }]
+      }).sort((left, right) => left.distanceKm - right.distanceKm)
+    : []
+  const liveRing1PotentialNests = liveCandidateRows.filter((candidate) => candidate.distanceKm <= 2).reduce((total, candidate) => total + candidate.capacityNests, 0)
+  const liveRing2Unlocked = liveRing1PotentialNests < preview.activeNode.readinessGap
+  let assignedNextStep = false
+  const liveSteps: readonly JourneyStep[] = liveCandidateRows.map((candidate, orderIndex) => {
+    const studioId = liveText(candidate.studio, ["studio id"])
+    const stepAction = actionByStudioId.get(studioId)
+    const actionId = liveText(stepAction, ["action id", "id"])
+    const stepEvidence = evidenceByActionId.get(actionId) ?? []
+    const actionState = liveText(stepAction, ["state", "status"]).toLowerCase()
+    const readinessState = liveText(candidate.studio, ["readiness status"]).toLowerCase()
+    const hasVerifiedEvidence = stepEvidence.some((row) => /verified|approved|confirmed/.test(liveText(row, ["verification status", "status"]).toLowerCase()))
+    const ring = candidate.distanceKm <= 2 ? "Ring 1" as const : "Ring 2" as const
+    const recordedActionDueAt = validTimestamp(stepAction?.["due at"])
+    const livingActionDueAt = validTimestamp(livingByStudioId.get(studioId)?.["next action due at"])
+    const calculatedDueAt = asOfTimestamp
+      ? new Date(Math.min(arrivalTimestamp ? Date.parse(arrivalTimestamp) : Number.POSITIVE_INFINITY, Date.parse(asOfTimestamp) + (orderIndex + 1) * 60 * 60 * 1000)).toISOString()
+      : arrivalTimestamp
+    const currentLivingDueAt = livingActionDueAt && (!asOfTimestamp || Date.parse(livingActionDueAt) >= Date.parse(asOfTimestamp)) ? livingActionDueAt : ""
+    const dueAt = recordedActionDueAt || currentLivingDueAt || calculatedDueAt || arrivalTimestamp
+    const recordedActionOverdue = Boolean(recordedActionDueAt && asOfTimestamp && Date.parse(recordedActionDueAt) < Date.parse(asOfTimestamp))
+    let state: JourneyStep["state"]
+    if (ring === "Ring 2" && !liveRing2Unlocked) state = "Ring 2 gated"
+    else if (/closed|resolved/.test(actionState)) state = "Closed"
+    else if (hasVerifiedEvidence || /verified/.test(readinessState) || actionState === "verified") state = "Verified ready"
+    else if (actionState === "reopened" || recordedActionOverdue) state = "Reopened"
+    else if (stepEvidence.length > 0 || /ready/.test(readinessState)) state = "Evidence pending"
+    else if (!assignedNextStep) { assignedNextStep = true; state = "Next" }
+    else state = "Queued"
+    const stepOwnerActorId = liveText(stepAction, ["owner actor id", "owner"]) || liveText(livingByStudioId.get(studioId), ["next action owner actor id"]) || ownerActorId
+    return Object.freeze({
+      stepId: studioId || `studio-candidate-${candidate.index}`,
+      nodeId: demandReference,
+      candidateName: liveText(candidate.studio, ["studio name", "studio id"]) || "Unnamed studio",
+      actionKind: candidate.supplyModel === "SP" ? "Visit" as const : "Call" as const,
+      supplyModel: candidate.supplyModel,
+      playbook: candidate.supplyModel,
+      ring,
+      distanceKm: Math.round(candidate.distanceKm * 10) / 10,
+      bearing: candidate.bearing,
+      capacityNests: candidate.capacityNests,
+      ownerActorId: stepOwnerActorId,
+      dueAt,
+      state,
+      humanApprovalRequired: false,
+      independentlyVerifiedNests: /verified/.test(liveText(candidate.studio, ["readiness status"]).toLowerCase()) ? candidate.capacityNests : 0,
+      history: [],
+      version: 1,
+    })
+  })
+  const steps = liveData ? liveSteps : localSteps
+  const nextStep = steps.find((step) => step.state === "Next") ?? steps.find((step) => step.state !== "Ring 2 gated") ?? null
+  const ring1PotentialNests = liveData ? liveRing1PotentialNests : preview.journeyPlan.ring1PotentialNests
+  const ring2Unlocked = liveData ? liveRing2Unlocked : preview.journeyPlan.ring2Unlocked
+  const enterpriseActionIds = new Set(enterpriseActionRows.map((row) => liveText(row, ["action id", "id"])).filter(Boolean))
+  const enterpriseEvidenceRows = (Array.isArray(liveData?.evidence) ? liveData.evidence as Record<string, unknown>[] : []).filter((row) => enterpriseActionIds.has(liveText(row, ["linked id"])))
+  const verifiedEvidenceCount = enterpriseEvidenceRows.filter((row) => /verified|approved|confirmed/.test(liveText(row, ["verification status", "status"]).toLowerCase())).length
+  const billedActivationCount = activationRows.filter((row) => sheetNumber(row["membership billed inr"]) > 0).length
+  const liveProgress = [
+    { stage: "Triggered" as const, count: demand ? 1 : 0, target: 1, complete: Boolean(demand) },
+    { stage: "Plan built" as const, count: steps.length ? 1 : 0, target: 1, complete: steps.length > 0 },
+    { stage: "Calls underway" as const, count: enterpriseActionRows.length, target: Math.max(1, steps.length), complete: steps.length > 0 && enterpriseActionRows.length >= steps.length },
+    { stage: "Evidence received" as const, count: enterpriseEvidenceRows.length, target: Math.max(1, enterpriseActionRows.length), complete: enterpriseActionRows.length > 0 && enterpriseEvidenceRows.length >= enterpriseActionRows.length },
+    { stage: "Independently verified" as const, count: verifiedEvidenceCount, target: Math.max(1, enterpriseActionRows.length), complete: enterpriseActionRows.length > 0 && verifiedEvidenceCount >= enterpriseActionRows.length },
+    { stage: "Capacity covered" as const, count: verifiedReadyNests, target: committedNests, complete: verifiedReadyNests >= committedNests },
+    { stage: "Members arrived" as const, count: activationRows.length, target: committedNests, complete: activationRows.length >= committedNests },
+    { stage: "Billing live" as const, count: billedActivationCount, target: committedNests, complete: billedActivationCount >= committedNests },
+  ]
+  const liveProgressPercent = Math.round(liveProgress.filter((stage) => stage.complete).length / liveProgress.length * 100)
+  const progressPreview = liveData ? ({ ...preview, progress: liveProgress, progressPercent: liveProgressPercent } as EnterpriseDemandLoopPreview) : preview
+  const studioRows = Array.isArray(liveData?.studios) ? liveData.studios as Record<string, unknown>[] : []
+  const livingByStudio = livingByStudioId
+  const studioSupplyById = new Map([...studioRows, ...livingRows].map((row) => [liveText(row, ["studio id"]), liveText(row, ["supply model", "operating model"]).toUpperCase()]))
+  const studioTotals = (model: "FONO" | "SP") => studioRows.filter((row) => liveText(row, ["supply model", "operating model"]).toUpperCase() === model).reduce((totals, row) => {
+    const readiness = liveText(row, ["readiness status"]).toLowerCase()
+    const ready = sheetNumber(row["activation ready nests"])
+    const occupied = sheetNumber(livingByStudio.get(liveText(row, ["studio id"]))?.["occupied nests"])
+    totals.contracted += sheetNumber(row["contracted nests"])
+    totals.vacantReserved += Math.max(0, sheetNumber(row["contracted nests"]) - occupied)
+    if (/ready|verified/.test(readiness)) totals.hardwareReady += ready
+    if (/verified/.test(readiness)) totals.independentlyReady += ready
+    return totals
+  }, { contracted: 0, vacantReserved: 0, hardwareReady: 0, independentlyReady: 0 })
+  const activationTotals = (model: "FONO" | "SP") => activationRows.reduce((totals, row) => {
+    if (studioSupplyById.get(liveText(row, ["studio id"])) !== model) return totals
+    totals.arrived += 1
+    if (sheetNumber(row["membership billed inr"]) > 0) totals.billed += 1
+    return totals
+  }, { arrived: 0, billed: 0 })
+  const fonoStudioTotals = studioTotals("FONO")
+  const spStudioTotals = studioTotals("SP")
+  const fonoActivationTotals = activationTotals("FONO")
+  const spActivationTotals = activationTotals("SP")
+  const spServicesLive = livingRows.filter((row) => liveText(row, ["supply model"]).toUpperCase() === "SP").reduce((total, row) => total + sheetNumber(row["occupied nests"]), 0)
+  const supplyLanes = liveData ? [
+    { supplyModel: "FONO" as const, stages: [
+      { label: "Vacant Nests reserved", count: fonoStudioTotals.vacantReserved },
+      { label: "Readiness verified", count: fonoStudioTotals.independentlyReady },
+      { label: "Members arrived", count: fonoActivationTotals.arrived },
+      { label: "Billing", count: fonoActivationTotals.billed },
+    ] },
+    { supplyModel: "SP" as const, stages: [
+      { label: "Park contracted", count: spStudioTotals.contracted },
+      { label: "Build / hardware done", count: spStudioTotals.hardwareReady },
+      { label: "Services live", count: spServicesLive },
+      { label: "Spec verified", count: spStudioTotals.independentlyReady },
+      { label: "Members arrived", count: spActivationTotals.arrived },
+      { label: "Billing", count: spActivationTotals.billed },
+    ] },
+  ] : preview.supplyLanes
+  const channelProgressSummary = liveData ? `FONO ${fonoStudioTotals.independentlyReady} verified · SP ${spStudioTotals.independentlyReady} spec verified` : "FONO and SP are tracked separately."
+  const channelProgressImplication = liveData
+    ? `So what: FONO has ${fonoStudioTotals.independentlyReady} independently verified-ready Nests and SP has ${spStudioTotals.independentlyReady} spec-verified Nests; ${fonoActivationTotals.arrived + spActivationTotals.arrived} recorded Member arrivals and ${fonoActivationTotals.billed + spActivationTotals.billed} billed activations have advanced the channel outcomes.`
+    : "So what: FONO and SP progress on different stage sequences, so each channel needs its own follow-up, not one blended number."
+  const nearbyPlanImplication = liveData
+    ? steps.length === 0
+      ? "So what: no coordinate-qualified Studio_Master capacity is recorded within 5 km, so the nearby recovery plan cannot be confirmed."
+      : ring1PotentialNests >= preview.activeNode.readinessGap
+        ? `So what: ${ring1PotentialNests} Ring 1 Nests cover the ${preview.activeNode.readinessGap}-Nest gap, so the 5 km search remains closed.`
+        : `So what: Ring 1 is ${Math.max(0, preview.activeNode.readinessGap - ring1PotentialNests)} Nests short, so the 5 km search is open and the ordered Ring 2 candidates remain visible.`
+    : "So what: nearby Ring 1 capacity covers the gap, so no 5 km expansion is needed or permitted yet."
+  const arrivalImplicationSummary = hasLiveSnapshot
+    ? !demand
+      ? "No matching arrival data"
+      : preview.activeNode.readinessGap <= 0
+      ? "Signed target covered for arrival"
+      : arrivalTimestamp
+        ? `${preview.activeNode.readinessGap} Nests must close before ${date(arrivalTimestamp)}`
+        : `${preview.activeNode.readinessGap} Nests remain · arrival date not recorded`
+    : `${preview.activeNode.readinessGap} Nests must close before arrival`
+  const arrivalImplicationDetail = hasLiveSnapshot
+    ? !demand
+      ? "So what: no signed demand or arrival deadline matches the selected filters, so no readiness conclusion is calculated."
+      : preview.activeNode.readinessGap <= 0
+      ? `So what: all ${preview.activeNode.committedNests} signed Nests are verified ready for the recorded arrival.`
+      : hoursToArrival === null || !arrivalTimestamp
+        ? `So what: ${preview.activeNode.readinessGap} Nests remain, but the Sheet has no valid arrival deadline for calculating the recovery rate.`
+        : hoursToArrival > 0
+          ? `So what: ${preview.activeNode.readinessGap} Nests must clear at ${requiredRunRate} before ${date(arrivalTimestamp)}, or the signed ${preview.activeNode.committedNests}-Nest capacity misses its committed date.`
+          : `So what: the arrival deadline has passed with ${preview.activeNode.readinessGap} Nests still unverified; the overdue recovery action remains open.`
+    : "So what: the gap must clear at the required hourly rate before the arrival date, or the signed capacity misses the committed date."
 
   function recordShadowOutcome(stepId: string) {
     const outcome = selectedOutcomes[stepId] ?? "No answer"
     const occurredAt = new Date().toISOString()
     const dueAt = new Date(Date.parse(occurredAt) + 2 * 60 * 60 * 1000).toISOString()
     const nextAction = defaultNextAction(outcome)
-    setSteps((current) => current.map((step) => step.stepId === stepId ? recordJourneyDisposition(step, {
+    setLocalSteps((current) => current.map((step) => step.stepId === stepId ? recordJourneyDisposition(step, {
       outcome,
       evidenceRef: `protected://shadow-disposition/${stepId}/${Date.parse(occurredAt)}`,
       nextAction,
@@ -136,7 +437,25 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
   }
 
   function renderStepCard(step: JourneyStep, index: number) {
-    return <OperationalCard key={step.stepId} title={`${index + 1}. ${step.actionKind} · ${step.candidateName}`} domain={`${step.supplyModel} · ${step.playbook} · ${step.distanceKm} km · ${step.ring}`} status={step.state} progress={actionStageFromStatus(step.state)} description={<p>{step.history.at(-1)?.nextAction ?? `Record ${step.actionKind.toLowerCase()} outcome`}</p>} fields={[{ label: "Capacity", value: `${step.capacityNests} Nests` }, { label: "Owner", value: step.ownerActorId }, { label: "Due", value: <time dateTime={step.dueAt}>{date(step.dueAt)}</time> }, { label: "Latest disposition", value: step.history.at(-1)?.outcome ?? "No disposition yet" }]}><div className="enterprise-shadow-control"><TokenSelect ariaLabel={`Disposition for ${step.candidateName}`} disabled={step.state === "Ring 2 gated" || step.humanApprovalRequired} value={selectedOutcomes[step.stepId] ?? "No answer"} options={ENTERPRISE_DEMAND_DISPOSITIONS} onChange={(outcome) => setSelectedOutcomes((current) => ({ ...current, [step.stepId]: outcome }))} /><button type="button" disabled={step.state === "Ring 2 gated" || step.humanApprovalRequired} onClick={() => recordShadowOutcome(step.stepId)}>Record</button><small>{step.state === "Ring 2 gated" ? "Ring 1 must close first" : step.humanApprovalRequired ? "Human approval required" : "Local preview only"}</small></div></OperationalCard>
+    const studioAction = actionByStudioId.get(step.stepId)
+    const studioLiving = livingByStudioId.get(step.stepId)
+    const studioEvidence = evidenceByActionId.get(liveText(studioAction, ["action id", "id"])) ?? []
+    const recordedNextAction = liveText(studioAction, ["operating objective", "title", "required evidence"])
+      || liveText(studioLiving, ["next action"])
+      || `${step.actionKind} ${step.candidateName}`
+    const latestDisposition = studioEvidence.map((row) => liveText(row, ["verification status", "status"])).find(Boolean)
+      || liveText(studioAction, ["state", "status"])
+      || liveText((liveData?.studios ?? []).find((row: Record<string, unknown>) => liveText(row, ["studio id"]) === step.stepId), ["readiness status"])
+      || "Not recorded"
+    const isOverdue = Boolean(liveData && asOfTimestamp && step.dueAt && Date.parse(step.dueAt) < Date.parse(asOfTimestamp) && !["Verified ready", "Closed"].includes(step.state))
+    const fields = [
+      { label: "Capacity", value: `${step.capacityNests} Nests` },
+      { label: "Owner", value: liveData ? personLabel(step.ownerActorId) : step.ownerActorId },
+      { label: isOverdue ? "Overdue since" : "Due", value: <time dateTime={step.dueAt}>{date(step.dueAt)}</time> },
+      { label: "Latest disposition", value: liveData ? latestDisposition : step.history.at(-1)?.outcome ?? "No disposition yet" },
+    ]
+    const localControl = <div className="enterprise-shadow-control"><TokenSelect ariaLabel={`Disposition for ${step.candidateName}`} disabled={step.state === "Ring 2 gated" || step.humanApprovalRequired} value={selectedOutcomes[step.stepId] ?? "No answer"} options={ENTERPRISE_DEMAND_DISPOSITIONS} onChange={(outcome) => setSelectedOutcomes((current) => ({ ...current, [step.stepId]: outcome }))} /><button type="button" disabled={step.state === "Ring 2 gated" || step.humanApprovalRequired} onClick={() => recordShadowOutcome(step.stepId)}>Record</button><small>{step.state === "Ring 2 gated" ? "Ring 1 must close first" : step.humanApprovalRequired ? "Human approval required" : "Local preview only"}</small></div>
+    return <OperationalCard key={step.stepId} title={`${index + 1}. ${step.actionKind} · ${step.candidateName}`} domain={`${step.supplyModel} · ${step.playbook} · ${step.distanceKm} km · ${step.ring}`} status={step.state} progress={actionStageFromStatus(step.state)} action={recordedNextAction} description={liveData ? undefined : <p>{recordedNextAction}</p>} fields={fields}>{liveData ? null : localControl}</OperationalCard>
   }
 
   const journeyBySegment = JOURNEY_SEGMENT_ORDER.map((segment) => ({
@@ -144,102 +463,278 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
     entries: steps.map((step, index) => ({ step, index })).filter((entry) => segmentForStep(entry.step) === segment),
   })).filter((group) => group.entries.length > 0)
 
+  const demandId = liveText(demand, ["demand id"])
+  const enterpriseId = liveText(demand, ["enterprise id"])
+  const enterpriseName = liveText(demand, ["enterprise name"]) || "Named enterprise"
+  const enterpriseIncidentRows = incidentRows.filter((row) => {
+    const domain = liveText(row, ["domain", "incident type"]).toLowerCase()
+    return domain.includes("enterprise demand")
+      || Boolean(demandId && liveText(row, ["demand id"]) === demandId)
+      || Boolean(enterpriseId && liveText(row, ["enterprise id"]) === enterpriseId)
+  })
+  const enterpriseIncidentIds = new Set(enterpriseIncidentRows.map((row) => liveText(row, ["incident id", "id"])).filter(Boolean))
+  const approvalActionIds = new Set(livePolicyApprovals.map((approval) => approval.linkedActionId).filter(Boolean))
+  const liveExceptionActions = actionRows.filter((row) => {
+    const actionId = liveText(row, ["action id", "id"])
+    const incidentId = liveText(row, ["incident id"])
+    const description = [liveText(row, ["operating objective", "title"]), liveText(row, ["expected metric"]), liveText(row, ["required evidence"])].join(" ").toLowerCase()
+    const state = liveText(row, ["state", "status"]).toLowerCase()
+    return !/closed|resolved|verified|dismissed/.test(state)
+      && (approvalActionIds.has(actionId) || enterpriseIncidentIds.has(incidentId) || /enterprise demand|named demand|headcount|matching/.test(description))
+  })
+  const actionByIncidentId = new Map(liveExceptionActions.map((row) => [liveText(row, ["incident id"]), row]).filter(([incidentId]) => Boolean(incidentId)))
+  const studioNameById = new Map((liveData?.studios ?? []).map((row: Record<string, unknown>) => [liveText(row, ["studio id"]), liveText(row, ["studio name", "studio id"])]).filter(([studioId]) => Boolean(studioId)))
+  const liveExceptions: Array<{
+    exceptionId: string
+    issue: string
+    owner: string
+    dueAt: string
+    status: string
+    action: string
+    why: string
+    did: string
+    next: string
+  }> = []
+
+  if (liveData && demand && preview.activeNode.readinessGap > 0) {
+    const gap = preview.activeNode.readinessGap
+    liveExceptions.push({
+      exceptionId: `demand-shortfall-${demandId || enterpriseId || "current"}`,
+      issue: `${gap} verified-ready Nests short · ${enterpriseName}`,
+      owner: ownerLabel,
+      dueAt: arrivalTimestamp || asOfTimestamp,
+      status: `Shortfall open · ${verifiedReadyNests}/${committedNests} recorded`,
+      action: `Close the ${gap}-Nest readiness gap`,
+      why: `${gap} of ${committedNests} signed Nests are not independently verified for the recorded arrival.`,
+      did: `Calculated the shortfall from the signed ${committedNests}-Nest target and ${verifiedReadyNests} verified-ready Nests.`,
+      next: `Recover ${gap} verified-ready Nests and record contract-matched proof before ${arrivalTimestamp ? date(arrivalTimestamp) : "the arrival deadline"}.`,
+    })
+  }
+
+  if (liveData) {
+    for (const approval of livePolicyApprovals.filter((row) => row.pending)) {
+      liveExceptions.push({
+        exceptionId: `approval-${approval.approvalId}`,
+        issue: liveText(approval.actionRow, ["operating objective", "title"]) || approval.title,
+        owner: approval.owner,
+        dueAt: validTimestamp(approval.dueAt) || arrivalTimestamp || asOfTimestamp,
+        status: `${approval.decision} human approval`,
+        action: "Review and decide",
+        why: approval.businessReason || "This governed exception cannot proceed without the recorded named authority.",
+        did: `Recorded ${approval.approvalId} and routed it to ${approval.owner}.`,
+        next: approval.expectedResult ? `Approve or reject the proposed terms for: ${approval.expectedResult}.` : "Record the authorised approval decision in Approval_Log.",
+      })
+    }
+
+    for (const incident of enterpriseIncidentRows) {
+      const state = liveText(incident, ["state", "status"]) || "Open"
+      if (/closed|resolved|dismissed/.test(state.toLowerCase())) continue
+      const incidentId = liveText(incident, ["incident id", "id"])
+      const incidentAction = actionByIncidentId.get(incidentId)
+      if (incidentAction && approvalActionIds.has(liveText(incidentAction, ["action id", "id"]))) continue
+      const studioId = liveText(incident, ["studio id"])
+      const studioName = studioNameById.get(studioId) || studioId || "Studio not recorded"
+      const ownerId = liveText(incidentAction, ["owner actor id", "owner"]) || liveText(incident, ["owner actor id", "owner"])
+      const severity = liveText(incident, ["severity"])
+      const objective = liveText(incidentAction, ["operating objective", "title"]) || liveText(incident, ["short description"]) || "Resolve enterprise demand incident"
+      liveExceptions.push({
+        exceptionId: `incident-${incidentId}`,
+        issue: `${liveText(incident, ["incident type"]) || "Enterprise demand issue"} · ${studioName}`,
+        owner: personLabel(ownerId),
+        dueAt: validTimestamp(incidentAction?.["due at"]) || validTimestamp(incident["due at"]) || arrivalTimestamp || asOfTimestamp,
+        status: [severity, state].filter(Boolean).join(" · "),
+        action: objective,
+        why: liveText(incident, ["severity reason", "short description"]) || "The open incident affects the named enterprise readiness plan.",
+        did: `Linked ${incidentId}${incidentAction ? ` to ${liveText(incidentAction, ["action id", "id"])}` : " to the current demand plan"} and assigned ${personLabel(ownerId)}.`,
+        next: liveText(incidentAction, ["required evidence"]) || "Resolve the incident and submit independent readiness evidence.",
+      })
+    }
+  }
+
+  const displayedExceptions = liveData ? liveExceptions : preview.exceptions.map((exception) => ({
+    ...exception,
+    status: exception.progress,
+    action: "Submit independently verified proof",
+    why: "The signed enterprise arrival cannot be counted as ready while this exception remains open.",
+    did: `Created the exception and assigned ${exception.owner}.`,
+    next: "Close the readiness gap and submit contract-matched proof for independent verification.",
+  }))
+
+  const enterpriseAuditActions = actionRows.filter((row) => {
+    const actionId = liveText(row, ["action id", "id"])
+    const incidentId = liveText(row, ["incident id"])
+    const description = [liveText(row, ["operating objective", "title"]), liveText(row, ["expected metric"]), liveText(row, ["required evidence"])].join(" ").toLowerCase()
+    return approvalActionIds.has(actionId) || enterpriseIncidentIds.has(incidentId) || /enterprise demand|named demand|headcount|matching/.test(description)
+  })
+  const enterpriseAuditActionIds = new Set(enterpriseAuditActions.map((row) => liveText(row, ["action id", "id"])).filter(Boolean))
+  const enterpriseAuditEvidence = evidenceRows.filter((row) => enterpriseAuditActionIds.has(liveText(row, ["linked id"])))
+  const backgroundEvents = liveData ? [
+    ...enterpriseIncidentRows.map((row, index) => ({
+      id: `incident-${liveText(row, ["incident id", "id"]) || index}`,
+      kind: `Incident · ${liveText(row, ["state", "status"]) || "Recorded"}`,
+      detail: liveText(row, ["short description", "incident type"]) || "Enterprise Demand incident",
+      at: latestTimestamp([row]) || asOfTimestamp,
+    })),
+    ...enterpriseAuditActions.map((row, index) => ({
+      id: `action-${liveText(row, ["action id", "id"]) || index}`,
+      kind: `Action · ${liveText(row, ["state", "status"]) || "Recorded"}`,
+      detail: liveText(row, ["operating objective", "title"]) || "Enterprise Demand action",
+      at: latestTimestamp([row]) || asOfTimestamp,
+    })),
+    ...enterpriseAuditEvidence.map((row, index) => ({
+      id: `evidence-${liveText(row, ["evidence id", "id"]) || index}`,
+      kind: `Evidence · ${liveText(row, ["verification status", "status"]) || "Recorded"}`,
+      detail: liveText(row, ["evidence type", "evidence id", "id"]) || "Readiness evidence",
+      at: latestTimestamp([row]) || asOfTimestamp,
+    })),
+    ...livePolicyApprovals.map((approval) => ({
+      id: `approval-${approval.approvalId}`,
+      kind: `Approval · ${approval.decision}`,
+      detail: `${approval.title} · ${approval.owner}`,
+      at: latestTimestamp([approval.approvalRow]) || validTimestamp(approval.decidedAt) || asOfTimestamp,
+    })),
+  ].filter((event) => event.at).sort((left, right) => Date.parse(right.at) - Date.parse(left.at)) : []
+  const pendingEnterpriseApprovals = livePolicyApprovals.filter((approval) => approval.pending).length
+  const openEnterpriseIncidents = enterpriseIncidentRows.filter((row) => !/closed|resolved|dismissed/.test(liveText(row, ["state", "status"]).toLowerCase())).length
+  const pendingEnterpriseEvidence = enterpriseAuditEvidence.filter((row) => !/verified|accepted|confirmed|closed/.test(liveText(row, ["verification status", "status"]).toLowerCase())).length
+  const backgroundSummary = liveData
+    ? `${backgroundEvents.length} Sheet audit events · governed controls retained`
+    : `${shadowAudit.length} local dispositions · policies retained`
+  const decisionGap = preview.activeNode.readinessGap
+  const decisionSummary = !demand && hasLiveSnapshot ? "No matching demand decision" : decisionGap > 0 ? `Close the ${decisionGap}-Nest readiness gap` : "Signed readiness target verified"
+  const decisionHeadline = !demand && hasLiveSnapshot
+    ? "No Enterprise Demand decision is required for the selected filters."
+    : decisionGap > 0
+    ? `Close the ${decisionGap}-Nest readiness gap and submit contract-matched proof.`
+    : `The signed ${committedNests}-Nest readiness target is independently verified.`
+  const decisionDetail = hasLiveSnapshot
+    ? !demand
+      ? "No matching signed demand, governed action, or arrival deadline is available; the dashboard will update automatically when a matching Sheet row is recorded."
+      : decisionGap > 0
+      ? ring2Unlocked
+        ? `${ring1PotentialNests} Ring 1 Nests do not cover the ${decisionGap}-Nest gap, so the calculated Ring 2 search is open; ${ownerLabel} remains accountable until verified capacity is confirmed.`
+        : `${ring1PotentialNests} Ring 1 Nests cover the ${decisionGap}-Nest gap, so the calculated Ring 2 search remains closed; ${ownerLabel} remains accountable until verified capacity is confirmed.`
+      : `No readiness gap remains; the recorded evidence and arrival outcome remain visible for independent verification.`
+    : "Approve the ordered 2 km plan; the 5 km search stays closed and accountability sits with Ops Control until verified capacity is confirmed."
+  const decisionDueAt = arrivalTimestamp || asOfTimestamp || preview.activeNode.arrivalAt
+  const connectedSourceFeeds = liveData ? [
+    { name: "Enterprise_Demand", rows: liveData.enterpriseDemand },
+    { name: "Studio_Master", rows: liveData.studios },
+    { name: "Living_Hourly", rows: liveData.living },
+    { name: "Member_Activation", rows: liveData.activations },
+    { name: "Action_Log", rows: liveData.actions },
+    { name: "Evidence_Log", rows: liveData.evidence },
+    { name: "Incident_Log", rows: liveData.incidents },
+    { name: "Approval_Log", rows: liveData.approvals },
+    { name: "People_Roster", rows: liveData.people },
+  ].filter((feed) => Array.isArray(feed.rows) && feed.rows.length > 0) : []
+  const staleSourceFeeds = loopHealth.feeds.filter((feed) => feed.stale).length
+  const sourceSummary = liveData
+    ? `${connectedSourceFeeds.length} connected Sheet feeds · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} outcomes verified`
+    : `${preview.source.name} · synthetic shadow`
+  const sourceDetail = liveData
+    ? `${connectedSourceFeeds.map((feed) => feed.name).join(" · ")} · as of ${date(asOfTimestamp || preview.source.asOf)}`
+    : `${preview.source.name} · as of ${date(preview.source.asOf)} · protected references only · synthetic/shadow`
+  const confidenceDetail = liveData
+    ? `${loopHealth.state} · ${staleSourceFeeds} stale · ${loopHealth.verification.awaiting} awaiting verification · ${loopHealth.verification.reopened} reopened · read-only; no automated external action`
+    : "RafiQi Inside may summarise later; Ops Control owns execution and verified closure."
+
   return <DashboardSectionAccordion className="enterprise-demand-loop" ariaLabel="Enterprise Demand sections" sections={[
     { title: "Today’s task", summary: verdictLabel },
-    { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} verified` },
+    { title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` },
     { title: "Key numbers", summary: `${preview.activeNode.verifiedReadyNests}/${preview.activeNode.committedNests} Nests verified ready` },
-    { title: "Arrival implication", summary: `${preview.activeNode.readinessGap} Nests must close before arrival` },
-    { title: "Nearby plan and next action", summary: `Ring 1 has ${preview.journeyPlan.ring1PotentialNests} Nests · ${nextStep?.actionKind ?? "waiting"}` },
-    { title: "Progress by channel", summary: "FONO and SP are tracked separately." },
-    { title: "Calls and visits", summary: `${steps.length} ordered steps · 2 km first` },
-    { title: "Issues needing help", summary: `${preview.exceptions.length} human-owned exceptions` },
-    { title: "Background record", summary: `${shadowAudit.length} local dispositions · policies retained` },
-    { title: "Decision required", summary: `Close the ${preview.activeNode.readinessGap}-Nest Ring 1 gap` },
-    { title: "Source and confidence", summary: `${preview.source.name} · synthetic shadow` },
+    { title: "Arrival implication", summary: arrivalImplicationSummary },
+    { title: "Nearby plan and next action", summary: `Ring 1 has ${ring1PotentialNests} Nests · ${nextStep?.actionKind ?? "waiting"}` },
+    { title: "Progress by channel", summary: channelProgressSummary },
+    { title: "Calls and visits", summary: `${steps.length} Studio candidates · 2 km first${liveData ? " · Sheet-driven" : ""}` },
+    { title: "Issues needing help", summary: `${displayedExceptions.length} human-owned exceptions` },
+    { title: "Background record", summary: backgroundSummary },
+    { title: "Decision required", summary: decisionSummary },
+    { title: "Source and confidence", summary: sourceSummary },
   ]}>
     <section className="enterprise-today-task" aria-labelledby="enterprise-today-title">
       <div>
-        <span>{preview.fixtureLabel} · {preview.mode}</span>
+        <span>{taskSourceLabel}</span>
         <h2 id="enterprise-today-title">{preview.headline}</h2>
-        <p className="enterprise-governing">Work Ring 1 (0–2 km) to exhaustion before opening the 5 km search; recover verified-ready capacity, then submit contract-matched proof.</p>
+        <p className="enterprise-governing">{taskGoverningCopy}</p>
       </div>
       <b className="enterprise-verdict" data-state={behind ? "behind" : "on-track"}>{verdictLabel}</b>
       <dl>
-        <div><dt>Owner</dt><dd>{preview.activeNode.ownerActorId}</dd></div>
-        <div><dt>Progress</dt><dd>{preview.progressPercent}% · {preview.activeNode.state}</dd></div>
+        <div><dt>Owner</dt><dd>{ownerLabel}</dd></div>
+        <div><dt>Progress</dt><dd>{taskProgressPercent}% · {taskState}</dd></div>
         <div><dt>Verified result</dt><dd>{preview.activeNode.verifiedReadyNests}/{preview.activeNode.committedNests} Nests</dd></div>
       </dl>
     </section>
 
-    <LoopHealthStrip health={preview.loopHealth} />
+    <LoopHealthStrip health={loopHealth} />
 
-    <section className={`enterprise-headline-measures${preview.loopHealth.feeds.some((feed) => feed.stale) ? " has-stale-input" : ""}`} aria-label="Key numbers at glance">
-      <article><span>Signed target</span><strong>{preview.activeNode.committedNests}</strong><small>Nests · {preview.activeNode.contractId}</small></article>
+    <section className={`enterprise-headline-measures${loopHealth.feeds.some((feed) => feed.stale) ? " has-stale-input" : ""}`} aria-label="Key numbers at glance">
+      <article><span>Signed target</span><strong>{preview.activeNode.committedNests}</strong><small>Nests · {demandReference}</small></article>
       <ChevronRight aria-hidden />
-      <article><span>Verified ready</span><strong>{preview.activeNode.verifiedReadyNests}</strong><small>FONO {preview.activeNode.verifiedReadyBySupply.FONO} · SP {preview.activeNode.verifiedReadyBySupply.SP}</small></article>
+      <article><span>Verified ready</span><strong>{preview.activeNode.verifiedReadyNests}</strong><small>{liveData ? `FONO ${readyBySupply.FONO} · SP ${readyBySupply.SP}` : `FONO ${preview.activeNode.verifiedReadyBySupply.FONO} · SP ${preview.activeNode.verifiedReadyBySupply.SP}`}</small></article>
       <ChevronRight aria-hidden />
-      <article className="is-gap"><span>Gap to close</span><strong>{preview.activeNode.readinessGap}</strong><small>{preview.activeNode.daysToArrival} days to arrival</small></article>
+      <article className="is-gap"><span>Gap to close</span><strong>{preview.activeNode.readinessGap}</strong><small>{liveData ? daysToArrival === null ? "Arrival date not recorded" : daysToArrival > 0 ? `${daysToArrival} days to arrival` : "Arrival due" : `${preview.activeNode.daysToArrival} days to arrival`}</small></article>
       <ChevronRight aria-hidden />
-      <article><span>Required run rate</span><strong>{Math.ceil((preview.activeNode.dailyPlan.plannedStops + preview.activeNode.dailyPlan.missedStopsCarried - preview.activeNode.dailyPlan.completedStops) / 6)}/hr</strong><small>{preview.activeNode.dailyPlan.missedStopsCarried} missed follow-ups rolled forward</small></article>
+      <article><span>Required run rate</span><strong>{liveData ? requiredRunRate : `${Math.ceil((preview.activeNode.dailyPlan.plannedStops + preview.activeNode.dailyPlan.missedStopsCarried - preview.activeNode.dailyPlan.completedStops) / 6)}/hr`}</strong><small>{liveData ? overdueFollowUps : preview.activeNode.dailyPlan.missedStopsCarried} missed follow-ups rolled forward</small></article>
     </section>
-    <p className="enterprise-so-what">So what: the gap must clear at the required hourly rate before the arrival date, or the signed capacity misses the committed date.</p>
+    <p className="enterprise-so-what">{arrivalImplicationDetail}</p>
 
     <div className="enterprise-first-viewport">
       <section className="enterprise-primary-panel enterprise-plan-panel" aria-labelledby="enterprise-plan-title">
-        <header><div><span>Space available nearby</span><h2 id="enterprise-plan-title">{preview.journeyPlan.ring1PotentialNests} Nests available within 2 km</h2></div><p>Gap {preview.activeNode.readinessGap} · 5 km search {preview.journeyPlan.ring2Unlocked ? "open" : "closed"}</p></header>
-        <RingPlan steps={steps} />
-        <p className="enterprise-so-what">So what: nearby Ring 1 capacity covers the gap, so no 5 km expansion is needed or permitted yet.</p>
+        <header><div><span>Space available nearby</span><h2 id="enterprise-plan-title">{ring1PotentialNests} Nests available within 2 km</h2></div><p>Gap {preview.activeNode.readinessGap} · 5 km search {ring2Unlocked ? "open" : "closed"}</p></header>
+        <RingPlan steps={steps} live={Boolean(liveData)} />
+        <p className="enterprise-so-what">{nearbyPlanImplication}</p>
       </section>
 
       <section className="enterprise-primary-panel enterprise-progress-panel" aria-labelledby="enterprise-progress-title">
-        <header><div><span>Do this next</span><h2 id="enterprise-progress-title">{nextStep ? `${nextStep.actionKind} ${nextStep.candidateName}` : "No action ready"}</h2></div><p>{nextStep ? `${nextStep.ownerActorId} · due ${date(nextStep.dueAt)}` : "Waiting for evidence"}</p></header>
-        <PizzaProgress preview={preview} />
-        <p className="enterprise-so-what">So what: only verified-and-billing stages count as done, so early-stage progress does not yet reduce the arrival risk.</p>
+        <header><div><span>Do this next</span><h2 id="enterprise-progress-title">{nextStep ? `${nextStep.actionKind} ${nextStep.candidateName}` : "No action ready"}</h2></div><p>{nextStep ? `${ownerLabel} · due ${date(nextStep.dueAt)}` : "Waiting for coordinate-qualified capacity"}</p></header>
+        <PizzaProgress preview={progressPreview} />
+        <p className="enterprise-so-what">{liveData ? `So what: ${liveProgress.filter((stage) => stage.complete).length} of 8 stages are complete; only Sheet-recorded evidence, verified capacity, arrivals and billing advance the plan.` : "So what: only verified-and-billing stages count as done, so early-stage progress does not yet reduce the arrival risk."}</p>
       </section>
     </div>
 
     <section className="enterprise-supply-lanes" aria-labelledby="enterprise-lanes-title">
       <header><div><span>Progress by channel</span><h2 id="enterprise-lanes-title">FONO and SP tracked separately</h2></div><p>Contract readiness by channel</p></header>
-      {preview.supplyLanes.map((lane) => <article data-supply-lane={lane.supplyModel} key={lane.supplyModel}>
+      {supplyLanes.map((lane) => <article data-supply-lane={lane.supplyModel} key={lane.supplyModel}>
         <strong>{lane.supplyModel}</strong>
         <ol>{lane.stages.map((stage, index) => <li key={stage.label}><span>{stage.label}</span><b>{stage.count}</b>{index < lane.stages.length - 1 ? <ChevronRight aria-hidden /> : null}</li>)}</ol>
       </article>)}
-      <p className="enterprise-so-what">So what: FONO and SP progress on different stage sequences, so each channel needs its own follow-up, not one blended number.</p>
+      <p className="enterprise-so-what">{channelProgressImplication}</p>
     </section>
 
     <section className="enterprise-work-panel" aria-labelledby="enterprise-work-title">
-      <header><div><span>Calls and visits today</span><h2 id="enterprise-work-title">{steps.length} calls and visits scheduled</h2></div><p>2 km first · preview only</p></header>
+      <header><div><span>Calls and visits plan</span><h2 id="enterprise-work-title">{steps.length} Studio candidates in the calculated plan</h2></div><p>2 km first · {liveData ? "Sheet-driven plan" : "preview only"}</p></header>
       {steps.length > 0 ? <div className="enterprise-journey-segments">{journeyBySegment.map((group) => <ActionSegment key={group.segment} segment={group.segment} count={group.entries.length}>{group.entries.map((entry) => renderStepCard(entry.step, entry.index))}</ActionSegment>)}</div> : <div className="enterprise-empty-state"><LockKeyhole aria-hidden /><strong>No eligible calls or stops.</strong><span>Quarantine, evidence and safety reasons remain visible in audit details.</span></div>}
     </section>
 
     <section className="enterprise-exceptions" aria-labelledby="enterprise-exceptions-title">
-      <header><div><span>Issues needing your help</span><h2 id="enterprise-exceptions-title">{preview.exceptions.length} issues need human help</h2></div><p>Ops Control owns closure</p></header>
-      <OperationalCardStack label="All Enterprise Demand exceptions">{preview.exceptions.map((exception) => <OperationalCard key={exception.exceptionId} title={exception.issue} status={exception.progress} domain="Enterprise Demand" fields={[{ label: "Owner", value: exception.owner }, { label: "Due", value: <time dateTime={exception.dueAt}>{date(exception.dueAt)}</time> }]} progress="assigned" story={[{ label: "Why it matters", value: "The signed enterprise arrival cannot be counted as ready while this exception remains open." }, { label: "What Nia already did", value: `Created the exception and assigned ${exception.owner}.` }, { label: "What happens next", value: "Close the readiness gap and submit contract-matched proof for independent verification." }]} />)}</OperationalCardStack>
+      <header><div><span>Issues needing your help</span><h2 id="enterprise-exceptions-title">{displayedExceptions.length} issues need human help</h2></div><p>{liveData ? "Google Sheet · automatically derived" : "Ops Control owns closure"}</p></header>
+      {displayedExceptions.length > 0 ? <OperationalCardStack label="All Enterprise Demand exceptions">{displayedExceptions.map((exception) => <OperationalCard key={exception.exceptionId} title={exception.issue} status={exception.status} domain="Enterprise Demand" action={exception.action} fields={[{ label: "Owner", value: exception.owner }, { label: "Due", value: <time dateTime={exception.dueAt}>{date(exception.dueAt)}</time> }]} progress={actionStageFromStatus(exception.status)} story={[{ label: "Why it matters", value: exception.why }, { label: "What Nia already did", value: exception.did }, { label: "What happens next", value: exception.next }]} />)}</OperationalCardStack> : <div className="enterprise-empty-state"><Check aria-hidden /><strong>No open Enterprise Demand exception.</strong><span>The section will repopulate automatically when a Sheet-backed shortfall, incident, or approval needs human help.</span></div>}
     </section>
 
     <details className="enterprise-audit-details">
       <summary><FileCheck2 aria-hidden />Full background record</summary>
       <div className="enterprise-audit-body">
-        <section><h2>Contract-specific readiness</h2><dl><div><dt>Enterprise / plant</dt><dd>{preview.activeNode.enterpriseName} �� {preview.activeNode.plantName}</dd></div><div><dt>Signed contract</dt><dd>{preview.activeNode.contractId}</dd></div><div><dt>Services</dt><dd>{preview.activeNode.contractedServices.join(", ") || "No additional contracted services"}</dd></div><div><dt>Spec / terms</dt><dd>{preview.activeNode.specStatus} / {preview.activeNode.termsStatus}</dd></div><div><dt>Plant reference</dt><dd>{preview.activeNode.plantReference}</dd></div><div><dt>Arrival</dt><dd>{date(preview.activeNode.arrivalAt)}</dd></div></dl></section>
-        <section><h2>Priority overrides and field safety</h2><ol>{preview.protectedPriorities.map((priority, index) => <li key={priority}><b>{index + 1}</b><span>{priority}</span></li>)}<li><b>5</b><span>Enterprise Demand journey plan</span></li></ol><p>Approved daylight hours · three check-ins · no trespass · consent before non-public access · hazard controls · no unsafe solo visit · emergency stop-work path.</p></section>
-        <section><h2>Governed registry</h2><div className="enterprise-audit-table"><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Source</th></tr></thead><tbody>{preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.policyId}</td><td>{policy.value} {policy.unit}</td><td>v{policy.version}</td><td>{policy.source}</td></tr>)}</tbody></table></div></section>
-        <section><h2>Append-only synthetic audit</h2>{shadowAudit.length > 0 ? <ol>{shadowAudit.map((event) => <li key={event.eventId}><b>{event.outcome}</b><span>{event.stepId} · {event.nextAction}</span><time dateTime={event.occurredAt}>{date(event.occurredAt)}</time></li>)}</ol> : <p>No local shadow disposition recorded.</p>}</section>
-        <section><h2>Structural action boundary</h2><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>Pricing and terms deviations route to Pushkar. RafiQi identifies, assigns, follows up and verifies in shadow state; it cannot message, call, contract, pay, commit capital, assign live routes, track GPS or write Production.</p></section>
+        <section><h2>Contract-specific readiness</h2><dl>{liveData ? <><div><dt>Enterprise / plant</dt><dd>{enterpriseName} · {liveText(demand, ["plant name", "plant", "location"]) || "Plant not recorded"}</dd></div><div><dt>Demand reference</dt><dd>{demandReference}</dd></div><div><dt>Role / shift</dt><dd>{liveText(demand, ["role required", "role"]) || "Role not recorded"} / {liveText(demand, ["shift"]) || "Shift not recorded"}</dd></div><div><dt>Signed / ready</dt><dd>{committedNests} / {verifiedReadyNests} Nests</dd></div><div><dt>Status</dt><dd>{liveText(demand, ["certainty", "demand certainty"]) || "Certainty not recorded"} / {liveText(demand, ["status", "state"]) || "Status not recorded"}</dd></div><div><dt>Arrival</dt><dd>{arrivalTimestamp ? date(arrivalTimestamp) : "Arrival not recorded"}</dd></div></> : <><div><dt>Enterprise / plant</dt><dd>{preview.activeNode.enterpriseName} · {preview.activeNode.plantName}</dd></div><div><dt>Signed contract</dt><dd>{preview.activeNode.contractId}</dd></div><div><dt>Services</dt><dd>{preview.activeNode.contractedServices.join(", ") || "No additional contracted services"}</dd></div><div><dt>Spec / terms</dt><dd>{preview.activeNode.specStatus} / {preview.activeNode.termsStatus}</dd></div><div><dt>Plant reference</dt><dd>{preview.activeNode.plantReference}</dd></div><div><dt>Arrival</dt><dd>{date(preview.activeNode.arrivalAt)}</dd></div></>}</dl></section>
+        <section><h2>{liveData ? "Calculated plan and evidence controls" : "Priority overrides and field safety"}</h2>{liveData ? <><ol><li><b>1</b><span>{ring1PotentialNests} Ring 1 Nests recorded</span></li><li><b>2</b><span>{preview.activeNode.readinessGap} Nests remain to be independently verified</span></li><li><b>3</b><span>Ring 2 search {ring2Unlocked ? "open" : "closed"} by the calculated capacity rule</span></li><li><b>4</b><span>{steps.length} Studio candidates in the Sheet-driven plan</span></li><li><b>5</b><span>{pendingEnterpriseEvidence} linked evidence records await verification</span></li></ol><p>{pendingEnterpriseApprovals} named approvals pending · no duplicate Operations input.</p></> : <><ol>{preview.protectedPriorities.map((priority, index) => <li key={priority}><b>{index + 1}</b><span>{priority}</span></li>)}<li><b>5</b><span>Enterprise Demand journey plan</span></li></ol><p>Approved daylight hours · three check-ins · no trespass · consent before non-public access · hazard controls · no unsafe solo visit · emergency stop-work path.</p></>}</section>
+        <section><h2>Governed registry</h2><div className="enterprise-audit-table"><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Source</th></tr></thead><tbody>{liveData ? (livePolicyApprovals.length ? livePolicyApprovals.map((approval) => <tr key={approval.approvalId}><td>{approval.title}</td><td>{approval.proposedTerms || approval.expectedResult || "No value recorded"}</td><td>{approval.approvalId}</td><td>Approval_Log · {approval.decision}</td></tr>) : <tr><td>No linked approval</td><td>No Approval_Log record</td><td>—</td><td>Not recorded</td></tr>) : preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.policyId}</td><td>{policy.value} {policy.unit}</td><td>v{policy.version}</td><td>{policy.source}</td></tr>)}</tbody></table></div></section>
+        <section><h2>{liveData ? "Append-only Sheet audit" : "Append-only synthetic audit"}</h2>{liveData ? (backgroundEvents.length > 0 ? <ol>{backgroundEvents.map((event) => <li key={event.id}><b>{event.kind}</b><span>{event.detail}</span><time dateTime={event.at}>{date(event.at)}</time></li>)}</ol> : <p>No Enterprise Demand audit event recorded in the connected Sheet feeds.</p>) : (shadowAudit.length > 0 ? <ol>{shadowAudit.map((event) => <li key={event.eventId}><b>{event.outcome}</b><span>{event.stepId} · {event.nextAction}</span><time dateTime={event.occurredAt}>{date(event.occurredAt)}</time></li>)}</ol> : <p>No local shadow disposition recorded.</p>)}</section>
+        <section><h2>Structural action boundary</h2>{liveData ? <><p>{openEnterpriseIncidents} open Enterprise Demand incidents · {enterpriseAuditActions.length} governed actions · {pendingEnterpriseApprovals} named approvals pending.</p><p>RafiQi calculates, ranks and displays the recorded plan; Approval_Log remains the authority for governed decisions, and no duplicate Operations entry is required in this component.</p></> : <><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>Pricing and terms deviations route to Pushkar. RafiQi identifies, assigns, follows up and verifies in shadow state; it cannot message, call, contract, pay, commit capital, assign live routes, track GPS or write Production.</p></>}</section>
       </div>
     </details>
 
     <section className="enterprise-ask" aria-label="Decision required">
       <div>
         <span>Decision required</span>
-        <strong>Close the {preview.activeNode.readinessGap}-Nest readiness gap from Ring 1 and submit contract-matched proof.</strong>
-        <p>Approve the ordered 2 km plan; the 5 km search stays closed and accountability sits with Ops Control until verified capacity is confirmed.</p>
+        <strong>{decisionHeadline}</strong>
+        <p>{decisionDetail}</p>
       </div>
       <dl>
-        <div><dt>Owner</dt><dd>{preview.activeNode.ownerActorId}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={preview.activeNode.arrivalAt}>{date(preview.activeNode.arrivalAt)}</time></dd></div>
+        <div><dt>Owner</dt><dd>{liveData ? ownerLabel : preview.activeNode.ownerActorId}</dd></div>
+        <div><dt>By</dt><dd><time dateTime={decisionDueAt}>{date(decisionDueAt)}</time></dd></div>
       </dl>
     </section>
 
-    <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{preview.source.name} · as of {date(preview.source.asOf)} · protected references only · synthetic/shadow</span><Clock3 aria-hidden /><span>RafiQi Inside may summarise later; Ops Control owns execution and verified closure.</span></footer>
+    <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{sourceDetail}</span><Clock3 aria-hidden /><span>{confidenceDetail}</span></footer>
   </DashboardSectionAccordion>
 }

@@ -1,3 +1,6 @@
+"use client"
+
+import { useEffect, useState } from "react"
 import { ArrowDown, ArrowRight } from "lucide-react"
 import { AllocationContextStrip } from "@/components/allocation-context-strip"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
@@ -21,6 +24,23 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData, allocationDa
   const openDemandNodes = live.proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0)
   const liveCapacity = live.fonoReady + live.spReady
   const copy = (key: string) => live.metricTemplate(key, "No data")
+  const [openIndex, setOpenIndex] = useState(-1)
+
+  useEffect(() => {
+    if (allocationFocus) {
+      setOpenIndex(1)
+      return
+    }
+
+    if (!focus) return
+    const focusIndex: Record<LivingSection, number> = {
+      fono: 4,
+      demand: 5,
+      supply: 6,
+      reconciliation: 7,
+    }
+    setOpenIndex(focusIndex[focus])
+  }, [allocationFocus, focus])
   const fonoStages = [
     { stage: copy("fono_stage_visits"), studios: live.metricNumber("visits"), nests: live.metricNumber("visits_nests"), conversion: `${Math.round(live.metricNumber("visits_conversion") * 100)}%`, owner: live.metricOwner("visits") },
     { stage: copy("fono_stage_agreed"), studios: live.metricNumber("agreed"), nests: live.metricNumber("agreed_nests"), conversion: `${Math.round(live.metricNumber("agreed_conversion") * 100)}%`, owner: live.metricOwner("agreed") },
@@ -29,7 +49,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData, allocationDa
     { stage: copy("fono_stage_live"), studios: live.metricNumber("live"), nests: live.fonoReady, conversion: `${Math.round(live.metricNumber("live_conversion") * 100)}%`, owner: live.metricOwner("live") },
   ]
 
-  return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLabel="Living sections" sections={[
+return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLabel="Living sections" openIndex={openIndex} onOpenIndexChange={setOpenIndex} sections={[
     { title: copy("accordion_main_title"), summary: copy("accordion_main_summary") },
     { title: copy("accordion_allocation_title"), summary: copy("accordion_allocation_summary") },
     { title: copy("accordion_supply_title"), summary: copy("accordion_supply_summary") },

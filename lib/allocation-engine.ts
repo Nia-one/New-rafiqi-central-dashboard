@@ -211,7 +211,10 @@ export function buildNextAction(input: MismatchInput): { nextAction: string; act
 /* ------------------------------------------------------------------ */
 
 export function toMismatch(input: MismatchInput): Mismatch {
-  const action = buildNextAction(input)
+  const suppliedAction = input.nextAction?.trim()
+  const action = suppliedAction
+    ? { nextAction: suppliedAction, actionBlocked: false }
+    : buildNextAction(input)
   return {
     ...input,
     attentionBucket: action.actionBlocked ? "Blocked" : attentionBucketFor(input.actionStatus) ?? "Assigned",
@@ -222,15 +225,7 @@ export function toMismatch(input: MismatchInput): Mismatch {
 }
 
 export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
-
-console.log("SCORE DEBUG", {
-  id: mismatch.id,
-  status: mismatch.actionStatus,
-  cm: mismatch.forwardCmAtRisk24h,
-  recoverable: mismatch.recoverableShare,
-})
-
-  if (!isUnresolved(mismatch.actionStatus) || isNoData(mismatch.forwardCmAtRisk24h)) return NO_DATA
+  if (!isUnresolved(mismatch.actionStatus) || isNoData(mismatch.forwardCmAtRisk24h) || mismatch.scoringInputsAvailable === false) return NO_DATA
   const forwardCmAtRisk24h = mismatch.forwardCmAtRisk24h
   const urgency = urgencyMultiplier(mismatch.ageHours, mismatch.thresholdHours)
   const confidence = SCORE_CONFIG.confidence[mismatch.confidence]
@@ -250,7 +245,7 @@ console.log("SCORE DEBUG", {
 export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): RankedMismatch[] {
   const unresolved = liveInputs
     .map((input) => {
-      const existing = getMismatchForStage(input.domain, input.joinKey, context)
+      const existing = getMismatchForStage(input.domain, input.joinKey, { ...context, fallbackInput: input }, liveInputs)
 
       if (existing) return existing
 
@@ -261,7 +256,7 @@ export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: Mis
         recoverableShare: input.recoverableShare ?? 1,
         confidence: input.confidence ?? "Medium",
         forwardCmAtRisk24h: input.forwardCmAtRisk24h ?? 0,
-        nextAction: "Review and resolve mismatch",
+        nextAction: input.nextAction || buildNextAction(input).nextAction,
         actionBlocked: false,
       } as Mismatch
     })
@@ -303,11 +298,11 @@ export type DailyActionGrid = Record<ActionGridCategory, Record<(typeof THEATRES
 export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): DailyActionGrid {
   const grid = Object.fromEntries(ACTION_GRID_CATEGORIES.map((category) => [
     category,
-    Object.fromEntries(THEATRES.map((theatre) => [theatre, category === "Work" ? null : []])),
-  ])) as DailyActionGrid
+    Object.fromEntries(THEATRES.map((theatre) => [theatre, []])),
+  ])) as unknown as DailyActionGrid
 
   for (const mismatch of buildRankedQueue(context, liveInputs)) {
-    const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : "Living"
+    const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : mismatch.domain === "Work" ? "Work" : "Living"
     const theatre = THEATRES.find((name) => name === mismatch.theatre)
     if (!theatre) continue
     const actions = grid[category][theatre]

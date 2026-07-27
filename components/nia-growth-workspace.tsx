@@ -8,6 +8,7 @@ import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/
 import { TokenSelect } from "@/components/token-select"
 import { MeasureViz } from "@/components/measure-viz"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { approvalsForDomain } from "@/lib/live-approvals"
 import styles from "./nia-growth-workspace.module.css"
 
 type Props = { preview: NiaGrowthPreview; liveData?: any }
@@ -44,6 +45,14 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
   const current = liveData?.summary?.readyNests ?? 0
   const gap = Math.max(0, target - current)
   const owner = liveData?.living?.[0]?.["next action owner actor id"] || fixturePreview.summary.owner
+  const liveSignOffs = approvalsForDomain(liveData, "nia-growth", true).map((approval) => ({
+    id: approval.approvalId,
+    supplyModel: `${approval.title} ${approval.action}`.toLowerCase().includes("fono") ? "FONO" as const : "SP" as const,
+    decision: approval.title,
+    owner: approval.owner,
+    impact: approval.businessReason || approval.expectedResult || approval.action,
+    status: "Pending human approval" as const,
+  }))
   const preview: NiaGrowthPreview = {
     ...fixturePreview,
     headline: liveData ? `${current} activation-ready Nests against ${target} contracted Nests.` : fixturePreview.headline,
@@ -53,6 +62,7 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
       progress: target ? `${Math.round(current / target * 100)}%` : "No data",
       verifiedResult: `${current} Nests from the live Living feed`,
     },
+    signOffs: liveData ? liveSignOffs : fixturePreview.signOffs,
   }
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
@@ -140,7 +150,7 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
     <details className={styles.auditDetails}>
       <summary><ChevronDown aria-hidden />Full background record</summary>
       <div className={styles.auditBody}>
-        <section><strong>Versioned controls and pending approvals</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Status</th></tr></thead><tbody>{preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.name}</td><td>{policy.value === null ? "No value approved" : `${policy.value} ${policy.unit}`}</td><td>v{policy.version}</td><td>{policy.status}</td></tr>)}</tbody></table></div></section>
+        <section><strong>Versioned controls and pending approvals</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Status</th></tr></thead><tbody>{liveData ? (liveSignOffs.length ? liveSignOffs.map((approval) => <tr key={approval.id}><td>{approval.decision}</td><td>{approval.impact}</td><td>{approval.id}</td><td>{approval.status}</td></tr>) : <tr><td>No linked growth approval</td><td>No Approval_Log record</td><td>—</td><td>Not recorded</td></tr>) : preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.name}</td><td>{policy.value === null ? "No value approved" : `${policy.value} ${policy.unit}`}</td><td>v{policy.version}</td><td>{policy.status}</td></tr>)}</tbody></table></div></section>
         <section><strong>Shared learning-control inputs</strong>{preview.learningInputs.map((input) => <dl className={styles.learningGrid} key={input.action_id}><div><dt>Channel / proposal</dt><dd>{input.supply_model} · {input.proposed_change}</dd></div><div><dt>Expected effect</dt><dd>{input.expected_effect}</dd></div><div><dt>Evidence</dt><dd>{input.evidence_cycles} cycles · n={input.sample_size} · {input.verification_rate_pct}% verified</dd></div><div><dt>Attribution</dt><dd>{input.attribution_grade} · {input.confounders.join(", ")}</dd></div><div><dt>Forecast error</dt><dd>{input.forecast_error_pct}%</dd></div><div><dt>Fresh / reversible</dt><dd>{String(input.critical_data_fresh)} / {String(input.reversible)}</dd></div><div><dt>Approved boundary</dt><dd>{String(input.inside_approved_boundary)} · reverses human decision {String(input.reverses_human_decision)}</dd></div><div><dt>Human controls</dt><dd>{input.affected_human_controlled_categories.join(", ") || "No category changed"}</dd></div><div><dt>Effects</dt><dd>{input.target_effect} {input.channel_effect} {input.cm_effect} {input.cash_effect}</dd></div><div><dt>Confidence / adoption</dt><dd>{input.production_confidence} · auto-adopt {String(input.auto_adopt)}</dd></div><div><dt>Rollback</dt><dd>{input.rollback_trigger}</dd></div></dl>)}</section>
         <section><strong>Append-only local shadow audit</strong>{audit.length > 0 ? <ol>{audit.map((entry) => <li key={entry.id}><CheckCircle2 aria-hidden /><span><b>{entry.supplyModel} · {entry.outcome}</b>{entry.actionId} · {entry.route}</span><time dateTime={entry.at}>{date(entry.at)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
         <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, recommend, assign and verify in synthetic shadow state. It cannot contact anyone, sign a contract or lease, commit capex, release a Studio or park, move money, write Production or adopt policy.</p></section>

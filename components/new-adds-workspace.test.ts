@@ -28,6 +28,15 @@ test("workspace ends with an explicit owner-and-done-when ask before the footer"
   assert.match(componentSource, /<dt>Done when<\/dt>/)
 })
 
+test("the decision-required sentence follows live sign-offs, gap and Theatre scope", () => {
+  assert.match(componentSource, /const theatreRecoveryScope = theatresBehind\.length/)
+  assert.match(componentSource, /const decisionActions =/)
+  assert.match(componentSource, /openSignOff > 0/)
+  assert.match(componentSource, /gap > 0/)
+  assert.match(componentSource, /\{decisionHeadline\}/)
+  assert.doesNotMatch(componentSource, /the two Theatres below target/)
+})
+
 test("the first viewport renders Target to verified result in the locked order", () => {
   const order = ["Target", "Current", "Gap", "Owner", "Progress", "Verified result"]
   let cursor = componentSource.indexOf("const items")
@@ -66,6 +75,39 @@ test("shadow recovery is functional and no live side-effect path exists", () => 
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|use server|server action|navigator\.geolocation/)
 })
 
+test("live Sheet tasks are read-only and never ask Operations to record a local outcome", () => {
+  assert.match(componentSource, /liveData \? <div className=\{styles\.shadowControls\}><small>Read-only · status updates automatically from Action_Log and Evidence_Log\.<\/small>/)
+  assert.match(componentSource, /Google Sheet · read-only/)
+})
+
+test("Member Adds sign-off count and implication follow the live Approval_Log queue", () => {
+  assert.match(componentSource, /const signOffCountLabel = openSignOff === 0/)
+  assert.match(componentSource, /openSignOff === 1 \? " is" : "s are"/)
+  assert.match(componentSource, /liveSignOffs\[0\]\.title/)
+  assert.match(componentSource, /liveSignOffs\[0\]\.owner/)
+  assert.match(componentSource, /\{signOffCountLabel\}/)
+  assert.match(componentSource, /\{signOffImplication\}/)
+})
+
+test("Proof and controls governance is live from Policy_Registry and Approval_Log", () => {
+  assert.match(componentSource, /liveData\?\.policies\.filter/)
+  assert.match(componentSource, /POL-NEW-ADDS-/)
+  assert.match(componentSource, /liveControlPolicies/)
+  assert.match(componentSource, /liveSafetyPolicies/)
+  assert.match(componentSource, /liveApprovals\.map/)
+  assert.match(componentSource, /Governed cost rules and approvals/)
+  assert.match(componentSource, /active Member Adds capability boundaries are registered in Policy_Registry/)
+})
+
+test("Source and confidence uses live freshness, validation and complete Sheet lineage", () => {
+  assert.match(componentSource, /sourceConfidenceSummary/)
+  assert.match(componentSource, /liveProof\?\.loopHealth\.feeds\.filter/)
+  assert.match(componentSource, /quarantineCount: liveProof\?\.loopHealth\.quarantinedRecords/)
+  for (const source of ["Living_Hourly", "Member_Activation", "Action_Log", "Evidence_Log", "Approval_Log", "Policy_Registry", "Studio_Master", "People_Roster"]) {
+    assert.match(componentSource, new RegExp(source))
+  }
+})
+
 test("domain styles are scoped, calm, responsive and contain no pure-black hero or gradient", () => {
   assert.match(componentSource, /new-adds-workspace\.module\.css/)
   assert.match(cssSource, /@media \(max-width: 1100px\)/)
@@ -91,7 +133,7 @@ test("the visible R-0 strip and Despatch rows use the shared domain projection",
 })
 
 test("Member Adds is the visible label while internal New Adds contracts stay intact", () => {
-  for (const label of ["Today's target vs actual", "Synthetic Member Adds source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
+  for (const label of ["Today's target vs actual", "Member Adds source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
   assert.match(componentSource, /resolveNewAddsShadowOutcome/)
   assert.match(componentSource, /OperationalCardStack/)
   assert.doesNotMatch(componentSource, /aria-label="New Adds/)

@@ -5,8 +5,9 @@ import { Building2, CheckCircle2, Clock3, Database, Eye, FileCheck2, Landmark, L
 import type { FinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
 import { OperationalCard, OperationalCardStack } from "@/components/operational-card"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { buildLiveApprovals } from "@/lib/live-approvals"
 
-type Props = { preview: FinanceExpansionPreview }
+type Props = { preview: FinanceExpansionPreview; liveData?: any }
 
 const inrFormatter = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
@@ -23,20 +24,22 @@ function percentage(value: number | null) {
   return value === null ? "Missing" : `${(value * 100).toFixed(1)}%`
 }
 
-export function FinanceExpansionWorkspace({ preview }: Props) {
+export function FinanceExpansionWorkspace({ preview, liveData }: Props) {
   const [selectedStudioId, setSelectedStudioId] = useState(preview.selectedStudioId)
   const [selectedCaseId, setSelectedCaseId] = useState(preview.warRoomCases[0]?.caseId ?? "")
   const [auditOpen, setAuditOpen] = useState(false)
   const selectedOption = preview.options.find((option) => option.studioId === selectedStudioId) ?? preview.options[0]
   const selectedCase = preview.warRoomCases.find((warRoomCase) => warRoomCase.caseId === selectedCaseId) ?? preview.warRoomCases[0]
-  const pendingApprovals = preview.approvals.filter((approval) => approval.status === "Requested").length
+  const liveApprovals = buildLiveApprovals(liveData).filter((approval) => approval.amountInr > 0 || ["cash-control", "nia-margins", "nia-growth"].includes(approval.domain))
+  const pendingApprovals = liveData ? liveApprovals.filter((approval) => approval.pending).length : preview.approvals.filter((approval) => approval.status === "Requested").length
+  const approvalTotal = liveData ? liveApprovals.length : preview.approvals.length
 
   return <DashboardSectionAccordion className="finance-control-workspace" ariaLabel="Finance control sections" sections={[
     { title: "Finance control status", summary: `${preview.mode} · approver ${preview.policies.financialApprover.value}` },
     { title: "Financial guardrails", summary: `${pendingApprovals} approvals requested · cash and opex protected` },
     { title: "Guardrail exceptions", summary: `${preview.guardrails.breaches.length} forecast exceptions require a decision` },
     { title: "Expansion options", summary: `${preview.options.length} Studios compared · ${selectedOption.studioName} selected` },
-    { title: "Approval ledger", summary: `${pendingApprovals}/${preview.approvals.length} categories requested` },
+    { title: "Approval ledger", summary: `${pendingApprovals}/${approvalTotal} categories requested` },
     { title: "Studio health", summary: `${preview.studioHealth.length} required responses` },
     { title: "War Room", summary: `${preview.warRoomCases.length} cases · ${selectedCase.state}` },
   ]}>
@@ -47,9 +50,9 @@ export function FinanceExpansionWorkspace({ preview }: Props) {
         <p>Studio economics, policy versions, approvals and War Room decisions remain explicit. This Preview cannot move money, accept terms, release a Studio or write to Production.</p>
       </div>
       <dl>
-        <div><dt>Source</dt><dd><Database aria-hidden />Synthetic finance fixture</dd></div>
+        <div><dt>Source</dt><dd><Database aria-hidden />{liveData ? "Approval_Log + Action_Log" : "Synthetic finance fixture"}</dd></div>
         <div><dt>As of</dt><dd>{date(preview.source.asOf)}</dd></div>
-        <div><dt>Approver</dt><dd><ShieldCheck aria-hidden />{preview.policies.financialApprover.value}</dd></div>
+        <div><dt>Approver</dt><dd><ShieldCheck aria-hidden />{liveData ? liveApprovals.find((approval) => approval.pending)?.owner || "No pending approver" : preview.policies.financialApprover.value}</dd></div>
       </dl>
     </section>
 
@@ -57,7 +60,7 @@ export function FinanceExpansionWorkspace({ preview }: Props) {
       <article><span>Forecast monthly opex</span><strong>{inr(preview.guardrails.forecast.forecastMonthlyOpexInr)}</strong><p>Cap {inr(preview.policies.monthlyOpexCap.value)} · {preview.policies.monthlyOpexCap.policyId}@v{preview.policies.monthlyOpexCap.version}</p><small><ShieldAlert aria-hidden />Review before month close</small></article>
       <article><span>Projected cash</span><strong>{inr(preview.guardrails.projectedCashAfterCommitmentInr)}</strong><p>Minimum {inr(preview.policies.minimumCash.value)} · after pending and proposed commitments</p><small><ShieldAlert aria-hidden />Immediate escalation</small></article>
       <article><span>Hiring state</span><strong>{preview.policies.hiringState.value}</strong><p>{preview.policies.hiringState.policyId}@v{preview.policies.hiringState.version} · proposed hires {preview.guardrails.forecast.proposedNewHires}</p><small><LockKeyhole aria-hidden />Policy-locked</small></article>
-      <article><span>Pushkar queue</span><strong>{pendingApprovals}</strong><p>of {preview.approvals.length} governed categories remain requested</p><small><FileCheck2 aria-hidden />No auto-approval</small></article>
+      <article><span>Financial approval queue</span><strong>{pendingApprovals}</strong><p>of {approvalTotal} governed categories remain requested</p><small><FileCheck2 aria-hidden />No auto-approval</small></article>
     </section>
 
     <section className="finance-guardrail-band" aria-label="Guardrail exceptions">
@@ -97,8 +100,8 @@ export function FinanceExpansionWorkspace({ preview }: Props) {
     </div>
 
     <section className="closed-loop-panel finance-approval-queue">
-      <header><div><p className="section-kicker">Append-only approval ledger</p><h3>Pushkar financial approvals</h3></div><span>Eight locked categories · shadow decisions only</span></header>
-      <OperationalCardStack label="Pushkar financial approval queue">{preview.approvals.map((approval) => <OperationalCard key={approval.requestId} title={approval.category} domain={`${approval.studioId ?? "Company control"} · ${approval.requestId} · v${approval.version}`} status={approval.status} description={<p>{approval.reason}</p>} fields={[{ label: "Owner", value: approval.approver }, { label: "Amount", value: inr(approval.amountInr) }, { label: "Evidence", value: `${approval.protectedEvidenceRefs.length} protected` }]} />)}</OperationalCardStack>
+      <header><div><p className="section-kicker">Append-only approval ledger</p><h3>Financial approvals</h3></div><span>{liveData ? "Google Sheet · read-only" : "Eight locked categories · shadow decisions only"}</span></header>
+      <OperationalCardStack label="Financial approval queue">{liveData ? liveApprovals.map((approval) => <OperationalCard key={approval.approvalId} title={approval.title} domain={`${approval.domain.replaceAll("-", " ")} · ${approval.approvalId}`} status={approval.decision} action={approval.action} fields={[{ label: "Owner", value: approval.owner }, { label: "Amount", value: inr(approval.amountInr || null) }, { label: "Due", value: date(approval.dueAt || null) }, { label: "Expected result", value: approval.expectedResult || "Not recorded" }]} />) : preview.approvals.map((approval) => <OperationalCard key={approval.requestId} title={approval.category} domain={`${approval.studioId ?? "Company control"} · ${approval.requestId} · v${approval.version}`} status={approval.status} description={<p>{approval.reason}</p>} fields={[{ label: "Owner", value: approval.approver }, { label: "Amount", value: inr(approval.amountInr) }, { label: "Evidence", value: `${approval.protectedEvidenceRefs.length} protected` }]} />)}</OperationalCardStack>
     </section>
 
     <div className="finance-health-grid">

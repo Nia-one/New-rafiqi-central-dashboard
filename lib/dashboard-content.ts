@@ -37,6 +37,10 @@ export function parseDashboardContent(rows: readonly (readonly unknown[])[]): Da
   return content
 }
 
-export function contentValue(content: DashboardContent | undefined, page: string, component: string, key: string, fallback: string) {
-  return content?.get(dashboardContentKey(page, component, key))?.value || fallback
+export function contentValue(content: DashboardContent | readonly DashboardContentRow[] | undefined, page: string, component: string, key: string, fallback: string) {
+  if (!content) return fallback
+  if (Array.isArray(content)) {
+    return content.find((row) => row.page.toLowerCase() === page.toLowerCase() && row.component.toLowerCase() === component.toLowerCase() && row.key.toLowerCase() === key.toLowerCase())?.value || fallback
+  }
+  return (content as DashboardContent).get(dashboardContentKey(page, component, key))?.value || fallback
 }

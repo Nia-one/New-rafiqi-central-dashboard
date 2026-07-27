@@ -1,6 +1,10 @@
 ﻿import { getDashboardData } from "./dashboardService";
 
 import { parseDashboardContent } from "./dashboard-content";
+import type { ActionLogEntry } from "./action-log";
+import type { ActionStatus } from "./allocation-types";
+import type { ExecutionAction } from "./execution-control";
+import type { DashboardRoute } from "./dashboard-model";
 
 function toObjects(rows: any[][]) {
   if (!rows?.length) return [];
@@ -26,6 +30,136 @@ function num(value: any) {
   );
 
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Overview is a derived view.  Its reporting period must come from a source
+ * row in the connected workbook, rather than from the machine running the
+ * dashboard.  This accepts the timestamp column conventions used across the
+ * operational tabs and returns the newest source snapshot.
+ */
+function parseSourceDate(value: any): Date | null {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+
+  const text = String(value).trim();
+  // Do not accidentally treat ordinary metric values (for example, 500) as
+  // dates. Google Sheets timestamps are supplied as an ISO/date string here.
+  if (!/[\-/:T]/.test(text)) return null;
+
+  const timestamp = Date.parse(text);
+  return Number.isNaN(timestamp) ? null : new Date(timestamp);
+}
+
+function latestSourceSnapshot(...tables: any[][][]): Date | null {
+  const timestampHeaders = new Set([
+    "updated at", "updated_at", "captured at", "captured_at", "as of",
+    "as_of", "snapshot at", "snapshot_at", "timestamp", "event time",
+    "event_time",
+  ]);
+  const periodFallbackHeaders = new Set(["period end", "period_end"]);
+
+  const findLatest = (allowedHeaders: Set<string>) => {
+    let latest: Date | null = null;
+
+    for (const table of tables) {
+      if (!table?.length) continue;
+      const headers = (table[0] || []).map((header: any) =>
+        String(header).trim().toLowerCase()
+      );
+      const timestampColumns = headers
+        .map((header: string, index: number) =>
+          allowedHeaders.has(header) ? index : -1
+        )
+        .filter((index: number) => index >= 0);
+
+      for (const row of table.slice(1)) {
+        for (const index of timestampColumns) {
+          const candidate = parseSourceDate(row[index]);
+          if (candidate && (!latest || candidate > latest)) latest = candidate;
+        }
+      }
+    }
+
+    return latest;
+  };
+
+  // Prefer an actual event/update timestamp. A reporting period end is only a
+  // fallback, otherwise a future period boundary can be mistaken for a refresh.
+  return findLatest(timestampHeaders) ?? findLatest(periodFallbackHeaders);
+}
+
+/**
+ * Returns the latest reporting date from an explicitly named source column.
+ * This is deliberately separate from `latestSourceSnapshot`: an update time
+ * in another operational feed must not change the finance calendar used for
+ * CM pacing and month-end projection.
+ */
+function latestDateForHeaders(table: any[][], headerNames: string[]): Date | null {
+  if (!table?.length) return null;
+
+  const requestedHeaders = new Set(headerNames.map((header) => header.toLowerCase()));
+  const columns = (table[0] || [])
+    .map((header: any, index: number) =>
+      requestedHeaders.has(String(header).trim().toLowerCase()) ? index : -1
+    )
+    .filter((index: number) => index >= 0);
+
+  let latest: Date | null = null;
+  for (const row of table.slice(1)) {
+    for (const index of columns) {
+      const candidate = parseSourceDate(row[index]);
+      if (candidate && (!latest || candidate > latest)) latest = candidate;
+    }
+  }
+
+  return latest;
+}
+
+function sourceCalendarMeta(snapshot: Date | null) {
+  if (!snapshot) {
+    return {
+      snapshotAt: "",
+      updatedAt: "No source timestamp",
+      month: "Source period pending",
+      day: 0,
+      daysInMonth: 0,
+      daysLeft: 0,
+    };
+  }
+
+  const parts = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  }).formatToParts(snapshot);
+  const part = (type: string) => Number(parts.find((item) => item.type === type)?.value || 0);
+  const day = part("day");
+  const month = part("month");
+  const year = part("year");
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  return {
+    snapshotAt: snapshot.toISOString(),
+    updatedAt: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(snapshot),
+    month: new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      month: "long",
+      year: "numeric",
+    }).format(snapshot),
+    day,
+    daysInMonth,
+    daysLeft: Math.max(0, daysInMonth - day),
+  };
 }
 
 function first(obj: Record<string, any>, keys: string[]) {
@@ -171,6 +305,7 @@ console.log(data.evidenceLog?.slice(0, 5));
 
   // Convert all Google Sheet tabs into objects
   const studios = toObjects(data.studioMaster);
+  const theatres = toObjects(data.theatreMaster);
   const people = toObjects(data.peopleRoster);
   const living = toObjects(data.livingHourly);
   const livingDashboard = toObjects(data.livingDashboard);
@@ -288,7 +423,8 @@ console.log(enterpriseDemand.slice(0, 3));
 
   const overview = data.dashboardOverview || [];
 
-  // Convert Dashboard_Overview into key/value map
+  // Dashboard_Overview stores approved plans and editorial configuration only.
+  // Actual operating results below are calculated from the source tabs.
   const metrics = Object.fromEntries(
     overview.slice(1).map((row: any[]) => {
       const metric = row[0];
@@ -321,74 +457,193 @@ const plans = {
   CM: num(metrics.Monthly_CM_Target),
 };
 
+  const peopleByActorId = Object.fromEntries(
+    people.map((person) => [
+      String(first(person, ["actor id", "Actor ID"])).trim(),
+      first(person, ["display name", "Display Name", "name", "Name"]),
+    ])
+  );
+  const ownerName = (actorId: any) => {
+    const id = String(actorId || "").trim();
+    return peopleByActorId[id] || id || "Owner not configured";
+  };
+  const sumField = (rows: Record<string, any>[], keys: string[]) =>
+    rows.reduce((sum, row) => sum + num(first(row, keys)), 0);
+
+  // Overview is a master view: derive these actuals from their authoritative
+  // operational tabs instead of asking Operations to maintain a duplicate
+  // Dashboard_Overview number for each one.
+  const contractedActual = sumField(enterpriseDemand, ["headcount matched", "Headcount Matched"]);
+  const capacityActual = sumField(living, ["contracted nests", "Contracted Nests"]);
+  const activeActual = occupiedNests;
+  const eligibleActual = sumField(essentials, ["eligible members", "Eligible Members"]);
+  const buyersActual = sumField(essentials, ["buying members", "Buying Members"]);
+  const fulfilledActual = sumField(essentials, ["orders fulfilled", "Orders Fulfilled"]);
+  const essentialsBilledActual = sumField(essentials, ["essentials billed inr", "Essentials Billed INR"]);
+  const workDemandActual = sumField(work, ["open headcount", "Open Headcount"]);
+  const workSupplyActual = sumField(work, ["matched headcount", "Matched Headcount"]);
+  const attachActual = eligibleActual > 0 ? Math.round((buyersActual / eligibleActual) * 100) : 0;
+  const arpuActual = buyersActual > 0 ? Math.round(essentialsBilledActual / buyersActual) : 0;
+  const cmActual = sumField(finance, ["cm2 inr", "CM2 INR"]);
+  const demandOwner = ownerName(first(enterpriseDemand[0] || {}, ["owner actor id", "Owner Actor ID"]));
+  const livingOwner = ownerName(first(living[0] || {}, ["next action owner actor id", "Next Action Owner Actor ID"]));
+  const essentialsOwner = ownerName(first(essentials[0] || {}, ["next action owner actor id", "Next Action Owner Actor ID"]));
+  const financeOwner = ownerName(first(finance[0] || {}, ["owner actor id", "Owner Actor ID", "finance owner actor id"]));
+
+// Use the newest timestamp written by any connected operational source. This
+// keeps Overview in step with the source tabs without a duplicate Overview
+// period field for Operations to maintain.
+const overviewSnapshot = latestSourceSnapshot(
+  data.dashboardOverview,
+  data.livingHourly,
+  data.livingDashboard,
+  data.workHourly,
+  data.workDashboard,
+  data.essentialsHourly,
+  data.essentialsDashboard,
+  data.essentialsCohorts,
+  data.essentialsInventory,
+  data.financeDaily,
+  data.peopleRoster,
+  data.peopleDashboard,
+  data.peoplePerformance,
+  data.peopleFollowThrough,
+  data.enterpriseDemand,
+  data.memberActivation,
+  data.memberNpsDashboard,
+  data.memberNpsFeedback,
+  data.memberNpsResponses,
+  data.learningHistory
+);
+const reportingPeriod = sourceCalendarMeta(overviewSnapshot);
+// CM is a financial measure, so its forecast calendar is the latest finance
+// business date.  It must never be advanced by updates in a different source
+// tab (for example, People or Member NPS).
+const financeBusinessDate = latestDateForHeaders(data.financeDaily, [
+  "business date",
+  "business_date",
+]);
+const cmReportingPeriod = sourceCalendarMeta(financeBusinessDate ?? overviewSnapshot);
+// Overview consumes the same Action_Log that Operations updates.  This avoids
+// a second, Overview-only action register and keeps the roll-up auditable.
+const executionActions: ExecutionAction[] = actionLog.map((row, index) => {
+  const id = String(first(row, ["action id", "Action ID", "id"]) || `sheet-action-${index + 1}`).trim();
+  const actorId = first(row, ["owner actor id", "Owner Actor ID"]);
+  const detectedAt = String(
+    first(row, ["proposed at", "Proposed At", "updated at", "Updated At"]) || reportingPeriod.snapshotAt
+  );
+  const metric = String(first(row, ["expected metric", "Expected Metric"]) || "Operating outcome").trim();
+  const evidence = String(first(row, ["required evidence", "Required Evidence"]) || "").trim();
+  const sourceState = String(first(row, ["state", "State"]) || "Detected").trim();
+  const status: ActionStatus = (["Detected", "Agreed", "Assigned", "Resolved", "Closed", "Verified", "Dismissed"] as const).includes(sourceState as ActionStatus)
+    ? sourceState as ActionStatus
+    : "Detected";
+  const actionType = status === "Agreed" ? "agree" : status === "Assigned" ? "assign" : status === "Resolved" ? "resolve" : status === "Closed" ? "close" : status === "Verified" ? "verify" : status === "Dismissed" ? "dismiss" : "detect";
+
+  return {
+    source: "system_detected",
+    id,
+    title: String(first(row, ["operating objective", "Operating Objective", "title", "expected metric"]) || "Action").trim(),
+    owner: ownerName(actorId),
+    team: String(first(row, ["team", "lane", "approval tier"]) || "Operations").trim(),
+    theatre: String(first(row, ["theatre", "theatre id", "where"]) || "Not recorded").trim(),
+    committedBy: ownerName(actorId),
+    dueAt: String(first(row, ["due at", "Due At"]) || reportingPeriod.snapshotAt),
+    evidence: evidence ? [evidence] : [],
+    affectedMembers: num(first(row, ["affected members", "idle units", "matched headcount"])),
+    expectedMetric: {
+      key: metric,
+      label: metric,
+      direction: "up",
+      checkWindowDays: 1,
+      baselineValue: num(first(row, ["baseline value", "Baseline Value"])),
+      actualValue: null,
+      unit: "",
+    },
+    actionLog: [{
+      id: `${id}-detected`,
+      queue_item_id: id,
+      actor_id: String(actorId || "").trim() || null,
+      action_type: actionType,
+      previous_status: null,
+      new_status: status,
+      executed_at: detectedAt,
+      note: String(first(row, ["operating objective", "Operating Objective", "title"]) || "").trim() || undefined,
+    }] satisfies ActionLogEntry[],
+    route: { screen: "Overview" } as DashboardRoute,
+    mismatchId: String(first(row, ["incident id", "Incident ID"]) || "").trim() || undefined,
+    meetingId: null,
+    meetingLabel: null,
+    meetingDate: null,
+    decisionText: null,
+    nextMeetingDue: null,
+  };
+});
+// Finance provides the current CM snapshot. Project it using the elapsed
+// source-period pace so Overview does not depend on a separately keyed-in
+// month-end actual/projection.
+const cmProjection = cmReportingPeriod.day > 0
+  ? Math.round((cmActual / cmReportingPeriod.day) * cmReportingPeriod.daysInMonth)
+  : 0;
+const monthlyCMTarget = num(metrics.Monthly_CM_Target);
+const remainingCmGap = Math.max(0, monthlyCMTarget - cmActual);
+const requiredDailyCmPace = cmReportingPeriod.daysLeft > 0
+  ? remainingCmGap / cmReportingPeriod.daysLeft
+  : 0;
+const currentDailyCmPace = cmReportingPeriod.day > 0
+  ? cmActual / cmReportingPeriod.day
+  : 0;
+const askRateMultiple = currentDailyCmPace > 0
+  ? requiredDailyCmPace / currentDailyCmPace
+  : 0;
+
   return {
   meta: {
     block: "",
-    updatedAt: new Date().toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    month: new Date().toLocaleString("en-IN", {
-      month: "long",
-      year: "numeric",
-    }),
-    day: new Date().getDate(),
-    daysInMonth: new Date(
-      new Date().getFullYear(),
-      new Date().getMonth() + 1,
-      0
-    ).getDate(),
-    daysLeft:
-      new Date(
-        new Date().getFullYear(),
-        new Date().getMonth() + 1,
-        0
-      ).getDate() - new Date().getDate(),
+    ...reportingPeriod,
     theatresBehind: 0,
     illustrative: false,
   },
+  cmReportingPeriod,
 
-  monthlyCMTarget: num(metrics.Monthly_CM_Target),
-  monthEndProjection: num(metrics.Month_End_Projection),
+  monthlyCMTarget,
+  monthEndProjection: cmProjection || cmActual || num(metrics.Month_End_Projection),
+
+  sourceRegistry: toObjects(data.sourceRegistry),
+  policyRegistry: toObjects(data.policyRegistry),
 
   living,
   finance,
   studios,
+  theatres,
   enterpriseDemand,
   memberActivation: toObjects(data.memberActivation),
   incidentLog: toObjects(data.incidentLog),
   actionLog,
+  executionActions,
   evidenceLog: toObjects(data.evidenceLog),
   approvalLog: toObjects(data.approvalLog),
   work,
   essentials,
   people,
-  askRateMultiple: 1,
+  askRateMultiple,
 
   flywheel: {
     living: {
-      demand: num(metrics.Demand_Contracted),
-      supply: num(metrics.Capacity_Live),
+      demand: contractedActual,
+      supply: capacityActual,
       occupied: occupiedNests,
     },
 
     work: {
-      demand: work.length,
-      supply: work.reduce(
-        (sum, row) =>
-          sum + num(first(row, [
-            "available workers",
-            "available workers count",
-            "worker availability",
-            "headcount available"
-          ])),
-        0
-      ),
+      demand: workDemandActual,
+      supply: workSupplyActual,
     },
 
     essentials: {
-      eligible: num(metrics.Members_Active),
-      purchasing: num(metrics.Attach),
+      eligible: eligibleActual,
+      purchasing: buyersActual,
+      fulfilled: fulfilledActual,
     },
   },
 
@@ -397,49 +652,55 @@ const plans = {
       id: "contracted",
       label: "Demand contracted",
       lane: "Demand",
-      actual: num(metrics.Demand_Contracted),
+      actual: contractedActual,
       plan: plans.Demand_Contracted,
       unit: "members",
+      owner: demandOwner,
     },
     {
       id: "capacity",
       label: "Capacity live",
       lane: "Shram Park",
-      actual: num(metrics.Capacity_Live),
+      actual: capacityActual,
       plan: plans.Capacity_Live,
       unit: "Nests",
+      owner: livingOwner,
     },
     {
       id: "active",
       label: "Members active",
       lane: "FONO",
-      actual: num(metrics.Members_Active),
+      actual: activeActual,
       plan: plans.Members_Active,
       unit: "members",
+      owner: livingOwner,
     },
     {
       id: "attach",
       label: "Attach",
       lane: "Essentials",
-      actual: num(metrics.Attach),
+      actual: attachActual,
       plan: plans.Attach,
       unit: "percent",
+      owner: essentialsOwner,
     },
     {
       id: "arpu",
       label: "ARPU",
       lane: "Economics",
-      actual: num(metrics.ARPU),
+      actual: arpuActual,
       plan: plans.ARPU,
       unit: "INR",
+      owner: essentialsOwner,
     },
     {
       id: "cm",
       label: "CM",
       lane: "Economics",
-      actual: num(metrics.CM),
+      actual: cmActual,
       plan: plans.CM,
       unit: "INR",
+      owner: financeOwner,
     },
   ],
 
@@ -450,6 +711,14 @@ const plans = {
     evidence: row.evidence,
     owner: row.owner,
     nextStep: row.nextStep,
+    why1: row.why1,
+    why2: row.why2,
+    why3: row.why3,
+    why4: row.why4,
+    why5: row.why5,
+    reviewStatus: row.reviewStatus,
+    reviewedBy: row.reviewedBy,
+    reviewedAt: row.reviewedAt,
   })),
 
   actions: actions.map((row) => ({
@@ -468,18 +737,25 @@ const plans = {
     cmRisk: num(row.cmRisk),
     owner: row.owner,
     status: row.status,
+    alertStatus: row.alertStatus,
+    alertQueuedAt: row.alertQueuedAt,
   })),
 
   constraints: constraints.map((row) => ({
   id: row.id,
   title: row.title,
   where: row.where,
-  idleUnits:
-    num(row.idleUnits),
-  cmPerUnit: num(row.cmPerUnit),
-  riskHours: num(row.riskHours),
-  ageHours: num(row.ageHours),
-  thresholdHours: num(row.thresholdHours) || num(row.riskHours),
+  theatre: row.theatre || "",
+  impact: String(row.impact ?? "").trim() === "" ? null : num(row.impact),
+  idleUnits: String(row.idleUnits ?? "").trim() === "" ? null : num(row.idleUnits),
+  cmPerUnit: String(row.cmPerUnit ?? "").trim() === "" ? null : num(row.cmPerUnit),
+  riskHours: String(row.riskHours ?? "").trim() === "" ? null : num(row.riskHours),
+  ageHours: String(row.ageHours ?? "").trim() === "" ? null : num(row.ageHours),
+  thresholdHours: String(row.thresholdHours ?? "").trim() === ""
+    ? (String(row.riskHours ?? "").trim() === "" ? null : num(row.riskHours))
+    : num(row.thresholdHours),
+  recoverableShare: String(row.recoverableShare ?? "").trim() === "" ? null : num(row.recoverableShare),
+  confidence: row.confidence || "",
   deadlineAt: row.deadlineAt || "",
   detail: row.detail,
   owner: row.owner,
@@ -490,6 +766,8 @@ const plans = {
   history: history.map((row) => ({
   day: new Date(row.business_date).getDate(),
   actual: num(row.actual),
+  businessDate: row.business_date || "",
+  capturedAt: row.captured_at || row.capturedAt || row.business_date || "",
 })),
 previousBlock: previousBlocks.length
   ? {
@@ -502,6 +780,7 @@ previousBlock: previousBlocks.length
       stalledTheatre: previousBlocks[0].stalledTheatre || "",
       staleOwner: previousBlocks[0].staleOwner || "",
       staleHours: num(previousBlocks[0].staleHours),
+      snapshotTime: previousBlocks[0].snapshot_time || previousBlocks[0].snapshotTime || "",
     }
   : {
       cm: 0,
@@ -513,12 +792,24 @@ previousBlock: previousBlocks.length
       stalledTheatre: "",
       staleOwner: "",
       staleHours: 0,
+      snapshotTime: "",
     },
 
     livingSummary,
   fonoOccupancy: fonoOccupancyLive,
   livingDashboard,
   workDashboard: toObjects(data.workDashboard),
+  essentialsDashboard: toObjects(data.essentialsDashboard),
+  essentialsCohorts: toObjects(data.essentialsCohorts),
+  essentialsInventory: toObjects(data.essentialsInventory),
+  memberNpsDashboard: toObjects(data.memberNpsDashboard),
+  memberNpsFeedback: toObjects(data.memberNpsFeedback),
+  memberNpsResponses: toObjects(data.memberNpsResponses),
+  peopleDashboard: toObjects(data.peopleDashboard),
+  peoplePerformance: toObjects(data.peoplePerformance),
+  peopleFollowThrough: toObjects(data.peopleFollowThrough),
+  learningHistory: toObjects(data.learningHistory),
+  cashControlChannels: toObjects(data.cashControlChannels),
 
   dashboardContent: parseDashboardContent(data.dashboardContent),
 };

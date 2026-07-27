@@ -8,8 +8,9 @@ import { LoopHealthStrip } from "@/components/loop-health-strip"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { ActionSegment, OperationalCard, OperationalCardStack, type ActionStage } from "@/components/operational-card"
 import { dashboardDisplayLabel } from "@/lib/dashboard-model"
+import { buildLiveApprovals } from "@/lib/live-approvals"
 
-type Props = { preview: ControlledAutonomyPreview }
+type Props = { preview: ControlledAutonomyPreview; liveData?: any }
 type FeedbackFilter = "All feedback" | AutonomyFeedbackLabel
 type ShadowDecisionOutcome = "Approved" | "Declined"
 type ShadowDecisionAudit = Readonly<{ auditId: string; decisionId: string; outcome: ShadowDecisionOutcome; recordedAt: string }>
@@ -42,7 +43,7 @@ function date(value: string) {
   return `${dateFormatter.format(new Date(value))} IST`
 }
 
-export function ControlledAutonomyWorkspace({ preview }: Props) {
+export function ControlledAutonomyWorkspace({ preview, liveData }: Props) {
   const [feedbackFilter, setFeedbackFilter] = useState<FeedbackFilter>("All feedback")
   const [shadowDecisionAudit, setShadowDecisionAudit] = useState<readonly ShadowDecisionAudit[]>([])
   const { evaluation } = preview
@@ -55,7 +56,7 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
   const fixNowRoutine = preview.routineLoop.records.filter((record) => record.state === "Escalated")
   const recoveringRoutine = preview.routineLoop.records.filter((record) => record.state === "Reopened")
   const verifiedRoutine = preview.routineLoop.records.filter((record) => record.state === "Closed")
-  const waitingDecisions = preview.learningQueue
+  const fixtureWaitingDecisions = preview.learningQueue
     .filter((entry) => entry.evaluation.requiredDisposition === "Human sign-off")
     .map((entry) => ({
       decisionId: entry.recommendationId,
@@ -65,6 +66,17 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
       deadline: `Before adoption · ${entry.authority}`,
       owner: entry.authority,
     }))
+  const liveWaitingDecisions = buildLiveApprovals(liveData).filter((approval) => approval.pending).map((approval) => ({
+    decisionId: approval.approvalId,
+    decisionRequired: approval.title,
+    why: approval.businessReason || approval.decisionReason || "A governed human decision is required.",
+    impact: approval.expectedResult || approval.action,
+    deadline: approval.dueAt ? date(approval.dueAt) : "No deadline recorded",
+    owner: approval.owner,
+    domain: approval.domain,
+    action: approval.action,
+  }))
+  const waitingDecisions = liveData ? liveWaitingDecisions : fixtureWaitingDecisions
 
   function expectedCompletion(state: (typeof preview.routineLoop.records)[number]["state"]) {
     if (state === "Closed") return "Complete"
@@ -88,7 +100,7 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
     })])
   }
 
-  return <DashboardSectionAccordion className="autonomy-workspace self-drive-workspace" ariaLabel="Your Sign-Off sections" sections={[
+  return <DashboardSectionAccordion className="autonomy-workspace self-drive-workspace" ariaLabel="Your Sign-Off sections" defaultOpenIndex={0} sections={[
     { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} verified` },
     { title: "Decision status", summary: `${waitingDecisions.length} material decisions · ${fixNowRoutine.length} failed recoveries` },
     { title: "Decisions by urgency", summary: `${waitingDecisions.length + fixNowRoutine.length + recoveringRoutine.length} items need review or recovery` },
@@ -112,9 +124,8 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
       <ActionSegment segment="waiting-sign-off" count={waitingDecisions.length}>
         {waitingDecisions.map((decision) => {
           const localDecision = shadowDecisionAudit.filter((item) => item.decisionId === decision.decisionId).at(-1)
-          return <OperationalCard key={decision.decisionId} title={decision.decisionRequired} domain="Material target change" status={localDecision ? `${localDecision.outcome} locally` : "Your sign-off"} tone={localDecision ? "verified" : "breach"} fields={[{ label: "Owner", value: decision.owner }, { label: "Due", value: decision.deadline }]} progress="evidence" story={[{ label: "Why it matters", value: decision.why }, { label: "What Nia already did", value: `Prepared the recommendation and quantified the expected effect: ${decision.impact}` }, { label: "What happens next", value: "Approve or decline. Nothing changes outside this shadow preview." }]}>
-            <div className="self-drive-approval-controls"><button type="button" onClick={() => recordShadowDecision(decision.decisionId, "Approved")}>Approve</button><button type="button" onClick={() => recordShadowDecision(decision.decisionId, "Declined")}>Decline</button></div>
-            <p className="self-drive-shadow-note"><FileLock2 aria-hidden />Shadow decision only · {localDecision ? `${localDecision.outcome} locally` : "no external effect"}</p>
+          return <OperationalCard key={decision.decisionId} title={decision.decisionRequired} domain={"domain" in decision ? decision.domain.replaceAll("-", " ") : "Material target change"} status={liveData ? "Pending human approval" : localDecision ? `${localDecision.outcome} locally` : "Your sign-off"} tone={localDecision ? "verified" : "breach"} action={"action" in decision ? decision.action : undefined} fields={[{ label: "Owner", value: decision.owner }, { label: "Due", value: decision.deadline }]} progress="evidence" story={[{ label: "Why it matters", value: decision.why }, { label: "What Nia already did", value: `Prepared the recommendation and quantified the expected effect: ${decision.impact}` }, { label: "What happens next", value: liveData ? "The authorised approver records one decision in Approval_Log." : "Approve or decline. Nothing changes outside this shadow preview." }]}>
+            {liveData ? <p className="self-drive-shadow-note"><FileLock2 aria-hidden />Google Sheet - read-only · update Approval_Log once</p> : <><div className="self-drive-approval-controls"><button type="button" onClick={() => recordShadowDecision(decision.decisionId, "Approved")}>Approve</button><button type="button" onClick={() => recordShadowDecision(decision.decisionId, "Declined")}>Decline</button></div><p className="self-drive-shadow-note"><FileLock2 aria-hidden />Shadow decision only · {localDecision ? `${localDecision.outcome} locally` : "no external effect"}</p></>}
           </OperationalCard>
         })}
       </ActionSegment>
@@ -144,7 +155,7 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
         <p>The system detects, routes, chases, collects proof, verifies, closes, reopens and escalates routine work. A person appears only after repeated, independently verified non-performance survives data-quality and prior-intervention checks.</p>
       </div>
       <dl>
-        <div><dt>Source</dt><dd><Database aria-hidden />Synthetic fixture</dd></div>
+        <div><dt>Source</dt><dd><Database aria-hidden />{liveData ? "Approval_Log + Action_Log" : "Synthetic fixture"}</dd></div>
         <div><dt>As of</dt><dd>{date(preview.source.asOf)}</dd></div>
         <div><dt>Execution</dt><dd><FileLock2 aria-hidden />Kill switch engaged</dd></div>
       </dl>

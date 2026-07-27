@@ -93,7 +93,7 @@ export function AllocationReviewPanel({
 
           <div>
             <p className="review-tag">
-              ILLUSTRATIVE OPERATING DATA
+              CONNECTED OPERATING DATA
             </p>
 
             <h2 id={titleId}>
@@ -143,8 +143,7 @@ export function AllocationReviewPanel({
             {components === "No data" ? (
 
               <p className="review-nodata">
-                No score is available because CM at risk is missing.
-                Confidence stays {mismatch.confidence}.
+                No score is available because one or more scoring inputs are missing from the connected Sheet.
               </p>
 
             ) : (
@@ -282,7 +281,7 @@ export function AllocationReviewPanel({
             </span>
 
             <strong className="tnum">
-              {mismatch.ageHours}h / {mismatch.thresholdHours}h
+              {mismatch.timingAvailable === false ? "No data" : `${mismatch.ageHours}h / ${mismatch.thresholdHours}h`}
             </strong>
 
           </div>
@@ -435,7 +434,7 @@ export function AllocationReviewPanel({
         <section className="review-action">
 
           <h3>
-            System-generated action
+            Recorded action
           </h3>
 
 
@@ -491,14 +490,16 @@ export function AllocationReviewPanel({
             </span>
 
             <strong>
-              Queued automatically
+              {mismatch.alertStatus || "No data"}
             </strong>
 
           </div>
 
 
           <p>
-            Delivery remains illustrative until the alert connector is live.
+            {mismatch.alertQueuedAt && mismatch.alertQueuedAt !== "No data"
+              ? `Recorded at ${istTime(mismatch.alertQueuedAt)}`
+              : "Alert time is not recorded in the connected Sheet."}
           </p>
 
 
