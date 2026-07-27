@@ -223,7 +223,7 @@ The audit must report:
 | Self Drive | Member Savings | MemberSavingsWorkspace | VERIFY | Pending audit | Pending audit | Pending audit | Pending | Pending | Verify every accordion section before sign-off |
 | Self Drive | Member Engagement | MemberEngagementWorkspace | PENDING | - | - | - | - | - | - |
 | Self Drive | New Adds | NewAddsWorkspace | PENDING | - | - | - | - | - | - |
-| Self Drive | Nia Growth | NiaGrowthWorkspace | PENDING | - | - | - | - | - | - |
+| Self Drive | Nia Growth | NiaGrowthWorkspace | COMPLETE | Live Living_Hourly + People_Roster + approvals | Reused live mapper and dashboard approval plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Live summary, measures and owner now derive from the live Living feed; focused mapper tests passed (21/21) |
 | Self Drive | Nia Margins | NiaMarginsWorkspace | PENDING | - | - | - | - | - | - |
 | Self Drive | Enterprise Demand | EnterpriseDemandWorkspace | PENDING | - | - | - | - | - | - |
 | Self Drive | Cash & Control | CashControlWorkspace | PENDING | - | - | - | - | - | - |

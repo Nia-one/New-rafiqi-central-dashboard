@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
+import { buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveNiaGrowthProjection, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
 
 const snapshot = buildLiveSelfDriveSnapshot({
   meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
@@ -187,6 +187,27 @@ test("Member Adds returns an honest no-data state instead of a fixture fallback"
     progressPercent: 0,
     owner: "Unassigned",
   })
+})
+
+test("Nia Growth summary derives its target, current and owner from the live Living feed", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
+    living: [
+      { "theatre id": "T1", "studio id": "S1", "supply model": "FONO", "contracted nests": "120", "activation ready nests": "96", "occupied nests": "72", "next action owner actor id": "P1" },
+      { "theatre id": "T1", "studio id": "S2", "supply model": "SP", "contracted nests": "180", "activation ready nests": "84", "occupied nests": "54", "next action owner actor id": "P2" },
+    ],
+    people: [
+      { "actor id": "P1", "display name": "Priya" },
+      { "actor id": "P2", "display name": "Ravi" },
+    ],
+  })
+  const projection = buildLiveNiaGrowthProjection(live)
+  assert.equal(projection.summary.target, "300 contracted Nests")
+  assert.equal(projection.summary.current, "180 activation-ready Nests")
+  assert.equal(projection.summary.gap, "120 Nests")
+  assert.equal(projection.summary.owner, "Priya")
+  assert.match(projection.measures[0].value, /180/)
+  assert.match(projection.measures[2].value, /FONO 96/)
 })
 
 test("Member Adds fill tasks come only from FONO Living incidents and Action_Log", () => {

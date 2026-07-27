@@ -8,6 +8,7 @@ type SheetRow = Record<string, unknown>
 import type { MarginStudioInput } from "@/lib/operating-loop/nia-margins-loop"
 import type { FillTask, NewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engagement-loop"
+import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import { buildLoopHealth, type LoopHealth } from "@/lib/operating-loop/loop-health"
 
 const text = (row: SheetRow, key: string) => String(row[key] ?? "").trim()
@@ -155,6 +156,11 @@ export type LiveSelfDriveFilters = Readonly<{
   location: string
   studio: string
   person: string
+}>
+
+export type LiveNiaGrowthProjection = Readonly<{
+  summary: NiaGrowthPreview["summary"]
+  measures: NiaGrowthPreview["measures"]
 }>
 
 export type LiveNewAddsFillStatus = Readonly<{
@@ -864,6 +870,36 @@ export function buildLiveMemberEngagementLoopHealth(snapshot: LiveSelfDriveSnaps
     }),
     quarantinedRecords: freshness.quarantinedRecords,
   })
+}
+
+export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): LiveNiaGrowthProjection {
+  const contractedNests = snapshot.living.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
+  const activationReadyNests = snapshot.living.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
+  const gapNests = Math.max(0, contractedNests - activationReadyNests)
+  const ownerActorId = snapshot.living.map((row) => text(row, "next action owner actor id")).find(Boolean) || ""
+  const owner = snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned"
+  const progress = contractedNests > 0 ? `${Math.round(activationReadyNests / contractedNests * 100)}%` : "No data"
+  const summary = Object.freeze({
+    target: `${contractedNests} contracted Nests`,
+    current: `${activationReadyNests} activation-ready Nests`,
+    gap: `${gapNests} Nests`,
+    owner,
+    progress,
+    verifiedResult: `${activationReadyNests} Nests from the live Living feed`,
+  })
+  const fonoRows = snapshot.living.filter((row) => text(row, "supply model").toLowerCase() === "fono")
+  const spRows = snapshot.living.filter((row) => text(row, "supply model").toLowerCase() === "sp")
+  const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
+  const spReady = spRows.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
+  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
+  const spContracted = spRows.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
+  const measures: NiaGrowthPreview["measures"] = Object.freeze([
+    Object.freeze({ id: "ready-capacity", label: "Activation-ready capacity", value: `${activationReadyNests} ready Nests · FONO ${fonoReady} · SP ${spReady}`, target: `Plans: ${fonoContracted} · ${spContracted}`, detail: "Independently verified Nests only" }),
+    Object.freeze({ id: "time-to-ready", label: "Opportunity to ready", value: `${gapNests} Nest gap`, target: "SLA pending approval", detail: "Live readiness gap from Living_Hourly" }),
+    Object.freeze({ id: "fono-health", label: "FONO conversion health", value: `FONO ${fonoReady} · ${fonoContracted} contracted`, target: "Kept separate", detail: "FONO readiness remains independent from SP" }),
+    Object.freeze({ id: "sp-exposure", label: "SP capital coverage", value: `SP ${spReady} · ${spContracted} contracted`, target: "Coverage remains governed", detail: "SP readiness remains separate from FONO" }),
+  ])
+  return Object.freeze({ summary, measures })
 }
 
 export function buildLiveSelfDriveSnapshot(ops: any): LiveSelfDriveSnapshot {

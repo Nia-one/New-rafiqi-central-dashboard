@@ -9,6 +9,7 @@ import { TokenSelect } from "@/components/token-select"
 import { MeasureViz } from "@/components/measure-viz"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { approvalsForDomain } from "@/lib/live-approvals"
+import { buildLiveNiaGrowthProjection } from "@/lib/live-mappers/self-drive"
 import styles from "./nia-growth-workspace.module.css"
 
 type Props = { preview: NiaGrowthPreview; liveData?: any }
@@ -41,10 +42,11 @@ function GrowthLane({ lane }: { lane: NiaGrowthPreview["lanes"][number] }) {
 }
 
 export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props) {
-  const target = liveData?.living?.reduce((sum: number, row: any) => sum + Number(row["contracted nests"] || 0), 0) || 0
-  const current = liveData?.summary?.readyNests ?? 0
-  const gap = Math.max(0, target - current)
-  const owner = liveData?.living?.[0]?.["next action owner actor id"] || fixturePreview.summary.owner
+  const liveProjection = liveData ? buildLiveNiaGrowthProjection(liveData) : null
+  const target = liveProjection ? Number((liveProjection.summary.target.match(/\d+/) ?? [0])[0]) : (liveData?.living?.reduce((sum: number, row: any) => sum + Number(row["contracted nests"] || 0), 0) || 0)
+  const current = liveProjection ? Number((liveProjection.summary.current.match(/\d+/) ?? [0])[0]) : (liveData?.summary?.readyNests ?? 0)
+  const gap = liveProjection ? Number((liveProjection.summary.gap.match(/\d+/) ?? [0])[0]) : Math.max(0, target - current)
+  const owner = liveProjection?.summary.owner || liveData?.living?.[0]?.["next action owner actor id"] || fixturePreview.summary.owner
   const liveSignOffs = approvalsForDomain(liveData, "nia-growth", true).map((approval) => ({
     id: approval.approvalId,
     supplyModel: `${approval.title} ${approval.action}`.toLowerCase().includes("fono") ? "FONO" as const : "SP" as const,
@@ -58,10 +60,14 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
     headline: liveData ? `${current} activation-ready Nests against ${target} contracted Nests.` : fixturePreview.headline,
     summary: {
       ...fixturePreview.summary,
-      target: `${target} contracted Nests`, current: `${current} activation-ready Nests`, gap: `${gap} Nests`, owner,
-      progress: target ? `${Math.round(current / target * 100)}%` : "No data",
-      verifiedResult: `${current} Nests from the live Living feed`,
+      target: liveProjection?.summary.target ?? `${target} contracted Nests`,
+      current: liveProjection?.summary.current ?? `${current} activation-ready Nests`,
+      gap: liveProjection?.summary.gap ?? `${gap} Nests`,
+      owner,
+      progress: liveProjection?.summary.progress ?? (target ? `${Math.round(current / target * 100)}%` : "No data"),
+      verifiedResult: liveProjection?.summary.verifiedResult ?? `${current} Nests from the live Living feed`,
     },
+    measures: liveProjection?.measures ?? fixturePreview.measures,
     signOffs: liveData ? liveSignOffs : fixturePreview.signOffs,
   }
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
