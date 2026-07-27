@@ -221,7 +221,7 @@ The audit must report:
 | Workspace | Page | Component | Status | Live Source | Existing Data Reused | Missing Sheet Fields | Tests | Build | Notes |
 |-----------|------|-----------|--------|-------------|----------------------|----------------------|-------|-------|-------|
 | Self Drive | Member Savings | MemberSavingsWorkspace | VERIFY | Pending audit | Pending audit | Pending audit | Pending | Pending | Verify every accordion section before sign-off |
-| Self Drive | Member Engagement | MemberEngagementWorkspace | PENDING | - | - | - | - | - | - |
+| Self Drive | Member Engagement | MemberEngagementWorkspace | COMPLETE | Live Action_Log + Evidence_Log + Member_NPS_Feedback + Member_NPS_Responses + People_Roster + Policy_Registry + Learning_History | Reused live mapper and existing approval/loop-health plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Live command now requires a governed Action_Log row before it reports a recovery command; focused mapper tests passed (22/22) |
 | Self Drive | New Adds | NewAddsWorkspace | PENDING | - | - | - | - | - | - |
 | Self Drive | Nia Growth | NiaGrowthWorkspace | COMPLETE | Live Living_Hourly + People_Roster + approvals | Reused live mapper and dashboard approval plumbing | None | lib/live-mappers/self-drive.test.ts | npm run build | Live summary, measures and owner now derive from the live Living feed; focused mapper tests passed (21/21) |
 | Self Drive | Nia Margins | NiaMarginsWorkspace | PENDING | - | - | - | - | - | - |

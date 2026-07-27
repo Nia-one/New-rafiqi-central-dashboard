@@ -251,6 +251,16 @@ test("Member Adds fill tasks come only from FONO Living incidents and Action_Log
   }])
 })
 
+test("Member Engagement command stays honest when feedback exists without a governed action", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    memberNpsFeedback: [{ id: "FB-1", "member token": "Member A", "captured at": "2026-07-26T16:30:00+05:30", "action id": "A-1" }],
+  })
+  const command = buildLiveMemberEngagementCommand(live)
+  assert.equal(command.hasData, false)
+  assert.equal(command.owner, "Unassigned")
+  assert.equal(command.openSignals, 1)
+})
+
 test("Member Engagement freshness uses the three connected Sheet feeds and validates rows", () => {
   const live = buildLiveSelfDriveSnapshot({
     meta: { updatedAt: "2026-07-26T17:00:00+05:30" },

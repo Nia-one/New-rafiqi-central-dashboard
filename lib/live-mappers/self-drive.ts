@@ -509,6 +509,7 @@ export function buildLiveMemberEngagementCommand(snapshot: LiveSelfDriveSnapshot
     return actionId.includes("eng") || objective.includes("member engagement") || objective.includes("retention")
   })
   const command = engagementActions[0]
+  const hasGovernedAction = Boolean(command && (text(command, "action id") || text(command, "operating objective") || text(command, "owner actor id") || text(command, "due at") || text(command, "state")))
   const verifiedEvidenceIds = new Set(snapshot.evidence
     .filter((row) => text(row, "verification status").toLowerCase() === "verified")
     .map((row) => text(row, "linked id"))
@@ -518,20 +519,20 @@ export function buildLiveMemberEngagementCommand(snapshot: LiveSelfDriveSnapshot
     const responseId = text(row, "nps response id")
     return !verifiedEvidenceIds.has(actionId) && !verifiedEvidenceIds.has(responseId)
   }).length
-  const baselineRecovered = command ? number(command, "baseline value") : 0
-  const targetRecovered = command ? number(command, "target value") : 0
-  const ownerActorId = command ? text(command, "owner actor id") : ""
-  const owner = text(snapshot.people.find((row) => text(row, "actor id") === ownerActorId) ?? {}, "display name") || ownerActorId || "Unassigned"
+  const baselineRecovered = hasGovernedAction ? number(command, "baseline value") : 0
+  const targetRecovered = hasGovernedAction ? number(command, "target value") : 0
+  const ownerActorId = hasGovernedAction ? text(command, "owner actor id") : ""
+  const owner = hasGovernedAction ? (text(snapshot.people.find((row) => text(row, "actor id") === ownerActorId) ?? {}, "display name") || ownerActorId || "Unassigned") : "Unassigned"
   return Object.freeze({
-    hasData: Boolean(command) || snapshot.memberNpsFeedback.length > 0,
+    hasData: hasGovernedAction,
     openSignals,
     baselineRecovered,
     targetRecovered,
     recoveryGap: Math.max(0, targetRecovered - baselineRecovered),
     owner,
     ownerActorId,
-    state: command ? text(command, "state") || "Detected" : "Detected",
-    dueAt: command ? text(command, "due at") : "",
+    state: hasGovernedAction ? text(command, "state") || "Detected" : "Detected",
+    dueAt: hasGovernedAction ? text(command, "due at") : "",
   })
 }
 
