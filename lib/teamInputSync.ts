@@ -140,9 +140,18 @@ async function syncEnterpriseOutcomes(
   };
 }
 
-function headerRow(rows: unknown[][], targetHeaders: string[]) {
+export function headerRow(rows: unknown[][], targetHeaders: string[]) {
   const target = new Set(targetHeaders.map(normal));
-  return rows.findIndex((row) => row.filter((cell) => target.has(aliases[normal(cell)] || normal(cell))).length >= 4);
+  let bestIndex = -1;
+  let bestMatches = 3;
+  rows.forEach((row, index) => {
+    const matches = row.filter((cell) => target.has(aliases[normal(cell)] || normal(cell))).length;
+    if (matches > bestMatches) {
+      bestIndex = index;
+      bestMatches = matches;
+    }
+  });
+  return bestIndex;
 }
 
 const financeSourceTabs = ["Living_Hourly", "Work_Hourly", "Essentials_Hourly"] as const;
