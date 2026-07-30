@@ -60,8 +60,8 @@ test("the primary visual explains contracted occupancy, vacancy and fill time by
   for (const theatre of ["Oragadam", "Sriperumbudur", "Hosur"]) assert.ok(buildNewAddsPreview().theatres.some((row) => row.theatre === theatre))
 })
 
-test("the component remains FONO-only and does not create a second report or shared shell", () => {
-  assert.match(componentSource, /data-supply-model=\"FONO\"/)
+test("the component remains contracted FONO-SP-only and does not create a second report or shared shell", () => {
+  assert.match(componentSource, /data-source-scope=\"FONO Funnel and Shram Park\"/)
   assert.doesNotMatch(componentSource, /nia-dashboard|dashboard-model|OPERATIONS_TABS|Rafiqi Inside|Self Learn|LoopHealth|loop-health/)
   assert.doesNotMatch(componentSource, /supplyModel:\s*\"SP\"|data-supply-model=\"SP\"/)
 })
@@ -75,9 +75,9 @@ test("shadow recovery is functional and no live side-effect path exists", () => 
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|use server|server action|navigator\.geolocation/)
 })
 
-test("live vacancy list is read-only and sourced from the Studios tab", () => {
+test("live vacancy list is read-only and sourced from Fono Funnel and Shram Park", () => {
   assert.match(componentSource, /buildLiveNewAddsVacancyGroups/)
-  assert.match(componentSource, /Studios tab · read-only/)
+  assert.match(componentSource, /Fono Funnel \+ Shram Park · read-only/)
   for (const column of ["Contracted", "Occupied", "Occupancy", "Pending to fill"]) assert.match(componentSource, new RegExp(column))
 })
 
@@ -108,7 +108,7 @@ test("Source and confidence uses live freshness, validation and complete Sheet l
   assert.match(componentSource, /sourceConfidenceSummary/)
   assert.match(componentSource, /liveProof\?\.loopHealth\.feeds\.filter/)
   assert.match(componentSource, /quarantineCount: liveProof\?\.loopHealth\.quarantinedRecords/)
-  for (const source of ["Living_Hourly", "Member_Activation", "Action_Log", "Evidence_Log", "Approval_Log", "Policy_Registry", "Studio_Master", "People_Roster"]) {
+  for (const source of ["Fono Funnel", "TEAM_SHRAMPARK_DEMAND", "Enterprise_Demand", "Action_Log", "Evidence_Log", "Approval_Log", "People_Roster"]) {
     assert.match(componentSource, new RegExp(source))
   }
 })

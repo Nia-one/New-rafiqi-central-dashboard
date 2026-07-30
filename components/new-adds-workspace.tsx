@@ -173,10 +173,10 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     ...fixturePreview,
     question: liveData
       ? fillStatus?.hasData
-        ? `Are ${liveGap} vacant FONO Nests filling at the approved run rate, cost and billing standard?`
-        : "No FONO vacancy data is available for the selected filters."
+        ? `Are ${liveGap} vacant contracted FONO and SP Nests filling against their total potential?`
+        : "No contracted or onboarded FONO/SP data is available for the selected filters."
       : fixturePreview.question,
-    headline: liveData ? `${liveCurrent} occupied of ${liveTarget} contracted FONO Nests; ${liveGap} vacancies remain.` : fixturePreview.headline,
+    headline: liveData ? `${liveCurrent} occupied of ${liveTarget} contracted/onboarded FONO and SP Nests; ${liveGap} remain vacant.` : fixturePreview.headline,
     taskSummary: {
       ...fixturePreview.taskSummary,
       target: liveTarget,
@@ -184,7 +184,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       gap: liveGap,
       owner: liveOwner,
       progressPercent: fillStatus?.progressPercent ?? fixturePreview.taskSummary.progressPercent,
-      verifiedResult: `${liveCurrent} occupied Nests recorded in Studios`,
+      verifiedResult: `${liveCurrent} occupied Nests recorded against FONO/SP contracted potential`,
     },
     measures: liveProof?.measures ?? fixturePreview.measures,
     loopHealth: liveProof?.loopHealth ?? fixturePreview.loopHealth,
@@ -215,16 +215,16 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
   const hasLiveData = !liveData || Boolean(fillStatus?.hasData)
   const behind = hasLiveData && gap > 0
   const verdictState = behind ? "behind" : "on-track"
-  const verdictLabel = !hasLiveData ? "No FONO data" : behind ? `Behind · ${gap} to go` : "On track"
+  const verdictLabel = !hasLiveData ? "No contracted FONO/SP data" : behind ? `Behind · ${gap} to go` : "On track"
   const openSignOff = liveData ? liveSignOffs.length + derivedRecoverySignOffs.length : preview.despatchEscalations.length
   const theatresBehind = preview.theatres.filter((theatre) => theatre.dailyTarget > theatre.verifiedBillingLiveFills)
   const theatreRecoveryScope = theatresBehind.length === 0
-    ? "the selected FONO scope"
+    ? "the selected FONO/SP scope"
     : theatresBehind.length === 1
       ? theatresBehind[0].theatre
       : theatresBehind.map((row) => row.theatre).join(" and ")
   const theatreProgressImplication = theatresBehind.length === 0
-    ? "So what: no FONO vacancy is currently recorded for the selected filters."
+    ? "So what: no contracted FONO/SP vacancy is currently recorded for the selected filters."
     : theatresBehind.length === 1
       ? `So what: the ${theatresBehind[0].vacantNests}-Nest gap is in ${theatresBehind[0].theatre}, so recovery effort belongs there.`
       : `So what: the gap is concentrated in ${theatresBehind.map((row) => row.theatre).join(" and ")}, so recovery effort belongs there first, not spread evenly.`
@@ -253,7 +253,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     ? `${staleLiveFeeds > 0 ? `${staleLiveFeeds} stale` : `${liveProof?.loopHealth.feeds.length ?? 0} current`} feeds · ${preview.quarantineCount} quarantined`
     : `${preview.source.freshness} inputs · ${preview.quarantineCount} quarantined`
 
-  return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-supply-model="FONO" ariaLabel="Member Adds sections" sections={[
+  return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-source-scope="FONO Funnel and Shram Park" ariaLabel="Member Adds sections" sections={[
     { title: "Fill status", summary: verdictLabel },
     { title: "Theatre progress", summary: `${current}/${target} occupied · ${gap} vacant` },
     { title: "Spots to fill", summary: fillTaskCountLabel },
@@ -290,12 +290,12 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       <section className={styles.workPanel} aria-label="Spots to fill today">
         <div className={styles.sectionHeader}>
           <div><span>Spots to fill today</span><strong>{fillTaskCountLabel}</strong></div>
-          <p><MessageSquareDashed aria-hidden />{liveData ? "Studios tab · read-only" : "WhatsApp stays shadow-only"}</p>
+          <p><MessageSquareDashed aria-hidden />{liveData ? "Fono Funnel + Shram Park · read-only" : "WhatsApp stays shadow-only"}</p>
         </div>
         {liveData ? <div className={styles.vacancyGroups}>{vacancyGroups.map((group) => <section className={styles.vacancyGroup} key={group.theatre}>
           <header><div><strong>{group.theatre}</strong><span>{group.studios.length} Studio{group.studios.length === 1 ? "" : "s"} need filling</span></div><b>{group.pendingNests}<small> pending Nests</small></b></header>
           <div className={styles.vacancyTable}><table><thead><tr><th>Studio</th><th>Contracted</th><th>Occupied</th><th>Occupancy</th><th>Pending to fill</th></tr></thead><tbody>{group.studios.map((studio) => <tr key={studio.studioId}><td><strong>{studio.studioName}</strong><span>{studio.studioId}</span></td><td>{studio.contractedNests}</td><td>{studio.occupiedNests}</td><td>{studio.occupancyPercent}%</td><td><b>{studio.pendingNests}</b></td></tr>)}</tbody></table></div>
-        </section>)}<p className={styles.vacancyNote}><strong>{netPendingNests} net pending Nests</strong> come from total Contracted minus total Occupied. Studio rows contain {grossVacantNests} gross vacancies; {Math.max(0, grossVacantNests - netPendingNests)} Nests occupied above contract elsewhere are included in the net total.</p></div> : <OperationalCardStack label="Member Adds fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: task.dueAt ? <time dateTime={task.dueAt}>{date(task.dueAt)}</time> : "No deadline recorded" }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>}
+        </section>)}<p className={styles.vacancyNote}><strong>{netPendingNests} net pending Nests</strong> come from total Contracted/Onboarded potential minus current Occupancy across FONO and SP. Existing Studios are excluded.</p></div> : <OperationalCardStack label="Member Adds fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · FONO/SP`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: task.dueAt ? <time dateTime={task.dueAt}>{date(task.dueAt)}</time> : "No deadline recorded" }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>}
       </section>
     </div>
 
@@ -345,6 +345,6 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       </dl>
     </section>
 
-    <footer className={styles.footer} aria-label="Member Adds source status"><CheckCircle2 aria-hidden /><span>{liveData ? `Google Sheet live · refresh ${date(liveData.asOf)} · FONO only · ${preview.quarantineCount} quarantined` : `${preview.source.freshness} synthetic inputs · refresh ${date(preview.source.lastRefreshAt)} · no live connection · FONO only · ${preview.quarantineCount} rows quarantined`}</span><ShieldCheck aria-hidden /><span>{liveData ? "Living_Hourly · Member_Activation · Action_Log · Evidence_Log · Approval_Log · Policy_Registry · Studio_Master · People_Roster" : `${displayLabel(preview.source.name)} · protected synthetic references · billing-live outcomes only`}</span><Clock3 aria-hidden /><span>{liveData ? `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes independently confirmed` : `${preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change`}</span><LockKeyhole aria-hidden /><span>No automatic approval, external action or Production write</span></footer>
+    <footer className={styles.footer} aria-label="Member Adds source status"><CheckCircle2 aria-hidden /><span>{liveData ? `Google Sheet live · refresh ${date(liveData.asOf)} · FONO/SP contracted supply · ${preview.quarantineCount} quarantined` : `${preview.source.freshness} synthetic inputs · refresh ${date(preview.source.lastRefreshAt)} · no live connection · FONO/SP contracted supply · ${preview.quarantineCount} rows quarantined`}</span><ShieldCheck aria-hidden /><span>{liveData ? "Fono Funnel · TEAM_SHRAMPARK_DEMAND · Enterprise_Demand · Action_Log · Evidence_Log · Approval_Log · People_Roster" : `${displayLabel(preview.source.name)} · protected synthetic references · billing-live outcomes only`}</span><Clock3 aria-hidden /><span>{liveData ? `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes independently confirmed` : `${preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change`}</span><LockKeyhole aria-hidden /><span>No automatic approval, external action or Production write</span></footer>
   </DashboardSectionAccordion>
 }

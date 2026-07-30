@@ -50,7 +50,7 @@ import { buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot, type LiveSelfD
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode Â· synthetic fixture" },
   "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode Â· synthetic fixture" },
-  "New Adds": { title: "Fill every FONO vacancy with verified billing-live Members.", subtitle: "Detect vacancies, choose the lowest-cost eligible channel, assign the fill and verify billing.", view: "Shadow mode Â· synthetic fixture" },
+  "New Adds": { title: "Fill contracted FONO and Shram Park Nest potential with Members.", subtitle: "Track contracted/onboarded supply against current occupancy; existing Studios remain separate.", view: "Shadow mode Â· synthetic fixture" },
   "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Shadow mode Â· synthetic fixture" },
   "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Shadow mode Â· synthetic fixture" },
   "Nia Growth": { title: "Add capacity where demand supports it.", subtitle: "Keep FONO and Shram Park separate and expose capital risk before any commitment.", view: "Shadow mode Â· synthetic fixture" },

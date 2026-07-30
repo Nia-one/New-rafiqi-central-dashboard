@@ -13,7 +13,7 @@ import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
 
 const LIVING_COPY_FALLBACKS: Record<string, string> = {
   accordion_main_title: "Living performance",
-  accordion_main_summary: "Current demand, capacity and occupancy.",
+  accordion_main_summary: "Existing Studio contracted Nests, occupied Nests and occupancy.",
   accordion_allocation_title: "Allocation context",
   accordion_allocation_summary: "Demand-to-supply allocation and exceptions.",
   accordion_supply_title: "Supply model",
@@ -48,7 +48,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData, allocationDa
   const openDemandNodes = live.proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0)
   const liveCapacity = live.fonoReady + live.spReady
   const copy = (key: string) => live.metricTemplate(key, LIVING_COPY_FALLBACKS[key] || key.replaceAll("_", " "))
-  const [openIndex, setOpenIndex] = useState(-1)
+  const [openIndex, setOpenIndex] = useState(0)
 
   useEffect(() => {
     if (allocationFocus) {
@@ -83,7 +83,18 @@ return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLa
     { title: copy("accordion_sp_supply_title"), summary: copy("accordion_sp_supply_summary") },
     { title: copy("accordion_summary_title"), summary: copy("accordion_summary_summary") },
   ]}>
-    <div className="decision-bar living-headline"><div><span>{copy("main_point_kicker")}</span><strong>{copy("main_point_headline")}</strong></div><p>{copy("main_point_explanation")}</p></div>
+    <section className="operating-section living-occupancy-overview">
+      <p className="pillar-kicker">STUDIOS · LIVE OCCUPANCY</p>
+      <h2>Existing Studio occupancy</h2>
+      <p className="section-intro">Live from the Studios tab. FONO and Shram Park pipeline rows are not included.</p>
+      <div className="reconciliation-strip">
+        <article><span>Contracted Nests</span><strong>{live.occupancyContracted.toLocaleString("en-IN")}</strong><small>Existing Studios capacity</small></article>
+        <article><span>Occupied Nests</span><strong>{live.occupancyOccupied.toLocaleString("en-IN")}</strong><small>Currently occupied</small></article>
+        <article><span>Vacant Nests</span><strong>{Math.max(0, live.occupancyContracted - live.occupancyOccupied).toLocaleString("en-IN")}</strong><small>Available occupancy gap</small></article>
+        <article><span>Occupancy</span><strong>{live.occupancyPercent}%</strong><small>Occupied ÷ contracted</small></article>
+      </div>
+      <DataTable className="compact-table occupancy-table" caption="Existing Studio occupancy from Studios tab" columns={["STUDIO", "THEATRE", "CONTRACTED", "OCCUPIED", "OCCUPANCY", "VACANT"]} rows={live.occupancyRows} />
+    </section>
     <AllocationContextStrip mismatchId={allocationFocus} allocationData={allocationData} />
     <LivingSupplyModelReport liveOpsData={liveOpsData} />
     <div className="pacing-grid"><LivePacingCard channel="FONO" actual={live.fonoReady} target={live.metricNumber("fono_target")} elapsed={live.metricNumber("days_elapsed")} days={live.metricNumber("days_in_month")} owner={live.metricOwner("fono_target")} copy={copy} /><LivePacingCard channel="SP" actual={live.spReady} target={live.metricNumber("sp_target")} elapsed={live.metricNumber("days_elapsed")} days={live.metricNumber("days_in_month")} owner={live.metricOwner("sp_target")} copy={copy} /></div>

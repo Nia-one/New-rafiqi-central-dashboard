@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
 import { syncAllSources } from "@/lib/sourceSync";
+import { clearSheetCache } from "@/lib/googleSheets";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   try {
     const url = new URL(request.url);
     const result = await syncAllSources({ force: url.searchParams.get("auto") !== "1" });
+    clearSheetCache();
     return NextResponse.json({ success: true, ...result }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Team input sync error:", error);

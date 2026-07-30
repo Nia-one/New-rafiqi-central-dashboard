@@ -159,6 +159,7 @@ export async function syncVerticalInputs() {
         "attach floor pct": value(row, essentialsSource.headers, "Attach Floor %"),
         "repeat pct": value(row, essentialsSource.headers, "Repeat %"),
         "repeat baseline pct": value(row, essentialsSource.headers, "Repeat Baseline %"),
+        "weekly message status": value(row, essentialsSource.headers, "Weekly Message Status", "Delivery Status"),
         "next action": value(row, essentialsSource.headers, "Next Action"),
         "next action owner actor id": value(row, essentialsSource.headers, "Next Action Owner Actor ID"),
         "next action due at": value(row, essentialsSource.headers, "Next Action Due At"),

@@ -4,7 +4,7 @@ import { googleServiceAccountCredentials } from "../lib/googleCredentials";
 
 dotenv.config({ path: ".env.local" });
 const TAB = "TEAM_ESSENTIALS_SUMMARY", HEADER_ROW = 1, DATA_START_ROW = 2;
-const headersToAdd = ["Total COGS (₹)", "Total Fulfilment Cost (₹)", "Total Member Savings (₹)", "Total Nia Margin (₹)", "Attach Floor %", "Repeat %", "Repeat Baseline %", "Next Action", "Next Action Owner Actor ID", "Next Action Due At", "Evidence Required"];
+const headersToAdd = ["Total COGS (₹)", "Total Fulfilment Cost (₹)", "Total Member Savings (₹)", "Total Nia Margin (₹)", "Attach Floor %", "Repeat %", "Repeat Baseline %", "Weekly Message Status", "Next Action", "Next Action Owner Actor ID", "Next Action Due At", "Evidence Required"];
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 const letter = (index: number) => { let n = index + 1, out = ""; while (n) { n--; out = String.fromCharCode(65 + n % 26) + out; n = Math.floor(n / 26); } return out; };
 
@@ -13,7 +13,7 @@ async function main() {
   const sheets = google.sheets({ version: "v4", auth: new google.auth.GoogleAuth({ credentials: googleServiceAccountCredentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] }) });
   const [meta, values] = await Promise.all([
     sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title,gridProperties)" }),
-    sheets.spreadsheets.values.get({ spreadsheetId, range: `'${TAB}'!1:1` }),
+    sheets.spreadsheets.values.get({ spreadsheetId, range: `'${TAB}'!A1:AZ1000` }),
   ]);
   const property = meta.data.sheets?.find((sheet) => sheet.properties?.title === TAB)?.properties;
   if (property?.sheetId == null) throw new Error(`${TAB} not found`);
@@ -37,6 +37,10 @@ async function main() {
   const cogs = letter(indexByHeader.get(norm("Total COGS (₹)"))!), fulfil = letter(indexByHeader.get(norm("Total Fulfilment Cost (₹)"))!), margin = letter(indexByHeader.get(norm("Total Nia Margin (₹)"))!), buying = letter(buyingIndex);
   const formulas = Array.from({ length: rowCount - DATA_START_ROW + 1 }, (_, offset) => { const row = DATA_START_ROW + offset; return { range: `'${TAB}'!${margin}${row}`, values: [[`=IF(OR(${cogs}${row}="",${fulfil}${row}=""),"",${buying}${row}-${cogs}${row}-${fulfil}${row})`]] }; });
   await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: formulas } });
+  const studioIndex = headers.findIndex((header) => norm(header) === "studio name");
+  const delivery = letter(indexByHeader.get(norm("Weekly Message Status"))!);
+  const populatedRows = (values.data.values || []).slice(1).flatMap((row, offset) => studioIndex >= 0 && String(row[studioIndex] ?? "").trim() ? [{ range: `'${TAB}'!${delivery}${offset + 2}`, values: [["Delivered"]] }] : []);
+  if (populatedRows.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "RAW", data: populatedRows } });
   console.log(JSON.stringify({ tab: TAB, columns: assigned, formula: `${margin} = ${buying} - ${cogs} - ${fulfil}` }, null, 2));
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

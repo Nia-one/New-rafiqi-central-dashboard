@@ -133,73 +133,50 @@ test("Member Engagement name-based Sheet rows follow theatre and studio filters"
   assert.deepEqual(filtered.memberNpsResponses.map((row) => row.id), ["R2"])
 })
 
-test("Member Adds fill status uses FONO contracted and occupied Nests from Studios", () => {
+test("Member Adds combines contracted FONO Funnel and SP Nest potential and excludes existing Studios", () => {
   const live = buildLiveSelfDriveSnapshot({
-    theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
-    living: [
-      { "theatre id": "T1", "studio id": "FONO-1", "supply model": "FONO", "activation ready nests": "96", "occupied nests": "72", "next action owner actor id": "P1" },
-      { "theatre id": "T1", "studio id": "SP-1", "supply model": "SP", "activation ready nests": "150", "occupied nests": "110" },
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", status: "Onboarded", "headcount required": "96", "headcount matched": "72", "owner actor id": "P1" },
+      { "demand id": "SP-BOT-1", status: "Contracted", "headcount required": "150", "headcount matched": "110", "owner actor id": "P1" },
     ],
-    memberActivation: [
-      { "activation id": "A1", "member token": "M1", "studio id": "FONO-1", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-07-26T10:00:00+05:30", "verified at": "2026-07-26T10:30:00+05:30" },
-      { "activation id": "A2", "member token": "M2", "studio id": "SP-1", "verification status": "Verified", "membership billed inr": "1500" },
-      { "activation id": "A3", "member token": "M3", "studio id": "FONO-1", "verification status": "Pending", "membership billed inr": "1500" },
-      { "activation id": "A4", "member token": "M4", "studio id": "FONO-1", "verification status": "Verified", "membership billed inr": "0" },
-    ],
+    living: [{ "studio id": "EXISTING-1", "supply model": "EXISTING", "contracted nests": "1000", "occupied nests": "900" }],
     people: [{ "actor id": "P1", "display name": "Priya" }],
   })
 
   assert.deepEqual(buildLiveNewAddsFillStatus(live), {
     hasData: true,
-    target: 96,
-    verified: 72,
-    gap: 24,
-    progressPercent: 75,
+    target: 246,
+    verified: 182,
+    gap: 64,
+    progressPercent: 74,
     owner: "Priya",
   })
-  assert.deepEqual(buildLiveNewAddsTheatreProgress(live), [{
-    theatre: "Coromandel",
-    ownerRole: "Priya",
-    vacantNests: 24,
-    verifiedBillingLiveFills: 72,
-    dailyTarget: 96,
-    daysToFill: 0,
-    averageFillTimeLabel: "30 min",
-  }])
+  assert.deepEqual(buildLiveNewAddsTheatreProgress(live).map((row) => [row.theatre, row.dailyTarget, row.verifiedBillingLiveFills, row.vacantNests]), [
+    ["FONO", 96, 72, 24],
+    ["SP", 150, 110, 40],
+  ])
 })
 
-test("Member Adds vacancy list groups pending Studios by Theatre", () => {
+test("Member Adds vacancy list groups contracted opportunities by FONO and SP", () => {
   const live = buildLiveSelfDriveSnapshot({
-    studios: [
-      { "studio id": "F1", "studio name": "Alpha" },
-      { "studio id": "F2", "studio name": "Beta" },
-      { "studio id": "F3", "studio name": "Full" },
-    ],
-    living: [
-      { "theatre id": "North", "studio id": "F1", "supply model": "FONO", "contracted nests": "100", "occupied nests": "80" },
-      { "theatre id": "North", "studio id": "F2", "supply model": "FONO", "contracted nests": "50", "occupied nests": "45" },
-      { "theatre id": "North", "studio id": "F4", "supply model": "FONO", "contracted nests": "10", "occupied nests": "15" },
-      { "theatre id": "South", "studio id": "F3", "supply model": "FONO", "contracted nests": "40", "occupied nests": "40" },
-      { "theatre id": "North", "studio id": "SP1", "supply model": "SP", "contracted nests": "100", "occupied nests": "0" },
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", status: "Contracted", "enterprise name": "Alpha", "headcount required": "100", "headcount matched": "80" },
+      { "demand id": "OPS-RPT-FONO-2", status: "Onboarded", "enterprise name": "Beta", "headcount required": "50", "headcount matched": "45" },
+      { "demand id": "SP-BOT-1", status: "Contracted", "enterprise name": "Park One", "headcount required": "100", "headcount matched": "60" },
+      { "demand id": "OPS-RPT-FONO-LEAD", status: "Lead", "headcount required": "999", "headcount matched": "0" },
     ],
   })
-  assert.deepEqual(buildLiveNewAddsVacancyGroups(live), [{
-    theatre: "North",
-    contractedNests: 160,
-    occupiedNests: 140,
-    pendingNests: 20,
-    studios: [
-      { theatre: "North", studioId: "F1", studioName: "Alpha", contractedNests: 100, occupiedNests: 80, pendingNests: 20, occupancyPercent: 80 },
-      { theatre: "North", studioId: "F2", studioName: "Beta", contractedNests: 50, occupiedNests: 45, pendingNests: 5, occupancyPercent: 90 },
-    ],
-  }])
+  assert.deepEqual(buildLiveNewAddsVacancyGroups(live).map((group) => [group.theatre, group.contractedNests, group.occupiedNests, group.pendingNests]), [
+    ["SP", 100, 60, 40],
+    ["FONO", 150, 125, 25],
+  ])
 })
 
-test("Member Adds vacancy owner falls back to the Theatre lead", () => {
+test("Member Adds vacancy owner comes from the contracted supply record", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T-NORTH", "theatre name": "North", "lead actor id": "P-NORTH" }],
     people: [{ "actor id": "P-NORTH", "display name": "North Lead" }],
-    living: [{ "theatre id": "North", "studio id": "F1", "supply model": "FONO", "contracted nests": "20", "occupied nests": "10" }],
+    enterpriseDemand: [{ "demand id": "OPS-RPT-FONO-1", status: "Contracted", "headcount required": "20", "headcount matched": "10", "owner actor id": "P-NORTH" }],
   })
   assert.equal(buildLiveNewAddsTheatreProgress(live)[0].ownerRole, "North Lead")
   assert.equal(buildLiveNewAddsFillStatus(live).owner, "North Lead")
@@ -209,18 +186,21 @@ test("Member Adds proof and controls never retain synthetic KPI values", () => {
   const live = buildLiveSelfDriveSnapshot({
     meta: { updatedAt: "2026-07-26T13:37:00+05:30" },
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
-    studios: [{ "studio id": "FONO-1", "studio name": "Sriperumbudur 01", "theatre id": "T1" }],
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", status: "Contracted", "enterprise name": "Sriperumbudur 01", "headcount required": "96", "headcount matched": "72", "owner actor id": "P1", "updated at": "2026-07-26T13:32:00+05:30" },
+      { "demand id": "SP-BOT-LEAD", status: "Lead", "headcount required": "20", "headcount matched": "10" },
+    ],
     living: [
       { "theatre id": "T1", "studio id": "FONO-1", "supply model": "FONO", "activation ready nests": "96", "occupied nests": "72", "next action owner actor id": "P1", "updated at": "2026-07-26T13:32:00+05:30" },
       { "theatre id": "T1", "studio id": "SP-1", "supply model": "SP", "activation ready nests": "20", "occupied nests": "10" },
     ],
     people: [{ "actor id": "P1", "display name": "Priya" }],
     memberActivation: [
-      { "activation id": "ACTV-1", "member token": "M1", "studio id": "FONO-1", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-07-26T10:00:00+05:30", "verified at": "2026-07-26T10:30:00+05:30", "updated at": "2026-07-26T13:27:00+05:30" },
-      { "activation id": "ACTV-1-DUPLICATE", "member token": "M1", "studio id": "FONO-1", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-07-26T10:00:00+05:30", "verified at": "2026-07-26T10:30:00+05:30", "updated at": "2026-07-26T13:27:00+05:30" },
+      { "activation id": "ACTV-1", "member token": "M1", "studio id": "OPS-RPT-FONO-1", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-07-26T10:00:00+05:30", "verified at": "2026-07-26T10:30:00+05:30", "updated at": "2026-07-26T13:27:00+05:30" },
+      { "activation id": "ACTV-1-DUPLICATE", "member token": "M1", "studio id": "OPS-RPT-FONO-1", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-07-26T10:00:00+05:30", "verified at": "2026-07-26T10:30:00+05:30", "updated at": "2026-07-26T13:27:00+05:30" },
     ],
     incidentLog: [{ "incident id": "I1", domain: "Living", "theatre id": "T1", "studio id": "FONO-1" }],
-    actionLog: [{ "action id": "A1", "incident id": "I1", "owner actor id": "P1", "due at": "2026-07-22T16:00:00+05:30", state: "Detected", "updated at": "2026-07-26T13:17:00+05:30" }],
+    actionLog: [{ "action id": "A1", "studio id": "OPS-RPT-FONO-1", "owner actor id": "P1", "due at": "2026-07-22T16:00:00+05:30", state: "Detected", "updated at": "2026-07-26T13:17:00+05:30" }],
     evidenceLog: [
       { "evidence id": "E1", "linked id": "A1", "uploaded at": "2026-07-26T12:00:00+05:30", "updated at": "2026-07-26T13:22:00+05:30", "verification status": "Pending" },
       { "evidence id": "E1", "linked id": "A1", "uploaded at": "2026-07-26T12:00:00+05:30", "updated at": "2026-07-26T13:22:00+05:30", "verification status": "Pending" },
@@ -228,7 +208,7 @@ test("Member Adds proof and controls never retain synthetic KPI values", () => {
   })
   const proof = buildLiveNewAddsProof(live)
   assert.equal(proof.measures[0].primary, "24 Nests vacant")
-  assert.equal(proof.measures[0].secondary, "72 of 96 contracted Nests occupied from Studios · 1 new billing-live fill independently verified")
+  assert.equal(proof.measures[0].secondary, "72 of 96 contracted/onboarded FONO + SP Nests occupied · 75% occupancy")
   assert.equal(proof.measures[1].primary, "Source not recorded")
   assert.equal(proof.measures[2].primary, "No verified CAC")
   assert.equal(proof.measures[3].primary, "30 minutes")
@@ -292,7 +272,7 @@ test("Self Drive snapshot uses ingestion time instead of Sheet update time for f
   assert.equal(live.asOf, "2026-07-28T12:00:00+05:30")
 })
 
-test("Member Adds proof stays honest when only non-FONO Living rows are present", () => {
+test("Member Adds ignores existing Studio occupancy rows", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
     living: [{ "theatre id": "T1", "studio id": "SP-1", "supply model": "SP", "activation ready nests": "20", "occupied nests": "10" }],
@@ -302,22 +282,35 @@ test("Member Adds proof stays honest when only non-FONO Living rows are present"
   const proof = buildLiveNewAddsProof(live)
   assert.equal(proof.measures[0].primary, "0 Nests vacant")
   assert.equal(proof.loopHealth.verification.claimed, 0)
-  assert.equal(proof.loopHealth.quarantinedRecords, 1)
+  assert.equal(proof.loopHealth.quarantinedRecords, 0)
 })
 
-test("Member Adds fill tasks also use Action_Log rows that point directly to a FONO studio", () => {
+test("Member Adds does not treat the existing Studios tab as FONO or SP supply", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
+    living: [
+      { "theatre id": "T1", "studio id": "STUDIO-1", "supply model": "EXISTING", "source submission id": "OPS-RPT-OCC-SRC-1", "contracted nests": "100", "occupied nests": "82" },
+      { "theatre id": "T1", "studio id": "SP-1", "supply model": "SP", "contracted nests": "50", "occupied nests": "10" },
+    ],
+  })
+
+  assert.equal(buildLiveNewAddsFillStatus(live).hasData, false)
+})
+
+test("Member Adds fill tasks use Action_Log rows linked to contracted FONO supply", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
     studios: [{ "studio id": "FONO-1", "studio name": "Nia Nest Menaka", "theatre id": "T1" }],
     living: [{ "theatre id": "T1", "studio id": "FONO-1", "supply model": "FONO" }],
+    enterpriseDemand: [{ "demand id": "OPS-RPT-FONO-1", status: "Contracted", "headcount required": "20", "headcount matched": "10" }],
     people: [{ "actor id": "P1", "display name": "Priya" }],
-    actionLog: [{ "action id": "A-DIRECT", "studio id": "FONO-1", "operating objective": "Recover FONO fill readiness", "owner actor id": "P1", "due at": "2026-07-27T16:00:00+05:30", state: "Detected" }],
+    actionLog: [{ "action id": "A-DIRECT", "studio id": "OPS-RPT-FONO-1", "operating objective": "Recover FONO fill readiness", "owner actor id": "P1", "due at": "2026-07-27T16:00:00+05:30", state: "Detected" }],
   })
 
   assert.deepEqual(buildLiveNewAddsFillTasks(live).map((row) => row.actionId), ["A-DIRECT"])
 })
 
-test("Member Adds fill tasks come only from FONO Living incidents and Action_Log", () => {
+test("Member Adds fill tasks come only from contracted FONO/SP supply actions", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
     studios: [{ "studio id": "FONO-1", "studio name": "Nia Nest Menaka", "theatre id": "T1" }],
@@ -325,9 +318,13 @@ test("Member Adds fill tasks come only from FONO Living incidents and Action_Log
       { "theatre id": "T1", "studio id": "FONO-1", "supply model": "FONO" },
       { "theatre id": "T1", "studio id": "SP-1", "supply model": "SP" },
     ],
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", status: "Contracted", "headcount required": "20", "headcount matched": "10" },
+      { "demand id": "SP-BOT-1", status: "Lead", "headcount required": "20", "headcount matched": "0" },
+    ],
     people: [{ "actor id": "P1", "display name": "Priya" }],
     incidentLog: [
-      { "incident id": "I-FONO", domain: "Living", "theatre id": "T1", "studio id": "FONO-1", "owner actor id": "P1" },
+      { "incident id": "I-FONO", domain: "Living", "theatre id": "FONO", "studio id": "OPS-RPT-FONO-1", "owner actor id": "P1" },
       { "incident id": "I-SP", domain: "Living", "theatre id": "T1", "studio id": "SP-1", "owner actor id": "P1" },
     ],
     actionLog: [
@@ -348,8 +345,8 @@ test("Member Adds fill tasks come only from FONO Living incidents and Action_Log
     nextAction: row.nextAction,
   })), [{
     actionId: "A-FONO",
-    studioId: "Nia Nest Menaka",
-    theatre: "Coromandel",
+    studioId: "OPS-RPT-FONO-1",
+    theatre: "FONO",
     ownerRole: "Priya",
     dueAt: "2026-07-27T16:00:00+05:30",
     expectedOutcome: "Verified activation records",

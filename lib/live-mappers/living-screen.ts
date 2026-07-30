@@ -20,9 +20,13 @@ export function buildLivingScreenData(ops: any) {
   const people: Row[] = ops?.people ?? []
   const dashboard: Row[] = ops?.livingDashboard ?? []
   const person = (actorId: string) => people.find((row) => value(row, "actor id") === actorId)?.["display name"] || actorId || "Unassigned"
+  const existing = living.filter((row) => value(row, "supply model").toUpperCase() === "EXISTING")
   const fono = living.filter((row) => value(row, "supply model").toUpperCase() === "FONO")
   const sp = living.filter((row) => value(row, "supply model").toUpperCase() === "SP")
   const sum = (rows: Row[], key: string) => rows.reduce((total, row) => total + n(row[key]), 0)
+  const occupancySource = existing.length > 0 ? existing : fono
+  const occupancyContracted = sum(occupancySource, "contracted nests")
+  const occupancyOccupied = sum(occupancySource, "occupied nests")
   const fonoReady = sum(fono, "activation ready nests")
   const fonoOccupied = sum(fono, "occupied nests")
   const demandRequired = sum(demand, "headcount required")
@@ -42,6 +46,8 @@ export function buildLivingScreenData(ops: any) {
       .replaceAll("{spReady}", spReady.toLocaleString("en-IN"))
       .replaceAll("{liveCapacity}", (fonoReady + spReady).toLocaleString("en-IN"))
       .replaceAll("{fonoStudios}", occupancyRows.length.toLocaleString("en-IN"))
+      .replaceAll("{occupancyContracted}", occupancyContracted.toLocaleString("en-IN"))
+      .replaceAll("{occupancyOccupied}", occupancyOccupied.toLocaleString("en-IN"))
       .replaceAll("{demandRows}", demandRows.length.toLocaleString("en-IN"))
       .replaceAll("{openDemandNodes}", proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0).length.toLocaleString("en-IN"))
   }
@@ -51,9 +57,11 @@ export function buildLivingScreenData(ops: any) {
   const demandStages: FunnelStage[] = [stage("Demand required", demandRequired, demandRequired), stage("Demand matched", demandMatched, demandMatched, demandRequired)]
   const supplyStages: FunnelStage[] = [stage("SP ready Nests", spReady, spReady), stage("SP occupied Nests", sum(sp, "occupied nests"), sum(sp, "occupied nests"), spReady)]
 
-  const occupancyRows = fono.map((row) => {
-    const ready = n(row["activation ready nests"]); const occupied = n(row["occupied nests"])
-    return [value(row, "studio id"), value(row, "theatre id"), String(ready), String(occupied), `${percent(occupied, ready)}%`, String(metricNumber("days_live")), person(value(row, "next action owner actor id"))]
+  const occupancyRows = occupancySource.map((row) => {
+    const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
+    const studioId = value(row, "studio id")
+    const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied))]
   })
   const demandRows = demand.map((row) => [value(row, "plant name") || value(row, "enterprise name"), String(n(row["headcount required"])), value(row, "theatre id"), displayDate(value(row, "activation required at")), person(value(row, "owner actor id")), displayDate(value(row, "opened at")), value(row, "status") || "Open"])
   const supplyRows = studios.filter((row) => value(row, "supply model").toUpperCase() === "SP").map((row) => [value(row, "studio name") || value(row, "studio id"), metricText("jco") || "Unassigned", metricText("relationship_manager") || "Unassigned", value(row, "studio name") || value(row, "studio id"), `${metricNumber("distance_km")} km`, `${metricNumber("response_hours")}h`, value(row, "contract status") || value(row, "readiness status") || "No data"])
@@ -90,5 +98,5 @@ export function buildLivingScreenData(ops: any) {
     }
   })
 
-  return { fonoSupply, fonoDemand, demandStages, supplyStages, occupancyRows, demandRows, supplyRows, proximityNodes, fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
+  return { fonoSupply, fonoDemand, demandStages, supplyStages, occupancyRows, demandRows, supplyRows, proximityNodes, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
 }
