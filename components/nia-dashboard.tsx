@@ -464,9 +464,9 @@ useEffect(() => {
   }, [])
 
   useEffect(() => {
-    void refreshLiveData()
+    void refreshLiveData(true, true)
     const snapshotTimer = window.setInterval(() => void refreshLiveData(), 60_000)
-    const sourceTimer = window.setInterval(() => void refreshLiveData(true, true), 300_000)
+    const sourceTimer = window.setInterval(() => void refreshLiveData(true, true), 900_000)
     return () => {
       window.clearInterval(snapshotTimer)
       window.clearInterval(sourceTimer)
