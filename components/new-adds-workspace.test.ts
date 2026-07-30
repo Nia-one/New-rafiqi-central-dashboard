@@ -37,8 +37,8 @@ test("the decision-required sentence follows live sign-offs, gap and Theatre sco
   assert.doesNotMatch(componentSource, /the two Theatres below target/)
 })
 
-test("the first viewport renders Target to verified result in the locked order", () => {
-  const order = ["Target", "Current", "Gap", "Owner", "Progress", "Verified result"]
+test("the first viewport renders contracted occupancy fields in order", () => {
+  const order = ["Contracted", "Occupied", "Vacant", "Owner", "Progress", "Source result"]
   let cursor = componentSource.indexOf("const items")
   for (const label of order) {
     const next = componentSource.indexOf(`\"${label}\"`, cursor)
@@ -55,8 +55,8 @@ test("the workspace renders exactly four measure cards from the typed projection
   for (const label of ["Verified fills", "Adds by source", "Actual CAC & payback", "Arrival to billing live"]) assert.ok(preview.measures.some((row) => row.label === label))
 })
 
-test("the primary visual explains today's Member target, remaining vacancy and fill time by Theatre", () => {
-  for (const marker of ["Empty spots by location", "needs", "more Member", "Members billing", "Still needed", "Vacant Nests", "Average fill time", "targetLine"]) assert.match(componentSource, new RegExp(marker))
+test("the primary visual explains contracted occupancy, vacancy and fill time by Theatre", () => {
+  for (const marker of ["Empty spots by location", "vacant Nest", "Occupied Nests", "Contracted Nests", "Vacancy gap", "Vacant Nests", "Average fill time", "targetLine"]) assert.match(componentSource, new RegExp(marker))
   for (const theatre of ["Oragadam", "Sriperumbudur", "Hosur"]) assert.ok(buildNewAddsPreview().theatres.some((row) => row.theatre === theatre))
 })
 
@@ -75,16 +75,21 @@ test("shadow recovery is functional and no live side-effect path exists", () => 
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|use server|server action|navigator\.geolocation/)
 })
 
-test("live Sheet tasks are read-only and never ask Operations to record a local outcome", () => {
-  assert.match(componentSource, /liveData \? <div className=\{styles\.shadowControls\}><small>Read-only · status updates automatically from Action_Log and Evidence_Log\.<\/small>/)
-  assert.match(componentSource, /Google Sheet · read-only/)
+test("live vacancy list is read-only and sourced from the Studios tab", () => {
+  assert.match(componentSource, /buildLiveNewAddsVacancyGroups/)
+  assert.match(componentSource, /Studios tab · read-only/)
+  for (const column of ["Contracted", "Occupied", "Occupancy", "Pending to fill"]) assert.match(componentSource, new RegExp(column))
 })
 
-test("Member Adds sign-off count and implication follow the live Approval_Log queue", () => {
+test("Member Adds sign-off combines auto-derived Studio vacancies with the live Approval_Log queue", () => {
+  assert.match(componentSource, /const derivedRecoverySignOffs = liveData/)
+  assert.match(componentSource, /AUTO-FILL-/)
+  assert.match(componentSource, /Auto-derived from Studios/)
+  assert.match(componentSource, /Approval_Log.*Not required to generate/)
   assert.match(componentSource, /const signOffCountLabel = openSignOff === 0/)
   assert.match(componentSource, /openSignOff === 1 \? " is" : "s are"/)
-  assert.match(componentSource, /liveSignOffs\[0\]\.title/)
-  assert.match(componentSource, /liveSignOffs\[0\]\.owner/)
+  assert.match(componentSource, /liveSignOffs\[0\]\?\.title \|\| derivedRecoverySignOffs\[0\]\?\.title/)
+  assert.match(componentSource, /liveSignOffs\[0\]\?\.owner \|\| derivedRecoverySignOffs\[0\]\?\.owner/)
   assert.match(componentSource, /\{signOffCountLabel\}/)
   assert.match(componentSource, /\{signOffImplication\}/)
 })

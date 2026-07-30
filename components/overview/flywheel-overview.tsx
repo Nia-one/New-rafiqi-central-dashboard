@@ -124,8 +124,8 @@ export function FlywheelOverview({ liveOpsData, allocationData, commitments, onS
     name: "Essentials",
     description: flywheelContent("essentials_description", "Stage 3 · Lower-cost Essentials protect savings and encourage another order."),
     pairs: [
-      { side: "Demand", label: flywheelContent("essentials_demand_label", "Eligible / purchasing Members"), value: `${liveOpsData.flywheel.essentials.eligible.toLocaleString("en-IN")} / ${liveOpsData.flywheel.essentials.purchasing.toLocaleString("en-IN")}`, note: flywheelContent("essentials_demand_note", "Eligible / purchasing · live") },
-      { side: "Supply", label: flywheelContent("essentials_supply_label", "SKU fulfilment"), value: liveOpsData.flywheel.essentials.fulfilled.toLocaleString("en-IN"), note: flywheelContent("essentials_supply_note", "Essentials_Hourly · orders fulfilled") },
+      { side: "Demand", label: flywheelContent("essentials_demand_label", "Occupant demand / purchasing Members"), value: `${liveOpsData.flywheel.essentials.eligible.toLocaleString("en-IN")} / ${liveOpsData.flywheel.essentials.purchasing.toLocaleString("en-IN")}`, note: flywheelContent("essentials_demand_note", "Member purchasing demand · live") },
+      { side: "Supply", label: flywheelContent("essentials_supply_label", "Vendor / SKU fulfilment"), value: liveOpsData.flywheel.essentials.fulfilled.toLocaleString("en-IN"), note: flywheelContent("essentials_supply_note", "Essentials_Hourly · orders fulfilled") },
     ],
     domains: ["Essentials"],
   },

@@ -8,6 +8,12 @@ import { OPERATIONS_TABS } from "@/lib/dashboard-model"
 import { buildEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 
 const componentSource = readFileSync(new URL("./enterprise-demand-workspace.tsx", import.meta.url), "utf8")
+
+test("Enterprise Demand safely renders missing or invalid Sheet timestamps", () => {
+  assert.match(componentSource, /const indianDate = raw\.match/)
+  assert.match(componentSource, /Date\.UTC\(Number\(indianDate\[3\]\)/)
+  assert.match(componentSource, /if \(!Number\.isFinite\(timestamp\)\) return "Not available"/)
+})
 const dashboardSource = readFileSync(new URL("./nia-dashboard.tsx", import.meta.url), "utf8")
 
 function renderWorkspace() {
@@ -18,7 +24,10 @@ function renderLiveWorkspace() {
   return renderToStaticMarkup(createElement(EnterpriseDemandWorkspace, {
     preview: buildEnterpriseDemandLoopPreview(),
     liveData: {
-      enterpriseDemand: [{ "demand id": "DEM-TEST-001", "enterprise name": "Test Manufacturing Co.", latitude: "12.9650", longitude: "79.9430", "headcount required": "500", "role required": "Assembly operator", shift: "Day", status: "Open", "owner actor id": "ACT-PRIYA", "activation required at": "2026-07-29T09:00:00+05:30" }],
+      enterpriseDemand: [
+        { "demand id": "OPS-RPT-FONO-TEST-001", "enterprise name": "Test Manufacturing Co.", latitude: "12.9650", longitude: "79.9430", "headcount required": "500", "headcount matched": "246", "role required": "Assembly operator", shift: "Day", status: "Lead", "owner actor id": "ACT-PRIYA", "activation required at": "2026-07-29T09:00:00+05:30" },
+        { "demand id": "SP-BOT-TEST-001", "enterprise name": "Shram Park Test Co.", "headcount required": "15", "headcount matched": "10", certainty: "Schedule Next Visit", status: "Lead", "activation required at": "2026-07-30T09:00:00+05:30" },
+      ],
       summary: { readyNests: 246 },
       living: [
         { "living hourly id": "LIV-FONO", "supply model": "FONO", "activation ready nests": "96" },
@@ -70,7 +79,7 @@ test("the task band carries a verdict pill and a plain governing recommendation"
 
 test("the live task band contains no fixture values and derives every displayed result from connected rows", () => {
   const html = renderLiveWorkspace()
-  assert.match(html, /Google Sheet · live read-only/)
+  assert.match(html, /Priority lead · 1 FONO Leads · Google Sheet live/)
   assert.match(html, /Test Manufacturing Co\. needs 500 verified ready Nests/)
   assert.match(html, /246 of 500 Nests are verified ready for Assembly operator on the Day shift/)
   assert.match(html, /Behind · 254 Nests to close/)
@@ -79,6 +88,11 @@ test("the live task band contains no fixture values and derives every displayed 
   assert.match(html, /246\/500 Nests/)
   const firstComponent = html.slice(html.indexOf('class="enterprise-today-task"'), html.indexOf('aria-label="How reliable is data"'))
   assert.doesNotMatch(firstComponent, /Synthetic fixture|shadow only|25%|Reopened/i)
+})
+
+test("the selected demand never uses global Living capacity as its verified-ready result", () => {
+  assert.match(componentSource, /sheetNumber\(demand\["headcount matched"\]\)/)
+  assert.doesNotMatch(componentSource, /demand \? sheetNumber\(liveData\?\.summary\?\.readyNests\)/)
 })
 
 test("live loop health is calculated from Enterprise Demand logs instead of fixture verification counts", () => {
@@ -93,12 +107,32 @@ test("live loop health is calculated from Enterprise Demand logs instead of fixt
   assert.doesNotMatch(html, /11\/14 verified|11 of 14|1 row quarantined/)
 })
 
+test("live loop health derives the selected FONO or Shram Park outcome when Action_Log has no matching actions", () => {
+  const html = renderToStaticMarkup(createElement(EnterpriseDemandWorkspace, {
+    preview: buildEnterpriseDemandLoopPreview(),
+    liveData: {
+      enterpriseDemand: [
+        { "demand id": "OPS-RPT-FONO-1", "enterprise name": "FONO prospect", "headcount required": "90", "headcount matched": "88", status: "Lead", "owner actor id": "Srinivas", "opened at": "2026-07-29T08:00:00.000Z", "updated at": "2026-07-30T08:00:00.000Z", "activation required at": "1-8-2026" },
+        { "demand id": "SP-BOT-1", "enterprise name": "Shram Park client", "headcount required": "15", "headcount matched": "15", status: "Committed", "owner actor id": "ACT-PRASHANT", "opened at": "2026-07-30T07:00:00.000Z", "updated at": "2026-07-30T08:00:00.000Z", "activation required at": "2026-08-02T00:00:00.000Z" },
+      ],
+      actions: [], evidence: [], approvals: [], incidents: [], people: [], living: [], studios: [],
+      asOf: "2026-07-30T09:00:00.000Z",
+    },
+  }))
+  assert.match(html, /Attention · 0\/1 verified/)
+  assert.match(html, /<b>0 of 1<\/b><span>outcomes independently confirmed<\/span>/)
+  assert.match(html, /Waiting<b>1<\/b>/)
+  assert.match(html, /1 running, none breached/)
+  assert.match(html, /FONO 88 · SP 0/)
+  assert.match(html, /before 1 Aug/)
+})
+
 test("live key numbers derive reference, supply split, arrival gap and run rate from Sheet rows", () => {
   const html = renderLiveWorkspace()
-  assert.match(html, /Nests · DEM-TEST-001/)
-  assert.match(html, /FONO 96 · SP 150/)
+  assert.match(html, /Nests · OPS-RPT-FONO-TEST-001/)
+  assert.match(html, /FONO 246 · SP 0/)
   assert.match(html, /3 days to arrival/)
-  assert.match(html, />4\/hr</)
+  assert.match(html, />4 Nests\/hour</)
   assert.match(html, /0 missed follow-ups rolled forward/)
   const keyNumbers = html.slice(html.indexOf('aria-label="Key numbers at glance"'), html.indexOf('class="enterprise-first-viewport"'))
   assert.doesNotMatch(keyNumbers, /CONTRACT-VIKRAM|FONO 60|SP 80|9 days|2 missed/)
@@ -107,7 +141,7 @@ test("live key numbers derive reference, supply split, arrival gap and run rate 
 test("arrival implication sentence is generated from the live gap, run rate and deadline", () => {
   const html = renderLiveWorkspace()
   assert.match(html, /254 Nests must close before 29 Jul, 09:00 IST/)
-  assert.match(html, /254 Nests must clear at 4\/hr before 29 Jul, 09:00 IST/)
+  assert.match(html, /254 Nests must clear at 4 Nests\/hour before 29 Jul, 09:00 IST/)
   assert.match(html, /signed 500-Nest capacity misses its committed date/)
   assert.doesNotMatch(html, /the gap must clear at the required hourly rate before the arrival date/)
 })
@@ -126,23 +160,16 @@ test("nearby plan, next action and eight-stage progress are calculated from exis
   assert.doesNotMatch(nearby, /Oragadam|40 Nests available|140\/180|synthetic/i)
 })
 
-test("progress by channel is derived separately from Studio, Living and Member Activation rows", () => {
+test("progress by channel shows FONO potential Nests and SP lead counts by commercial stage", () => {
   const html = renderLiveWorkspace()
-  assert.match(html, /FONO 40 verified · SP 30 spec verified/)
-  assert.match(html, /0 recorded Member arrivals and 0 billed activations/)
+  assert.match(html, /FONO 500 potential Nests · SP 1 leads/)
+  assert.match(html, /SP current manpower is excluded from demand and matched Nests/)
   const lanes = html.slice(html.indexOf('class="enterprise-supply-lanes"'), html.indexOf('class="enterprise-work-panel"'))
-  const laneValues = Object.fromEntries([...lanes.matchAll(/<span>([^<]+)<\/span><b>(\d+)<\/b>/g)].map((match) => [match[1], Number(match[2])]))
-  assert.deepEqual(laneValues, {
-    "Vacant Nests reserved": 140,
-    "Readiness verified": 40,
-    "Members arrived": 0,
-    Billing: 0,
-    "Park contracted": 50,
-    "Build / hardware done": 30,
-    "Services live": 0,
-    "Spec verified": 30,
-  })
-  assert.doesNotMatch(lanes, />64<|>60<|>96<|>84<|>80</)
+  const fonoLane = lanes.slice(lanes.indexOf('data-supply-lane="FONO"'), lanes.indexOf('data-supply-lane="SP"'))
+  const spLane = lanes.slice(lanes.indexOf('data-supply-lane="SP"'))
+  const values = (lane: string) => Object.fromEntries([...lane.matchAll(/<span>([^<]+)<\/span><b>(\d+)<\/b>/g)].map((match) => [match[1], Number(match[2])]))
+  assert.deepEqual(values(fonoLane), { "Lead · potential Nests": 500, "Contracting · potential Nests": 0, "Contracted · potential Nests": 0, "Total potential Nests": 500, "Members arrived": 0, Billing: 0 })
+  assert.deepEqual(values(spLane), { "Schedule Next Visit": 1, "Total visits / leads": 1 })
 })
 
 test("calls and visits are a read-only Sheet-driven plan with resolved owners and recorded states", () => {
@@ -170,7 +197,7 @@ test("background record is assembled from live demand, governed actions, evidenc
   assert.match(html, /5 Sheet audit events · governed controls retained/)
   assert.match(background, /Contract-specific readiness/)
   assert.match(background, /Test Manufacturing Co\./)
-  assert.match(background, /DEM-TEST-001/)
+  assert.match(background, /OPS-RPT-FONO-TEST-001/)
   assert.match(background, /Assembly operator \/ Day/)
   assert.match(background, /500 \/ 246 Nests/)
   assert.match(background, /Calculated plan and evidence controls/)
@@ -192,11 +219,12 @@ test("background record is assembled from live demand, governed actions, evidenc
 test("decision required derives its gap, search boundary, named owner and deadline from live data", () => {
   const html = renderLiveWorkspace()
   const decision = html.slice(html.indexOf('class="enterprise-ask"'), html.indexOf('class="enterprise-source-note"'))
-  assert.match(html, /Close the 254-Nest readiness gap/)
-  assert.match(decision, /Close the 254-Nest readiness gap and submit contract-matched proof/)
-  assert.match(decision, /70 Ring 1 Nests do not cover the 254-Nest gap/)
-  assert.match(decision, /calculated Ring 2 search is open/)
-  assert.match(decision, /Priya Rao \(Test\) remains accountable/)
+  assert.match(html, /500 potential Nests across 1 FONO Leads/)
+  assert.match(decision, /Advance 500 potential Nests across 1 FONO Lead-stage opportunities/)
+  assert.match(decision, /FONO · Lead stage/)
+  assert.match(decision, /Priya Rao \(Test\)<\/span><strong>1 leads · 500 Nests/)
+  assert.match(decision, /SP · Follow-ups open/)
+  assert.match(decision, /Unassigned<\/span><strong>1 leads/)
   assert.match(decision, /<dt>Owner<\/dt><dd>Priya Rao \(Test\)<\/dd>/)
   assert.match(decision, /29 Jul, 09:00 IST/)
   assert.doesNotMatch(decision, /ACT-PRIYA|5 km search stays closed|Vikram Solar|Ops Control/)
@@ -231,9 +259,9 @@ test("issues needing help are automatically derived from live demand, incidents,
   const issues = html.slice(html.indexOf('class="enterprise-exceptions"'), html.indexOf('class="enterprise-audit-details"'))
   assert.match(issues, /3 issues need human help/)
   assert.match(issues, /Google Sheet · automatically derived/)
-  assert.match(issues, /254 verified-ready Nests short · Test Manufacturing Co\./)
-  assert.match(issues, /Shortfall open · 246\/500 recorded/)
-  assert.match(issues, /Close the 254-Nest readiness gap/)
+  assert.match(issues, /500 potential Nests · Test Manufacturing Co\./)
+  assert.match(issues, /Lead · 500 potential Nests/)
+  assert.match(issues, /Advance the Lead to Contracting/)
   assert.match(issues, /Approve enterprise demand SLA exception/)
   assert.match(issues, /Pending human approval/)
   assert.match(issues, /Due-today readiness call · Nia Nest Hemalata Elumalai/)

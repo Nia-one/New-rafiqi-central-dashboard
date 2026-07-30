@@ -6,7 +6,7 @@ import { CartesianGrid, LabelList, Line, LineChart, XAxis, YAxis } from "rechart
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { commitmentStatus, type ExecutionAction } from "@/lib/execution-control"
 import { memberFeedbackItems, npsResponses } from "@/lib/member-feedback-data"
-import { buildFeedbackSummary, categoriseNps, feedbackAgeHours, npsByDimension, npsByMonth, NPS_QUESTION, recurringFeedback, type ExitRisk, type MemberFeedbackItem, type NpsResponse } from "@/lib/member-feedback"
+import { buildFeedbackSummary, categoriseNps, feedbackAgeHours, mapSheetFeedbackItem, npsByDimension, npsByMonth, NPS_QUESTION, recurringFeedback, type ExitRisk, type MemberFeedbackItem, type NpsResponse } from "@/lib/member-feedback"
 import { OperationalCard, OperationalCardStack } from "@/components/operational-card"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 
@@ -104,7 +104,7 @@ function NpsPatterns({ items, responses }: { items: MemberFeedbackItem[]; respon
 
       <section className="feedback-section" aria-labelledby="feedback-recurring-title">
         <header className="feedback-section-heading"><div><p className="story-kicker">RECURRING CAUSES</p><h2 id="feedback-recurring-title">Fix the pattern, not only the latest item.</h2></div><p>Population: all {items.length} Sheet-backed feedback items.</p></header>
-        <ol className="feedback-recurring-list">{recurring.map((row, index) => <li key={`${row.pillar}-${row.category}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{row.category}</strong><p>{row.pillar} · {row.count} of {memberFeedbackItems.length} feedback items</p></div><b>{row.immediateAttention} immediate</b></li>)}</ol>
+        <ol className="feedback-recurring-list">{recurring.map((row, index) => <li key={`${row.pillar}-${row.category}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{row.category}</strong><p>{row.pillar} · {row.count} {items === memberFeedbackItems ? <>of {memberFeedbackItems.length}</> : <>of {items.length}</>} feedback items</p></div><b>{row.immediateAttention} immediate</b></li>)}</ol>
       </section>
     </div>
   </div>
@@ -113,12 +113,11 @@ function NpsPatterns({ items, responses }: { items: MemberFeedbackItem[]; respon
 export function MemberFeedbackScreen({ actions, onOpenExecution, onOpenDespatch, liveOpsData }: { actions: ExecutionAction[]; onOpenExecution: () => void; onOpenDespatch: () => void; liveOpsData?: any }) {
   const [view, setView] = useState<FeedbackView>("Early warning")
   const [openSection, setOpenSection] = useState(-1)
+  const hasConnectedData = liveOpsData !== undefined
   const liveFeedbackRows = liveOpsData?.memberNpsFeedback ?? []
   const liveResponseRows = liveOpsData?.memberNpsResponses ?? []
-  const feedbackItems: MemberFeedbackItem[] = liveFeedbackRows.length ? liveFeedbackRows.map((row: Record<string, any>) => ({
-    id: String(row.id || ""), actionId: String(row["action id"] || ""), memberToken: String(row["member token"] || ""), pillar: (["Living", "Work", "Essentials", "General"].includes(String(row.pillar)) ? row.pillar : "General") as MemberFeedbackItem["pillar"], category: String(row.category || "General Member feedback"), theatre: String(row.theatre || ""), studio: String(row.studio || ""), summary: String(row.summary || ""), capturedAt: String(row["captured at"] || ""), source: String(row.source) === "Chatbot" ? "Chatbot" : "Monthly NPS", exitRisk: (["Immediate attention", "Watch closely", "Monitor"].includes(String(row["exit risk"])) ? row["exit risk"] : "Monitor") as ExitRisk, rawConversationRef: String(row["raw conversation ref"] || ""), npsResponseId: row["nps response id"] ? String(row["nps response id"]) : null,
-  })) : memberFeedbackItems
-  const responses: NpsResponse[] = liveResponseRows.length ? liveResponseRows.map((row: Record<string, any>) => {
+  const feedbackItems: MemberFeedbackItem[] = hasConnectedData ? liveFeedbackRows.map(mapSheetFeedbackItem) : memberFeedbackItems
+  const responses: NpsResponse[] = hasConnectedData ? liveResponseRows.map((row: Record<string, any>) => {
     const score = Number(row.score)
     return { id: String(row.id || ""), memberToken: String(row["member token"] || ""), score, category: categoriseNps(score), followUpText: row["follow up text"] ? String(row["follow up text"]) : null, collectedAt: String(row["collected at"] || ""), month: String(row.month || String(row["collected at"] || "").slice(0, 7)), theatre: String(row.theatre || ""), studio: String(row.studio || "") }
   }) : npsResponses

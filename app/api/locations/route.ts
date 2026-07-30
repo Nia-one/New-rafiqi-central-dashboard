@@ -23,7 +23,7 @@ type NominatimResult = {
 export async function GET(request: NextRequest) {
   const actor = await actorFromRequest(request)
   if (!actor) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
-  if (!selfDrivePlatformEnabled()) return NextResponse.json({ error: "Self Drive platform is disabled." }, { status: 404 })
+  if (process.env.RAFIQI_SELF_DRIVE_PLATFORM?.trim().toLowerCase() !== "true" || !selfDrivePlatformEnabled()) return NextResponse.json({ error: "Self Drive platform is disabled." }, { status: 404 })
 
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? ""
   const placeId = request.nextUrl.searchParams.get("placeId")?.trim() ?? ""

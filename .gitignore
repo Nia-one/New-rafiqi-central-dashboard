@@ -10,3 +10,9 @@ node_modules
 .DS_Store
 .env.local
 service-account.json
+.vercel
+.env*
+*.log
+tmp/
+outputs/
+~$*

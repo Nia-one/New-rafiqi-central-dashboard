@@ -98,7 +98,7 @@ function liveCashControlLoopHealth(liveData: any, fallback: LoopHealth) {
     state: "Running" as const,
   })).filter((clock) => clock.dueAt)
 
-  return { connected: true, health: buildLoopHealth({
+  return { connected: feeds.length > 0, health: buildLoopHealth({
     asOf,
     feeds,
     clocks,
@@ -149,8 +149,9 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
   const linkedDestinationActionId = valueFor(destinationApproval || {}, ["linked action id"])
   const destinationAction = actionRows.find((row) => valueFor(row, ["action id", "id"]) === linkedDestinationActionId)
   const approvalDecision = valueFor(destinationApproval || {}, ["decision"]).toLowerCase()
-  const destinationApproved = ["approved", "approve", "accepted"].includes(approvalDecision)
-  const targetValue = optionalNumberFor(destinationApproval?.["amount inr"])
+  const financeDestinationDecision = valueFor(finance || {}, ["destination approved"]).toLowerCase()
+  const destinationApproved = ["approved", "approve", "accepted"].includes(approvalDecision) || ["yes", "true", "approved", "approve"].includes(financeDestinationDecision)
+  const targetValue = optionalNumberFor(destinationApproval?.["amount inr"]) ?? optionalNumberFor(finance?.["cash target inr"])
   const currentValue = optionalNumberFor(finance?.["cash balance inr"])
   const opexForecastValue = optionalNumberFor(finance?.["opex forecast inr"])
   const opexCapValue = optionalNumberFor(finance?.["opex cap inr"])
@@ -163,7 +164,7 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
   const opexForecast = opexForecastValue ?? 0
   const opexCap = opexCapValue ?? 0
   const leakage = leakageValue ?? 0
-  const ownerActorId = valueFor(destinationAction || {}, ["owner actor id", "owner"]) || valueFor(destinationApproval || {}, ["approver actor id"])
+  const ownerActorId = valueFor(destinationAction || {}, ["owner actor id", "owner"]) || valueFor(destinationApproval || {}, ["approver actor id"]) || valueFor(finance || {}, ["destination owner actor id"])
   const owner = liveData?.people?.find((person: Record<string, unknown>) => String(person["actor id"] || "").trim() === ownerActorId)?.["display name"] || ownerActorId || (liveData ? "Owner not recorded" : fixturePreview.summary.owner)
   const liveLoop = liveCashControlLoopHealth(liveData, fixturePreview.loopHealth)
   const loopHealth = liveLoop.health
@@ -172,7 +173,7 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
   const cashAtRisk = ["breached", "at risk", "failed"].includes(cashStatus)
   const cashGuardrailLabel = cashProtected ? "Cash protected" : cashAtRisk ? "Cash at risk" : cashStatus ? `Cash guardrail status ${cashStatus}` : "Cash guardrail not recorded"
   const cmActualValue = optionalNumberFor(finance?.["cm2 inr"])
-  const monthlyCmTargetValue = optionalNumberFor(liveData?.monthlyCMTarget)
+  const monthlyCmTargetValue = optionalNumberFor(finance?.["cm target inr"]) ?? optionalNumberFor(liveData?.monthlyCMTarget)
   const cmActual = cmActualValue ?? 0
   const monthlyCmTarget = monthlyCmTargetValue ?? 0
   const cashGapValue = targetValue !== null && currentValue !== null ? Math.max(0, targetValue - currentValue) : null
@@ -361,13 +362,13 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
   }
 
   const verdictLabel = `${cashGuardrailLabel} · ${destinationApproved ? "destination approved" : "destination needs approval"}`
-  const decisionDueAt = liveData ? validTimestamp(destinationAction?.["due at"]) : preview.tasks[0].dueAt
+  const decisionDueAt = liveData ? validTimestamp(destinationAction?.["due at"] || finance?.["decision due at"]) : preview.tasks[0].dueAt
   const decisionDue = decisionDueAt ? date(decisionDueAt) : "No deadline recorded"
   const staleFeeds = loopHealth.feeds.filter((feed) => feed.stale)
   const oldestFeed = [...loopHealth.feeds].sort((a, b) => b.ageMinutes - a.ageMinutes)[0]
   const freshnessSummary = liveLoop.connected
     ? `Google Sheet refresh ${date(loopHealth.asOf)} · ${loopHealth.feeds.length} connected feeds · ${staleFeeds.length} stale`
-    : `Last refresh ${date(preview.source.lastRefreshAt)} · financial actions blocked`
+    : "Finance_Daily and governed Cash & Control logs are not connected"
   const controlPathImplicationSummary = destinationApproved
     ? content("control_path_implication", "approved_summary", "The approved target remains governed and the cascade is unlocked.")
     : content("control_path_implication", "pending_summary", "The proposed target cannot activate silently.")
@@ -435,7 +436,7 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
 
     <LoopHealthStrip health={loopHealth} />
     <section className={styles.freshnessPanel} aria-label="Cash and Control data freshness details">
-      <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>{liveLoop.connected ? staleFeeds.length ? `${staleFeeds.length} connected source${staleFeeds.length === 1 ? " is" : "s are"} stale` : "Google Sheet sources current" : "Stale synthetic fixture"}</strong><span>{liveLoop.connected ? `Sheet snapshot ${date(loopHealth.asOf)} · ${loopHealth.feeds.length} connected feeds${oldestFeed ? ` · oldest ${oldestFeed.label} ${oldestFeed.ageLabel}` : ""}` : `Last refresh ${date(preview.source.lastRefreshAt)} · no live connection`}</span><b>{liveLoop.connected ? `${loopHealth.verification.claimed} financial outcomes tracked` : "All financial actions blocked"}</b></div>
+      <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>{liveLoop.connected ? staleFeeds.length ? `${staleFeeds.length} connected source${staleFeeds.length === 1 ? " is" : "s are"} stale` : "Google Sheet sources current" : "Required Sheet feeds not connected"}</strong><span>{liveLoop.connected ? `Sheet snapshot ${date(loopHealth.asOf)} · ${loopHealth.feeds.length} connected feeds${oldestFeed ? ` · oldest ${oldestFeed.label} ${oldestFeed.ageLabel}` : ""}` : "Finance_Daily has no production row; governed cash logs are not available"}</span><b>{liveLoop.connected ? `${loopHealth.verification.claimed} financial outcomes tracked` : "Financial outcomes cannot be verified"}</b></div>
       <div className={styles.freshnessFeeds}>
         {loopHealth.feeds.map((feed) => <article key={feed.feedId} data-stale={feed.stale}>
           <header><strong>{feed.label}</strong><b>{feed.stale ? "Stale" : "Current"}</b></header>

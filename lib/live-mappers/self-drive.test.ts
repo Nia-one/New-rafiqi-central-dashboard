@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveMemberSavingsTasks, buildLiveNiaGrowthProjection, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
+import { buildLiveMarginInputs, buildLiveMemberEngagementActions, buildLiveMemberEngagementBackground, buildLiveMemberEngagementCommand, buildLiveMemberEngagementFreshness, buildLiveMemberEngagementHeadlineMeasures, buildLiveMemberEngagementLoopHealth, buildLiveMemberEngagementRepeatIssues, buildLiveMemberSavingsFreshness, buildLiveMemberSavingsHealth, buildLiveMemberSavingsTasks, buildLiveNiaGrowthProjection, buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveNewAddsVacancyGroups, buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot } from "./self-drive"
 
 const snapshot = buildLiveSelfDriveSnapshot({
   meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
@@ -33,6 +33,27 @@ const snapshot = buildLiveSelfDriveSnapshot({
     { "evidence id": "E1", "linked id": "A1", "uploaded by actor id": "P1" },
     { "evidence id": "E2", "linked id": "A2", "uploaded by actor id": "P2" },
   ],
+  learningHistory: [
+    { "learning id": "L1", "owner actor id": "P1", domain: "Living", observed: "North result" },
+    { "learning id": "L2", "owner actor id": "P2", domain: "Living", observed: "South result" },
+  ],
+})
+
+test("margin inputs exclude incomplete or impossible capacity rows", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-07-29T18:30:00+05:30" },
+    living: [
+      { "living hourly id": "L-VALID", "studio id": "S-VALID", "theatre id": "T1", "contracted nests": 100, "occupied nests": 83 },
+      { "living hourly id": "L-MISSING-CAPACITY", "studio id": "S-ZERO", "theatre id": "T1", "contracted nests": 0, "occupied nests": 20 },
+      { "living hourly id": "L-OVER-CAPACITY", "studio id": "S-OVER", "theatre id": "T1", "contracted nests": 50, "occupied nests": 72 },
+    ],
+  })
+
+  const inputs = buildLiveMarginInputs(live)
+
+  assert.deepEqual(inputs.map((input) => input.studioId), ["S-VALID"])
+  assert.equal(inputs[0].contractedNests, 100)
+  assert.equal(inputs[0].occupiedNests, 83)
 })
 
 test("theatre and location filters retain only linked operating records", () => {
@@ -41,6 +62,7 @@ test("theatre and location filters retain only linked operating records", () => 
   assert.deepEqual(filtered.actions.map((row) => row["action id"]), ["A1"])
   assert.deepEqual(filtered.approvals.map((row) => row["approval id"]), ["AP1"])
   assert.deepEqual(filtered.evidence.map((row) => row["evidence id"]), ["E1"])
+  assert.deepEqual(filtered.learningHistory.map((row) => row["learning id"]), ["L1"])
 })
 
 test("person filter follows the owner and keeps global targets", () => {
@@ -111,7 +133,7 @@ test("Member Engagement name-based Sheet rows follow theatre and studio filters"
   assert.deepEqual(filtered.memberNpsResponses.map((row) => row.id), ["R2"])
 })
 
-test("Member Adds fill status uses only FONO vacancies and verified billing-live Members", () => {
+test("Member Adds fill status uses FONO contracted and occupied Nests from Studios", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
     living: [
@@ -129,21 +151,58 @@ test("Member Adds fill status uses only FONO vacancies and verified billing-live
 
   assert.deepEqual(buildLiveNewAddsFillStatus(live), {
     hasData: true,
-    target: 25,
-    verified: 1,
+    target: 96,
+    verified: 72,
     gap: 24,
-    progressPercent: 4,
+    progressPercent: 75,
     owner: "Priya",
   })
   assert.deepEqual(buildLiveNewAddsTheatreProgress(live), [{
     theatre: "Coromandel",
     ownerRole: "Priya",
     vacantNests: 24,
-    verifiedBillingLiveFills: 1,
-    dailyTarget: 25,
+    verifiedBillingLiveFills: 72,
+    dailyTarget: 96,
     daysToFill: 0,
     averageFillTimeLabel: "30 min",
   }])
+})
+
+test("Member Adds vacancy list groups pending Studios by Theatre", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    studios: [
+      { "studio id": "F1", "studio name": "Alpha" },
+      { "studio id": "F2", "studio name": "Beta" },
+      { "studio id": "F3", "studio name": "Full" },
+    ],
+    living: [
+      { "theatre id": "North", "studio id": "F1", "supply model": "FONO", "contracted nests": "100", "occupied nests": "80" },
+      { "theatre id": "North", "studio id": "F2", "supply model": "FONO", "contracted nests": "50", "occupied nests": "45" },
+      { "theatre id": "North", "studio id": "F4", "supply model": "FONO", "contracted nests": "10", "occupied nests": "15" },
+      { "theatre id": "South", "studio id": "F3", "supply model": "FONO", "contracted nests": "40", "occupied nests": "40" },
+      { "theatre id": "North", "studio id": "SP1", "supply model": "SP", "contracted nests": "100", "occupied nests": "0" },
+    ],
+  })
+  assert.deepEqual(buildLiveNewAddsVacancyGroups(live), [{
+    theatre: "North",
+    contractedNests: 160,
+    occupiedNests: 140,
+    pendingNests: 20,
+    studios: [
+      { theatre: "North", studioId: "F1", studioName: "Alpha", contractedNests: 100, occupiedNests: 80, pendingNests: 20, occupancyPercent: 80 },
+      { theatre: "North", studioId: "F2", studioName: "Beta", contractedNests: 50, occupiedNests: 45, pendingNests: 5, occupancyPercent: 90 },
+    ],
+  }])
+})
+
+test("Member Adds vacancy owner falls back to the Theatre lead", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    theatres: [{ "theatre id": "T-NORTH", "theatre name": "North", "lead actor id": "P-NORTH" }],
+    people: [{ "actor id": "P-NORTH", "display name": "North Lead" }],
+    living: [{ "theatre id": "North", "studio id": "F1", "supply model": "FONO", "contracted nests": "20", "occupied nests": "10" }],
+  })
+  assert.equal(buildLiveNewAddsTheatreProgress(live)[0].ownerRole, "North Lead")
+  assert.equal(buildLiveNewAddsFillStatus(live).owner, "North Lead")
 })
 
 test("Member Adds proof and controls never retain synthetic KPI values", () => {
@@ -168,7 +227,8 @@ test("Member Adds proof and controls never retain synthetic KPI values", () => {
     ],
   })
   const proof = buildLiveNewAddsProof(live)
-  assert.equal(proof.measures[0].primary, "1 / 25 today")
+  assert.equal(proof.measures[0].primary, "24 Nests vacant")
+  assert.equal(proof.measures[0].secondary, "72 of 96 contracted Nests occupied from Studios · 1 new billing-live fill independently verified")
   assert.equal(proof.measures[1].primary, "Source not recorded")
   assert.equal(proof.measures[2].primary, "No verified CAC")
   assert.equal(proof.measures[3].primary, "30 minutes")
@@ -189,12 +249,12 @@ test("Member Adds returns an honest no-data state instead of a fixture fallback"
   })
 })
 
-test("Nia Growth summary derives its target, current and owner from the live Living feed", () => {
+test("Nia Growth summary derives its target, current and owner from separate FONO and Shram Park demand", () => {
   const live = buildLiveSelfDriveSnapshot({
     meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
-    living: [
-      { "theatre id": "T1", "studio id": "S1", "supply model": "FONO", "contracted nests": "120", "activation ready nests": "96", "occupied nests": "72", "next action owner actor id": "P1" },
-      { "theatre id": "T1", "studio id": "S2", "supply model": "SP", "contracted nests": "180", "activation ready nests": "84", "occupied nests": "54", "next action owner actor id": "P2" },
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", "role required": "Living supply", "headcount required": "120", "headcount matched": "96", "owner actor id": "P1", "updated at": "2026-07-26T12:00:00+05:30" },
+      { "demand id": "SP-BOT-1", "headcount required": "180", "headcount matched": "84", "owner actor id": "P2", "updated at": "2026-07-26T12:00:00+05:30" },
     ],
     people: [
       { "actor id": "P1", "display name": "Priya" },
@@ -202,12 +262,34 @@ test("Nia Growth summary derives its target, current and owner from the live Liv
     ],
   })
   const projection = buildLiveNiaGrowthProjection(live)
-  assert.equal(projection.summary.target, "300 contracted Nests")
-  assert.equal(projection.summary.current, "180 activation-ready Nests")
+  assert.equal(projection.summary.target, "300 required Nests")
+  assert.equal(projection.summary.current, "180 matched Nests")
   assert.equal(projection.summary.gap, "120 Nests")
   assert.equal(projection.summary.owner, "Priya")
   assert.match(projection.measures[0].value, /180/)
+  assert.match(projection.measures[0].detail, /FONO Funnel and Shram Park/)
+  assert.equal(projection.measures[1].target, "Approved readiness SLA not recorded")
   assert.match(projection.measures[2].value, /FONO 96/)
+  assert.match(projection.measures[2].detail, /Studio occupancy is not inferred/)
+})
+
+test("Nia Growth totals exclude demand rows quarantined for missing freshness evidence", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-07-26T12:00:00+05:30" },
+    enterpriseDemand: [
+      { "demand id": "OPS-RPT-FONO-1", "headcount required": "120", "headcount matched": "96", "updated at": "2026-07-26T12:00:00+05:30" },
+      { "demand id": "SP-BOT-1", "headcount required": "200", "headcount matched": "150", "updated at": "" },
+    ],
+  })
+  const projection = buildLiveNiaGrowthProjection(live)
+  assert.equal(projection.summary.target, "120 required Nests")
+  assert.equal(projection.summary.current, "96 matched Nests")
+  assert.equal(projection.summary.gap, "24 Nests")
+})
+
+test("Self Drive snapshot uses ingestion time instead of Sheet update time for freshness", () => {
+  const live = buildLiveSelfDriveSnapshot({ meta: { updatedAt: "2026-07-26T12:00:00+05:30" }, fetchedAt: "2026-07-28T12:00:00+05:30" })
+  assert.equal(live.asOf, "2026-07-28T12:00:00+05:30")
 })
 
 test("Member Adds proof stays honest when only non-FONO Living rows are present", () => {
@@ -218,7 +300,7 @@ test("Member Adds proof stays honest when only non-FONO Living rows are present"
     actionLog: [{ "action id": "A-SP", "incident id": "I-SP", "operating objective": "Complete park readiness", state: "Detected" }],
   })
   const proof = buildLiveNewAddsProof(live)
-  assert.equal(proof.measures[0].primary, "0 / 0 today")
+  assert.equal(proof.measures[0].primary, "0 Nests vacant")
   assert.equal(proof.loopHealth.verification.claimed, 0)
   assert.equal(proof.loopHealth.quarantinedRecords, 1)
 })
@@ -549,9 +631,21 @@ test("Member Savings tasks derive from governed Action_Log rows instead of the p
   const live = buildLiveSelfDriveSnapshot({
     meta: { updatedAt: "2026-07-26T16:55:00+05:30" },
     essentials: [{ "essentials hourly id": "ESS-1", "member savings inr": "2400", "nia margin inr": "3500", "captured at": "2026-07-26T16:55:00+05:30" }],
-    actionLog: [{ "action id": "SD-ACTION-SAV-2", "operating objective": "Member Savings recovery", "expected metric": "Attach", "owner actor id": "ACT-PRIYA", state: "Detected", "due at": "2026-07-27T14:00:00+05:30", "proposed at": "2026-07-26T16:50:00+05:30" }],
+    actionLog: [{ "action id": "SD-ACTION-SAV-2", "studio id": "S1", "operating objective": "Member Savings recovery", "expected metric": "Attach", "owner actor id": "ACT-PRIYA", state: "Detected", "next action": "Submit attach recovery evidence", "due at": "2026-07-27T14:00:00+05:30", "proposed at": "2026-07-26T16:50:00+05:30" }],
+    evidenceLog: [{ "evidence id": "E-SAV-2", "linked id": "SD-ACTION-SAV-2", "verification status": "Pending", notes: "Attach recovery proof awaiting review", "uploaded at": "2026-07-26T16:54:00+05:30" }],
     people: [{ "actor id": "ACT-PRIYA", "display name": "Priya Rao" }],
+    studios: [{ "studio id": "S1", studio: "Sriperumbudur 01" }],
   })
   const tasks = buildLiveMemberSavingsTasks(live)
-  assert.deepEqual(tasks.map((task) => ({ actionId: task.actionId, owner: task.owner, expectedMetric: task.expectedMetric })), [{ actionId: "SD-ACTION-SAV-2", owner: "Priya Rao", expectedMetric: "Attach" }])
+  assert.deepEqual(tasks.map((task) => ({ actionId: task.actionId, service: task.service, owner: task.owner, expectedMetric: task.expectedMetric, progress: task.progress, verifiedResult: task.verifiedResult, state: task.state })), [{ actionId: "SD-ACTION-SAV-2", service: "Sriperumbudur 01", owner: "Priya Rao", expectedMetric: "Attach", progress: "Submit attach recovery evidence", verifiedResult: "Attach recovery proof awaiting review", state: "Awaiting verification" }])
+})
+
+test("Member Savings removes a live action after linked independent evidence verifies it", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-07-26T17:00:00+05:30" },
+    actionLog: [{ "action id": "SD-ACTION-SAV-VERIFIED", "operating objective": "Member Savings recovery", "owner actor id": "ACT-PRIYA", state: "Assigned" }],
+    evidenceLog: [{ "evidence id": "E-SAV-VERIFIED", "linked id": "SD-ACTION-SAV-VERIFIED", "verification status": "Verified", "verified at": "2026-07-26T16:59:00+05:30" }],
+  })
+
+  assert.deepEqual(buildLiveMemberSavingsTasks(live), [])
 })

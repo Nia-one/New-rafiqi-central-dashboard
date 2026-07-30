@@ -58,7 +58,7 @@ export function OverviewStory({ mode, loopHealth, liveOpsData, allocationData, o
       </div>
     </div>
     {mode === "reporting"
-      ? true
+      ? loopHealth?.overviewAnswerAllowed !== false
         ? <>
   <OperatingLede liveOpsData={liveOpsData} />
 

@@ -3,9 +3,9 @@ type FeatureEnvironment = Record<string, string | undefined>
 export function selfDrivePlatformEnabled(environment: FeatureEnvironment = process.env) {
   const explicitValue = environment.RAFIQI_SELF_DRIVE_PLATFORM?.trim().toLowerCase()
   if (explicitValue !== undefined) return explicitValue === "true"
-  // Rafiqi Central is now sheet-backed by default. Set
-  // RAFIQI_SELF_DRIVE_PLATFORM=false only for an intentional rollback.
-  return true
+  return environment.NODE_ENV !== "production"
+    && environment.VERCEL_ENV === undefined
+    && !environment.RAFIQI_LOGIN_EMAIL
 }
 
 /** @deprecated The complete platform is released only through RAFIQI_SELF_DRIVE_PLATFORM. */

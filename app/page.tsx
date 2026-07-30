@@ -32,9 +32,9 @@ export default async function Page() {
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const enterpriseDemandPreview = buildEnterpriseDemandLoopPreview()
   const financeExpansionPreview = financeAllowed ? buildFinanceExpansionPreview() : null
-  const liveOpsData = await buildOpsData()
+  const liveOpsData = { ...await buildOpsData(), fetchedAt: new Date().toISOString() }
   const liveSelfDriveData = buildLiveSelfDriveSnapshot(liveOpsData)
-  const niaMarginsPreview = buildNiaMarginsPreview(buildLiveMarginInputs(liveSelfDriveData))
+  const niaMarginsPreview = buildNiaMarginsPreview(buildLiveMarginInputs(liveSelfDriveData), liveSelfDriveData.asOf, [])
   const newAddsPreview = buildNewAddsPreview()
   const memberEngagementPreview = buildMemberEngagementPreview()
   const memberSavingsPreview = buildMemberSavingsPreview()

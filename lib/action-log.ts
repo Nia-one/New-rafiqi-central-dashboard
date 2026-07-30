@@ -1,5 +1,6 @@
 ﻿import type { MismatchInput } from "@/lib/allocation-types"
 import type { ActionStatus } from "@/lib/allocation-types"
+import { mismatchInputs } from "@/lib/allocation-data"
 
 export type ActionType = "detect" | "agree" | "assign" | "resolve" | "close" | "verify" | "dismiss" | "reassign" | "note"
 
@@ -47,11 +48,11 @@ function seedActor(owner: string) {
   return "operations-lead"
 }
 
-function buildSeedActionLog(mismatchInputs: MismatchInput[] = []) {
+function buildSeedActionLog(inputs: MismatchInput[] = mismatchInputs) {
   const entries: ActionLogEntry[] = []
   let closeIndex = 0
 
-  for (const item of mismatchInputs) {
+  for (const item of inputs) {
     // Closed migration rows need enough history for detect â†’ assign â†’ resolve â†’ close.
     const detectedAgeHours = item.actionStatus === "Resolved" ? Math.max(item.ageHours, 4) : item.ageHours
     const detectedAt = isoAtOffset(ACTION_LOG_REFERENCE_AT, -detectedAgeHours)

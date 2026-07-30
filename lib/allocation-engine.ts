@@ -13,7 +13,7 @@ import {
   type RankedMismatch,
   type ScoreComponents,
 } from "@/lib/allocation-types"
-import { supplyOptions, type SupplyOption } from "@/lib/allocation-data"
+import { mismatchInputs, supplyOptions, type SupplyOption } from "@/lib/allocation-data"
 import { THEATRES } from "@/lib/dashboard-model"
 import { ACTION_LOG_REFERENCE_AT, deriveQueueItemState, latestAction, seedActionLog, type ActionLogEntry } from "@/lib/action-log"
 
@@ -79,7 +79,7 @@ type StageMismatchOptions = ActionLogContext & {
  * If a newly diagnosed entity has no stored row yet, a fully specified fallback is
  * materialised through the same action-template contract as every other mismatch.
  */
-export function getMismatchForStage(domain: AllocationDomain, joinKey: JoinKey, options: StageMismatchOptions = {}, liveInputs: MismatchInput[] = []): Mismatch | undefined {
+export function getMismatchForStage(domain: AllocationDomain, joinKey: JoinKey, options: StageMismatchOptions = {}, liveInputs: MismatchInput[] = mismatchInputs): Mismatch | undefined {
   const canonicalKey = matchKeyFor(domain, joinKey)
   const stored = liveInputs.find((input) => input.domain === domain && matchKeyFor(input.domain, input.joinKey) === canonicalKey)
   const source = stored ?? options.fallbackInput
@@ -242,7 +242,7 @@ export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
 }
 
 /** Open queue. Closed and Dismissed rows are excluded from scoring. */
-export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): RankedMismatch[] {
+export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): RankedMismatch[] {
   const unresolved = liveInputs
     .map((input) => {
       const existing = getMismatchForStage(input.domain, input.joinKey, { ...context, fallbackInput: input }, liveInputs)
@@ -295,11 +295,12 @@ export type DailyActionGrid = Record<ActionGridCategory, Record<(typeof THEATRES
  * Preserves the audited queue order while grouping open actions for the daily
  * Theatre × category matrix. A null cell means the feed is not instrumented.
  */
-export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): DailyActionGrid {
+export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): DailyActionGrid {
   const grid = Object.fromEntries(ACTION_GRID_CATEGORIES.map((category) => [
     category,
     Object.fromEntries(THEATRES.map((theatre) => [theatre, []])),
   ])) as unknown as DailyActionGrid
+  grid.Work["Rajputana (NCR)"] = null
 
   for (const mismatch of buildRankedQueue(context, liveInputs)) {
     const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : mismatch.domain === "Work" ? "Work" : "Living"
@@ -312,11 +313,11 @@ export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs:
   return grid
 }
 
-export function topUnresolved(context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): RankedMismatch | undefined {
+export function topUnresolved(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): RankedMismatch | undefined {
   return buildRankedQueue(context, liveInputs)[0]
 }
 
-export function mismatchById(id: string, context: ActionLogContext = {}, liveInputs: MismatchInput[] = []): Mismatch | undefined {
+export function mismatchById(id: string, context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): Mismatch | undefined {
   const input = liveInputs.find((item) => item.id === id)
   return input ? getMismatchForStage(input.domain, input.joinKey, context, liveInputs) : undefined
 }

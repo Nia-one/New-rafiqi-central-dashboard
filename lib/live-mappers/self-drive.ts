@@ -183,6 +183,24 @@ export type LiveNewAddsTheatreProgress = Readonly<{
   averageFillTimeLabel: string
 }>
 
+export type LiveNewAddsVacancyStudio = Readonly<{
+  theatre: string
+  studioId: string
+  studioName: string
+  contractedNests: number
+  occupiedNests: number
+  pendingNests: number
+  occupancyPercent: number
+}>
+
+export type LiveNewAddsVacancyGroup = Readonly<{
+  theatre: string
+  contractedNests: number
+  occupiedNests: number
+  pendingNests: number
+  studios: readonly LiveNewAddsVacancyStudio[]
+}>
+
 export type LiveNewAddsProof = Readonly<{
   loopHealth: LoopHealth
   measures: NewAddsPreview["measures"]
@@ -227,23 +245,64 @@ export function buildLiveNewAddsTheatreProgress(snapshot: LiveSelfDriveSnapshot)
     const livingRows = fonoLiving.filter((row) => text(row, "theatre id") === theatreId)
     const studioIds = new Set(livingRows.map((row) => text(row, "studio id")).filter(Boolean))
     const activationRows = verifiedBillingLiveActivations(snapshot, studioIds)
-    const verifiedKeys = new Set(activationRows.map((row) => text(row, "member token") || text(row, "activation id")).filter(Boolean))
-    const vacantNests = livingRows.reduce((sum, row) => sum + Math.max(0, number(row, "activation ready nests") - number(row, "occupied nests")), 0)
-    const ownerActorId = livingRows.map((row) => text(row, "next action owner actor id")).find(Boolean) || ""
+    // Studios is the occupancy system of record. Aggregate before calculating
+    // the gap so an over-occupied Studio offsets vacancy elsewhere in the same
+    // Theatre, exactly as the source report totals do.
+    const contractedNests = livingRows.reduce((sum, row) => sum + (number(row, "contracted nests") || number(row, "activation ready nests")), 0)
+    const occupiedNests = livingRows.reduce((sum, row) => sum + number(row, "occupied nests"), 0)
+    const vacantNests = Math.max(0, contractedNests - occupiedNests)
+    const normalizedTheatreId = theatreId.trim().toLowerCase()
+    const theatreRow = snapshot.theatres.find((row) => [text(row, "theatre id"), text(row, "theatre name")].some((value) => value.trim().toLowerCase() === normalizedTheatreId))
+    const ownerActorId = livingRows.map((row) => text(row, "next action owner actor id")).find(Boolean) || text(theatreRow ?? {}, "lead actor id")
     const owner = snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"]
-    const theatre = snapshot.theatres.find((row) => text(row, "theatre id") === theatreId)?.["theatre name"]
-    const verified = verifiedKeys.size
+    const theatre = theatreRow?.["theatre name"]
 
     return Object.freeze({
       theatre: String(theatre || theatreId || "Unmapped Theatre").trim(),
-      ownerRole: String(owner || ownerActorId || "Unassigned").trim(),
+      ownerRole: String(owner || ownerActorId || "Living Operations").trim(),
       vacantNests,
-      verifiedBillingLiveFills: verified,
-      dailyTarget: vacantNests + verified,
+      verifiedBillingLiveFills: occupiedNests,
+      dailyTarget: contractedNests,
       daysToFill: 0,
       averageFillTimeLabel: averageFillTimeLabel(activationRows),
     })
   }))
+}
+
+/** Studio-level FONO vacancies sourced only from the Studios-backed Living rows. */
+export function buildLiveNewAddsVacancyGroups(snapshot: LiveSelfDriveSnapshot): readonly LiveNewAddsVacancyGroup[] {
+  const studioNameById = new Map(snapshot.studios.map((row) => [text(row, "studio id"), text(row, "studio name")]))
+  const fonoRows = snapshot.living.filter((row) => text(row, "supply model").toLowerCase() === "fono")
+  const rows = fonoRows.flatMap((row) => {
+    const contractedNests = number(row, "contracted nests") || number(row, "activation ready nests")
+    const occupiedNests = number(row, "occupied nests")
+    const pendingNests = Math.max(0, contractedNests - occupiedNests)
+    if (pendingNests <= 0) return []
+    const studioId = text(row, "studio id")
+    return [Object.freeze({
+      theatre: text(row, "theatre id") || "Unmapped Theatre",
+      studioId,
+      studioName: studioNameById.get(studioId) || studioId || "Unmapped Studio",
+      contractedNests,
+      occupiedNests,
+      pendingNests,
+      occupancyPercent: contractedNests > 0 ? Math.round(occupiedNests / contractedNests * 1_000) / 10 : 0,
+    })]
+  })
+  const theatres = [...new Set(rows.map((row) => row.theatre))]
+  return Object.freeze(theatres.map((theatre) => {
+    const studios = rows.filter((row) => row.theatre === theatre).sort((left, right) => right.pendingNests - left.pendingNests || left.studioName.localeCompare(right.studioName))
+    const theatreRows = fonoRows.filter((row) => (text(row, "theatre id") || "Unmapped Theatre") === theatre)
+    const contractedNests = theatreRows.reduce((sum, row) => sum + (number(row, "contracted nests") || number(row, "activation ready nests")), 0)
+    const occupiedNests = theatreRows.reduce((sum, row) => sum + number(row, "occupied nests"), 0)
+    return Object.freeze({
+      theatre,
+      contractedNests,
+      occupiedNests,
+      pendingNests: Math.max(0, contractedNests - occupiedNests),
+      studios: Object.freeze(studios),
+    })
+  }).sort((left, right) => right.pendingNests - left.pendingNests || left.theatre.localeCompare(right.theatre)))
 }
 
 function fillTaskState(value: string): FillTask["state"] {
@@ -312,8 +371,9 @@ export function buildLiveNewAddsFillStatus(snapshot: LiveSelfDriveSnapshot): Liv
   const theatres = buildLiveNewAddsTheatreProgress(snapshot)
   const openVacancies = theatres.reduce((sum, row) => sum + row.vacantNests, 0)
   const verified = theatres.reduce((sum, row) => sum + row.verifiedBillingLiveFills, 0)
-  const target = openVacancies + verified
-  const owner = theatres.map((row) => row.ownerRole).find((value) => value !== "Unassigned") || "Unassigned"
+  const target = theatres.reduce((sum, row) => sum + row.dailyTarget, 0)
+  const owners = [...new Set(theatres.map((row) => row.ownerRole).filter(Boolean))]
+  const owner = theatres.length === 0 ? "Unassigned" : owners.length === 1 ? owners[0] : owners.length > 1 ? "Theatre owners" : "Living Operations"
 
   return Object.freeze({
     hasData: theatres.length > 0,
@@ -387,7 +447,7 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
   )
   const sourceSummary = sourceCounts.length ? sourceCounts.map((row) => `${row.label} ${row.value}`).join(" · ") : "Source not recorded"
   const measures: NewAddsPreview["measures"] = Object.freeze([
-    Object.freeze({ id: "verified-fills" as const, label: "Verified fills", primary: `${status.verified} / ${status.target} today`, secondary: `${status.verified} independently verified billing-live activation${status.verified === 1 ? "" : "s"}`, chart: Object.freeze({ kind: "progress" as const, value: status.verified, max: Math.max(1, status.target) }) }),
+    Object.freeze({ id: "verified-fills" as const, label: "Occupancy gap", primary: `${status.gap} Nests vacant`, secondary: `${status.verified} of ${status.target} contracted Nests occupied from Studios · ${activations.length} new billing-live fill${activations.length === 1 ? "" : "s"} independently verified`, chart: Object.freeze({ kind: "progress" as const, value: status.verified, max: Math.max(1, status.target) }) }),
     Object.freeze({ id: "adds-by-source" as const, label: "Adds by source", primary: sourceSummary, secondary: sourceCounts.length ? "From Member_Activation" : "No acquisition-source field is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(sourceCounts) }) }),
     Object.freeze({ id: "cac-payback" as const, label: "Actual CAC & payback", primary: averageCac ? `₹${averageCac.toLocaleString("en-IN")} · ${medianPayback ? `${medianPayback} days` : "payback not recorded"}` : "No verified CAC", secondary: averageCac ? `${loadedCacRows.length} verified loaded-cost record${loadedCacRows.length === 1 ? "" : "s"}` : "No loaded acquisition cost is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(averageCac ? [Object.freeze({ label: "Verified CAC records", value: loadedCacRows.length })] : []) }) }),
     Object.freeze({ id: "arrival-billing" as const, label: "Arrival to billing live", primary: durationHours.length ? `${medianHours < 1 ? Math.max(1, Math.round(medianHours * 60)) : Math.round(medianHours)} ${medianHours < 1 ? "minutes" : "hours"}` : "No verified duration", secondary: durationHours.length ? `Median · ${durationHours.filter((hours) => hours > 48).length} activations over 48h` : "Activated and verified timestamps required", chart: Object.freeze({ kind: "threshold" as const, value: medianHours, target: 48, unit: "h", goodWhenUnder: true }) }),
@@ -514,19 +574,31 @@ export function buildLiveMemberSavingsHealth(snapshot: LiveSelfDriveSnapshot): L
 export function buildLiveMemberSavingsTasks(snapshot: LiveSelfDriveSnapshot): readonly SavingsTaskPreview[] {
   const actions = snapshot.actions.filter(isMemberSavingsAction)
   const peopleById = new Map(snapshot.people.map((row) => [text(row, "actor id"), row]))
+  const studiosById = new Map(snapshot.studios.flatMap((row) => [text(row, "studio id"), text(row, "studio code")].filter(Boolean).map((id) => [id, row] as const)))
 
-  return Object.freeze(actions.map((action) => {
+  return Object.freeze(actions.flatMap((action) => {
     const actionId = text(action, "action id")
+    const evidence = snapshot.evidence.filter((row) => text(row, "linked id") === actionId)
+    const latestEvidence = evidence.slice().sort((left, right) => {
+      const leftAt = Date.parse(text(left, "verified at") || text(left, "uploaded at") || text(left, "updated at")) || 0
+      const rightAt = Date.parse(text(right, "verified at") || text(right, "uploaded at") || text(right, "updated at")) || 0
+      return rightAt - leftAt
+    })[0]
+    const evidenceStatus = text(latestEvidence ?? {}, "verification status").toLowerCase()
+    const actionState = text(action, "state").toLowerCase()
+    if (["verified", "approved", "accepted", "closed", "resolved"].includes(evidenceStatus) || ["verified", "closed", "resolved"].includes(actionState)) return []
     const ownerActorId = text(action, "owner actor id")
-    const owner = text(peopleById.get(ownerActorId) ?? {}, "display name") || ownerActorId || "Unassigned"
-    const expectedMetric = text(action, "expected metric") || "Dual gate"
-    const issue = text(action, "operating objective") || "Member Savings recovery"
-    const service = `${text(action, "studio id") || text(action, "studio") || "Unmapped Studio"}`
-    const progress = text(action, "next action") || text(action, "operating objective") || "Recovery is pending"
-    const verifiedResult = text(action, "verification result") || "Not yet independently verified"
-    const state = (text(action, "state") || "Detected") as SavingsTaskPreview["state"]
+    const studioId = text(action, "studio id") || text(action, "studio code")
+    const studio = studiosById.get(studioId)
+    const owner = text(peopleById.get(ownerActorId) ?? {}, "display name") || ownerActorId || "No owner recorded"
+    const expectedMetric = text(action, "expected metric") || "No expected metric recorded"
+    const issue = text(action, "operating objective") || "No operating objective recorded"
+    const service = text(studio ?? {}, "studio") || text(studio ?? {}, "studio name") || text(action, "studio") || studioId || "No Studio recorded"
+    const progress = text(action, "next action") || "No next action recorded"
+    const verifiedResult = text(latestEvidence ?? {}, "notes") || text(latestEvidence ?? {}, "rejected reason") || text(action, "verification result") || (evidenceStatus ? `Evidence ${evidenceStatus}` : "No independent evidence recorded")
+    const state = (["reopened", "rejected", "failed"].includes(evidenceStatus) ? "Reopened" : evidenceStatus ? "Awaiting verification" : text(action, "state") || "Assigned") as SavingsTaskPreview["state"]
 
-    return Object.freeze({
+    return [Object.freeze({
       actionId,
       issue,
       service,
@@ -537,7 +609,7 @@ export function buildLiveMemberSavingsTasks(snapshot: LiveSelfDriveSnapshot): re
       verifiedResult,
       state,
       engineAction: action as unknown as SavingsAction,
-    })
+    })]
   }))
 }
 
@@ -914,31 +986,46 @@ export function buildLiveMemberEngagementLoopHealth(snapshot: LiveSelfDriveSnaps
 }
 
 export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): LiveNiaGrowthProjection {
-  const contractedNests = snapshot.living.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
-  const activationReadyNests = snapshot.living.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
+  const channel = (row: SheetRow) => {
+    const ids = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
+    if (ids.includes("ops-rpt-fono") || text(row, "role required").toLowerCase() === "living supply") return "FONO"
+    if (ids.includes("sp-bot")) return "SP"
+    return ""
+  }
+  const governedLiving = snapshot.enterpriseDemand.filter((row) => channel(row)
+    && text(row, "demand id")
+    && ["updated at", "opened at", "activation required at"].some((key) => Number.isFinite(Date.parse(text(row, key)))))
+  const contractedNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const activationReadyNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
   const gapNests = Math.max(0, contractedNests - activationReadyNests)
-  const ownerActorId = snapshot.living.map((row) => text(row, "next action owner actor id")).find(Boolean) || ""
-  const owner = snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned"
+  const ownerActorId = governedLiving.map((row) => text(row, "owner actor id")).find(Boolean) || ""
+  const owner = String(snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned").trim()
   const progress = contractedNests > 0 ? `${Math.round(activationReadyNests / contractedNests * 100)}%` : "No data"
   const summary = Object.freeze({
-    target: `${contractedNests} contracted Nests`,
-    current: `${activationReadyNests} activation-ready Nests`,
+    target: `${contractedNests} required Nests`,
+    current: `${activationReadyNests} matched Nests`,
     gap: `${gapNests} Nests`,
     owner,
     progress,
-    verifiedResult: `${activationReadyNests} Nests from the live Living feed`,
+    verifiedResult: `${activationReadyNests} matched Nests from FONO and Shram Park demand`,
   })
-  const fonoRows = snapshot.living.filter((row) => text(row, "supply model").toLowerCase() === "fono")
-  const spRows = snapshot.living.filter((row) => text(row, "supply model").toLowerCase() === "sp")
-  const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
-  const spReady = spRows.reduce((sum, row) => sum + number(row, "activation ready nests"), 0)
-  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
-  const spContracted = spRows.reduce((sum, row) => sum + number(row, "contracted nests"), 0)
+  const fonoRows = governedLiving.filter((row) => channel(row) === "FONO")
+  const spRows = governedLiving.filter((row) => channel(row) === "SP")
+  const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
+  const spReady = spRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
+  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const spContracted = spRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const readinessSlaPolicy = snapshot.policies.find((row) => {
+    const descriptor = `${text(row, "policy id")} ${text(row, "policy name")} ${text(row, "name")} ${text(row, "source note")}`.toLowerCase()
+    return /growth|capacity|readiness/.test(descriptor) && /sla|time/.test(descriptor) && text(row, "status").toLowerCase() === "approved"
+  })
+  const readinessSlaValue = text(readinessSlaPolicy ?? {}, "policy value") || text(readinessSlaPolicy ?? {}, "value")
+  const readinessSlaUnit = text(readinessSlaPolicy ?? {}, "unit")
   const measures: NiaGrowthPreview["measures"] = Object.freeze([
-    Object.freeze({ id: "ready-capacity", label: "Activation-ready capacity", value: `${activationReadyNests} ready Nests · FONO ${fonoReady} · SP ${spReady}`, target: `Plans: ${fonoContracted} · ${spContracted}`, detail: "Independently verified Nests only" }),
-    Object.freeze({ id: "time-to-ready", label: "Opportunity to ready", value: `${gapNests} Nest gap`, target: "SLA pending approval", detail: "Live readiness gap from Living_Hourly" }),
-    Object.freeze({ id: "fono-health", label: "FONO conversion health", value: `FONO ${fonoReady} · ${fonoContracted} contracted`, target: "Kept separate", detail: "FONO readiness remains independent from SP" }),
-    Object.freeze({ id: "sp-exposure", label: "SP capital coverage", value: `SP ${spReady} · ${spContracted} contracted`, target: "Coverage remains governed", detail: "SP readiness remains separate from FONO" }),
+    Object.freeze({ id: "ready-capacity", label: "Matched pipeline capacity", value: `${activationReadyNests} matched Nests · FONO ${fonoReady} · SP ${spReady}`, target: `Required: ${fonoContracted} · ${spContracted}`, detail: "Current FONO Funnel and Shram Park demand records" }),
+    Object.freeze({ id: "time-to-ready", label: "Opportunity gap", value: `${gapNests} Nest gap`, target: readinessSlaValue ? `Approved SLA ${readinessSlaValue}${readinessSlaUnit ? ` ${readinessSlaUnit}` : ""}` : "Approved readiness SLA not recorded", detail: "Required minus matched demand capacity" }),
+    Object.freeze({ id: "fono-health", label: "FONO conversion health", value: `FONO ${fonoReady} matched · ${fonoContracted} required`, target: "Kept separate", detail: "FONO Funnel only; Studio occupancy is not inferred" }),
+    Object.freeze({ id: "sp-exposure", label: "SP pipeline coverage", value: spRows.length ? `SP ${spReady} matched · ${spContracted} required` : "No current governed SP data", target: "Shram Park demand ledger", detail: "Shram Park remains separate from existing Studio occupancy" }),
   ])
   return Object.freeze({ summary, measures })
 }
@@ -969,7 +1056,7 @@ export function buildLiveSelfDriveSnapshot(ops: any): LiveSelfDriveSnapshot {
   const memberNpsResponses = rows("memberNpsResponses")
 
   return {
-    asOf: ops?.meta?.updatedAt || new Date().toISOString(),
+    asOf: ops?.fetchedAt || ops?.meta?.updatedAt || new Date().toISOString(),
     monthlyCMTarget: Number(ops?.monthlyCMTarget) || 0,
     enterpriseDemand, activations, incidents, actions, evidence, approvals, people, theatres, studios, living, work, essentials, finance, financeSource: finance, channels, learningHistory, dashboardContent,
     policies, memberNpsDashboard, memberNpsFeedback, memberNpsResponses,
@@ -1062,13 +1149,14 @@ export function filterLiveSelfDriveSnapshot(snapshot: LiveSelfDriveSnapshot, fil
   const memberNpsDashboard = snapshot.memberNpsDashboard.filter(rowMatches)
   const memberNpsFeedback = snapshot.memberNpsFeedback.filter(rowMatches)
   const memberNpsResponses = snapshot.memberNpsResponses.filter(rowMatches)
+  const learningHistory = snapshot.learningHistory.filter(rowMatches)
   const people = snapshot.people.filter((row) => peopleIds.has(text(row, "actor id")))
   const theatres = snapshot.theatres.filter((row) => !dimensionalFilter || theatreIds.has(text(row, "theatre id")))
   const studios = snapshot.studios.filter((row) => !dimensionalFilter || studioIds.has(text(row, "studio id")))
 
   return Object.freeze({
     ...snapshot, enterpriseDemand, activations, incidents, actions, evidence, approvals, people, theatres, studios, living, work, essentials, finance,
-    memberNpsDashboard, memberNpsFeedback, memberNpsResponses,
+    memberNpsDashboard, memberNpsFeedback, memberNpsResponses, learningHistory,
     summary: Object.freeze({
       openDemand: enterpriseDemand.filter((row) => text(row, "status").toLowerCase() !== "closed").length,
       remainingHeadcount: enterpriseDemand.reduce((sum, row) => sum + number(row, "headcount remaining"), 0),
@@ -1083,23 +1171,32 @@ export function filterLiveSelfDriveSnapshot(snapshot: LiveSelfDriveSnapshot, fil
 }
 
 export function buildLiveMarginInputs(snapshot: LiveSelfDriveSnapshot): readonly MarginStudioInput[] {
-  return snapshot.living.map((row) => {
-    const finance = snapshot.finance.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}
+  return snapshot.living.flatMap((row) => {
+    const studioId = text(row, "studio id")
+    const sourceRowIdentity = text(row, "living hourly id") || studioId
+    const contractedNests = number(row, "contracted nests")
     const occupied = number(row, "occupied nests")
+
+    // Margin diagnostics require a governed, internally consistent capacity
+    // record. Do not invent or clamp capacity when a live Sheet row is
+    // incomplete; exclude it until the source data is corrected.
+    if (!studioId || !sourceRowIdentity || contractedNests <= 0 || occupied < 0 || occupied > contractedNests) return []
+
+    const finance = snapshot.finance.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}
     const billedLiving = number(row, "living billed inr")
     const workBilled = number(snapshot.work.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}, "work billed inr")
     const essentialsBilled = number(snapshot.essentials.find((entry) => text(entry, "studio id") === text(row, "studio id")) || {}, "essentials billed inr")
-    return {
-      studioId: text(row, "studio id"), studioName: text(row, "studio id"), theatreId: text(row, "theatre id"),
+    return [{
+      studioId, studioName: studioId, theatreId: text(row, "theatre id"),
       supplyModel: text(row, "supply model") === "SP" ? "SP" : "FONO",
-      contractedNests: number(row, "contracted nests"), occupiedNests: occupied, rampDay: 30,
+      contractedNests, occupiedNests: occupied, rampDay: 30,
       billedLivingArpuInr: occupied ? billedLiving / occupied : 0,
       livingPartnerCostInr: 0, livingUtilitiesInr: 0,
       billedWorkArpuInr: occupied ? workBilled / occupied : 0, workDirectDeliveryCostInr: 0,
       billedEssentialsArpuInr: occupied ? essentialsBilled / occupied : 0, essentialsDirectDeliveryCostInr: 0,
       studioGrossMarginPct: 0, previousVerifiedFullUseCm2Inr: number(finance, "cm2 inr"),
       ownerActorId: text(row, "next action owner actor id") || "Operations", sourceUpdatedAt: snapshot.asOf,
-      sourceRowIdentity: text(row, "living hourly id") || text(row, "studio id"), synthetic: false,
-    }
+      sourceRowIdentity, synthetic: false,
+    }]
   })
 }

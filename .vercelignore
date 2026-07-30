@@ -1,0 +1,8 @@
+.dev-server.err.log
+.dev-server.out.log
+outputs/
+tmp/
+~$*.xlsx
+Testing User Guide.xlsx
+User Guid.docx
+console.log('essentials-sync-module-ok'))

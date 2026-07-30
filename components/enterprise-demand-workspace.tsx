@@ -20,8 +20,17 @@ type Props = { preview: EnterpriseDemandLoopPreview; liveData?: any }
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
 
+function parsedTimestamp(value: unknown) {
+  const raw = String(value ?? "").trim()
+  const indianDate = raw.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/)
+  if (indianDate) return Date.UTC(Number(indianDate[3]), Number(indianDate[2]) - 1, Number(indianDate[1]))
+  return Date.parse(raw)
+}
+
 function date(value: string) {
-  return `${dateFormatter.format(new Date(value))} IST`
+  const timestamp = parsedTimestamp(value)
+  if (!Number.isFinite(timestamp)) return "Not available"
+  return `${dateFormatter.format(new Date(timestamp))} IST`
 }
 
 function liveText(row: Record<string, unknown> | null | undefined, keys: readonly string[]) {
@@ -34,8 +43,8 @@ function liveText(row: Record<string, unknown> | null | undefined, keys: readonl
 }
 
 function validTimestamp(value: unknown) {
-  const timestamp = String(value ?? "").trim()
-  return timestamp && Number.isFinite(Date.parse(timestamp)) ? timestamp : ""
+  const timestamp = parsedTimestamp(value)
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : ""
 }
 
 function sheetNumber(value: unknown) {
@@ -89,22 +98,53 @@ function liveEnterpriseDemandLoopHealth(liveData: any, approvals: ReturnType<typ
   if (approvalRows.length) feeds.push({ feedId: "enterprise-approvals", label: "Approval Log · demand exceptions", lastUpdatedAt: latestTimestamp(approvalRows) || latestTimestamp(actions) || asOf, cadenceMinutes: 1440, critical: false, affectedClaims: ["approval status"] })
 
   const stateOf = (row: Record<string, unknown>) => liveText(row, ["state", "status"]).toLowerCase()
-  const verified = actions.filter((row) => ["verified", "closed", "resolved"].includes(stateOf(row))).length
-  const reopened = actions.filter((row) => stateOf(row) === "reopened").length
-  const awaitingRows = actions.filter((row) => !["verified", "closed", "resolved", "reopened"].includes(stateOf(row)))
-  const oldestAwaitingAt = awaitingRows.flatMap((row) => [validTimestamp(row["proposed at"]), validTimestamp(row["updated at"]), validTimestamp(row["due at"])]).filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? (awaitingRows.length ? asOf : null)
-  const clocks = awaitingRows.map((row, index) => ({
-    clockId: liveText(row, ["action id", "id"]) || `enterprise-action-${index}`,
-    label: liveText(row, ["operating objective", "title"]) || "Enterprise Demand action",
-    ownerRole: liveText(row, ["owner actor id", "owner"]) || "Unassigned",
-    dueAt: validTimestamp(row["due at"]),
-    state: "Running" as const,
-  })).filter((clock) => clock.dueAt)
+  // Action_Log remains authoritative when governed demand actions exist. Until
+  // those rows are created, each live Enterprise_Demand row is itself a
+  // measurable outcome: fully matched is verified; a remaining gap is waiting.
+  // This keeps FONO Funnel and Shram Park bot demand visible in Loop Health
+  // instead of incorrectly reporting 0 of 0.
+  // The workspace headline and key numbers operate on the first (latest after
+  // dashboard sorting) demand row, so fallback health must use that same scope.
+  // Counting the whole month here makes one selected task appear as dozens of
+  // unrelated outcomes.
+  const demandOutcomeRows = actions.length === 0 ? demand.slice(0, 1).filter((row) => sheetNumber(row["headcount required"]) > 0) : []
+  const demandIsVerified = (row: Record<string, unknown>) => sheetNumber(row["headcount matched"]) >= sheetNumber(row["headcount required"])
+  const demandIsReopened = (row: Record<string, unknown>) => stateOf(row) === "reopened"
+  const claimed = actions.length || demandOutcomeRows.length
+  const verified = actions.length
+    ? actions.filter((row) => ["verified", "closed", "resolved"].includes(stateOf(row))).length
+    : demandOutcomeRows.filter(demandIsVerified).length
+  const reopenedRows = actions.length
+    ? actions.filter((row) => stateOf(row) === "reopened")
+    : demandOutcomeRows.filter((row) => !demandIsVerified(row) && demandIsReopened(row))
+  const awaitingRows = actions.length
+    ? actions.filter((row) => !["verified", "closed", "resolved", "reopened"].includes(stateOf(row)))
+    : demandOutcomeRows.filter((row) => !demandIsVerified(row) && !demandIsReopened(row))
+  const awaitingTimestampKeys = actions.length
+    ? ["proposed at", "updated at", "due at"]
+    : ["updated at"]
+  const oldestAwaitingAt = awaitingRows.flatMap((row) => awaitingTimestampKeys.map((key) => validTimestamp(row[key]))).filter(Boolean).sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? (awaitingRows.length ? asOf : null)
+  const clocks = awaitingRows.map((row, index) => {
+    const dueAt = validTimestamp(row[actions.length ? "due at" : "activation required at"])
+    const openedAt = validTimestamp(row["opened at"])
+    // Reject ambiguous sheet dates that parse before the demand even opened
+    // (for example 1-8-2026 being interpreted as January 8).
+    const credibleDueAt = !actions.length && dueAt && openedAt && Date.parse(dueAt) < Date.parse(openedAt) ? "" : dueAt
+    return {
+      clockId: liveText(row, actions.length ? ["action id", "id"] : ["demand id", "id"]) || `enterprise-outcome-${index}`,
+      label: actions.length
+        ? liveText(row, ["operating objective", "title"]) || "Enterprise Demand action"
+        : `${liveText(row, ["enterprise name"]) || "Enterprise demand"} readiness gap`,
+      ownerRole: liveText(row, ["owner actor id", "owner"]) || "Unassigned",
+      dueAt: credibleDueAt,
+      state: "Running" as const,
+    }
+  }).filter((clock) => clock.dueAt)
   const incidents = Array.isArray(liveData?.incidents) ? liveData.incidents as Record<string, unknown>[] : []
   const quarantinedRecords = demand.filter((row) => /quarantined|rejected/.test(liveText(row, ["status", "state"]).toLowerCase())).length
     + incidents.filter((row) => /enterprise|demand/.test(liveText(row, ["domain", "incident type"]).toLowerCase()) && liveText(row, ["state", "status"]).toLowerCase() === "quarantined").length
 
-  return { connected: true, health: buildLoopHealth({ asOf, feeds, clocks, verification: { claimed: actions.length, verified, awaiting: awaitingRows.length, reopened, oldestAwaitingAt }, quarantinedRecords }) }
+  return { connected: true, health: buildLoopHealth({ asOf, feeds, clocks, verification: { claimed, verified, awaiting: awaitingRows.length, reopened: reopenedRows.length, oldestAwaitingAt }, quarantinedRecords }) }
 }
 
 function slicePath(index: number, total = 8) {
@@ -179,10 +219,25 @@ function defaultNextAction(outcome: EnterpriseDisposition) {
 
 export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }: Props) {
   const hasLiveSnapshot = Boolean(liveData)
-  const demand = liveData?.enterpriseDemand?.[0]
+  const demandRows = Array.isArray(liveData?.enterpriseDemand) ? liveData.enterpriseDemand as Record<string, unknown>[] : []
+  const isFonoRow = (row: Record<string, unknown>) => liveText(row, ["demand id"]).toUpperCase().startsWith("OPS-RPT-FONO-")
+  const portfolioShortfallRows = demandRows.filter((row) => {
+    const status = liveText(row, ["status", "certainty"]).toLowerCase()
+    return isFonoRow(row) && /^lead$/.test(status) && sheetNumber(row["headcount required"]) > 0
+  })
+  const fonoSupplyRows = demandRows.filter((row) => isFonoRow(row) && /contracting|contracted|onboarded|signed|committed|won|commercial/.test(liveText(row, ["status", "certainty"]).toLowerCase()))
+  const demand: any = portfolioShortfallRows[0] || demandRows[0]
+  const portfolioTargetNests = portfolioShortfallRows.reduce((total, row) => total + sheetNumber(row["headcount required"]), 0)
+  const portfolioSupplyNests = fonoSupplyRows.reduce((total, row) => total + sheetNumber(row["headcount required"]), 0)
+  // Portfolio balance is the full potential still sitting in the Lead stage.
+  // Contracting/Contracted/Onboarded supply is reported separately and must
+  // not reduce this Lead-stage balance.
+  const portfolioGapNests = portfolioTargetNests
   const livePolicyApprovals = approvalsForDomain(liveData, "enterprise-demand")
   const committedNests = demand ? sheetNumber(demand["headcount required"]) : hasLiveSnapshot ? 0 : fixturePreview.activeNode.committedNests
-  const verifiedReadyNests = demand ? sheetNumber(liveData?.summary?.readyNests) : hasLiveSnapshot ? 0 : fixturePreview.activeNode.verifiedReadyNests
+  // Read readiness from the selected demand row. A global Living capacity
+  // total cannot verify fulfilment of one named enterprise requirement.
+  const verifiedReadyNests = demand ? Math.min(committedNests, sheetNumber(demand["headcount matched"])) : hasLiveSnapshot ? 0 : fixturePreview.activeNode.verifiedReadyNests
   const preview: EnterpriseDemandLoopPreview = {
     ...fixturePreview,
     headline: demand ? `${demand["enterprise name"] || "Enterprise"} needs ${committedNests} verified ready Nests.` : hasLiveSnapshot ? "No Enterprise Demand row matches the current filters." : fixturePreview.headline,
@@ -211,7 +266,7 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
   const taskState = demand
     ? liveEnterpriseApproval?.pending ? "Pending approval" : liveText(liveEnterpriseAction, ["state", "status"]) || liveText(demand, ["status"]) || "Open"
     : hasLiveSnapshot ? "No matching demand" : preview.activeNode.state
-  const taskSourceLabel = hasLiveSnapshot ? "Google Sheet · live read-only" : `${preview.fixtureLabel} · ${preview.mode}`
+  const taskSourceLabel = hasLiveSnapshot ? `Priority lead · ${portfolioShortfallRows.length} FONO Leads · Google Sheet live` : `${preview.fixtureLabel} · ${preview.mode}`
   const taskGoverningCopy = demand
     ? `${verifiedReadyNests} of ${committedNests} Nests are verified ready for ${liveText(demand, ["role required"]) || "the named role"}${liveText(demand, ["shift"]) ? ` on the ${liveText(demand, ["shift"])} shift` : ""}; close the remaining ${preview.activeNode.readinessGap} before ${date(preview.activeNode.arrivalAt)}.`
     : hasLiveSnapshot ? "No signed Enterprise Demand row is available for the selected filters; no fixture value is substituted." : "Work Ring 1 (0–2 km) to exhaustion before opening the 5 km search; recover verified-ready capacity, then submit contract-matched proof."
@@ -231,6 +286,15 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
     return totals
   }, { FONO: 0, SP: 0 })
   const demandReference = demand ? liveText(demand, ["contract id", "demand id", "enterprise id"]) || "Reference not recorded" : hasLiveSnapshot ? "No demand reference" : preview.activeNode.contractId
+  const selectedDemandId = liveText(demand, ["demand id"])
+  const selectedDemandSupply = selectedDemandId.toUpperCase().startsWith("SP-BOT-") ? "SP"
+    : selectedDemandId.toUpperCase().startsWith("OPS-RPT-FONO-") ? "FONO"
+      : ""
+  const selectedReadyBySupply = selectedDemandSupply === "FONO"
+    ? { FONO: verifiedReadyNests, SP: 0 }
+    : selectedDemandSupply === "SP"
+      ? { FONO: 0, SP: verifiedReadyNests }
+      : readyBySupply
   const arrivalTimestamp = validTimestamp(preview.activeNode.arrivalAt)
   const asOfTimestamp = validTimestamp(liveData?.asOf)
   const hoursToArrival = arrivalTimestamp && asOfTimestamp ? Math.max(0, (Date.parse(arrivalTimestamp) - Date.parse(asOfTimestamp)) / 3_600_000) : null
@@ -238,9 +302,12 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
   const requiredRunRate = hoursToArrival === null
     ? "No deadline"
     : preview.activeNode.readinessGap <= 0
-      ? "0/hr"
+      ? "0 Nests/hour"
       : hoursToArrival > 0
-        ? `${Math.ceil(preview.activeNode.readinessGap / hoursToArrival)}/hr`
+        ? (() => {
+            const nestsPerHour = Math.ceil(preview.activeNode.readinessGap / hoursToArrival)
+            return `${nestsPerHour} ${nestsPerHour === 1 ? "Nest" : "Nests"}/hour`
+          })()
         : "Overdue"
   const overdueFollowUps = loopHealth.clocks.filter((clock) => clock.breached).length
   const demandLatitude = sheetNumber(demand?.latitude)
@@ -347,48 +414,80 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
   const liveProgressPercent = Math.round(liveProgress.filter((stage) => stage.complete).length / liveProgress.length * 100)
   const progressPreview = liveData ? ({ ...preview, progress: liveProgress, progressPercent: liveProgressPercent } as EnterpriseDemandLoopPreview) : preview
   const studioRows = Array.isArray(liveData?.studios) ? liveData.studios as Record<string, unknown>[] : []
-  const livingByStudio = livingByStudioId
-  const studioSupplyById = new Map([...studioRows, ...livingRows].map((row) => [liveText(row, ["studio id"]), liveText(row, ["supply model", "operating model"]).toUpperCase()]))
-  const studioTotals = (model: "FONO" | "SP") => studioRows.filter((row) => liveText(row, ["supply model", "operating model"]).toUpperCase() === model).reduce((totals, row) => {
-    const readiness = liveText(row, ["readiness status"]).toLowerCase()
-    const ready = sheetNumber(row["activation ready nests"])
-    const occupied = sheetNumber(livingByStudio.get(liveText(row, ["studio id"]))?.["occupied nests"])
-    totals.contracted += sheetNumber(row["contracted nests"])
-    totals.vacantReserved += Math.max(0, sheetNumber(row["contracted nests"]) - occupied)
-    if (/ready|verified/.test(readiness)) totals.hardwareReady += ready
-    if (/verified/.test(readiness)) totals.independentlyReady += ready
+  const demandSupplyModel = (row: Record<string, unknown>) => {
+    const demandId = liveText(row, ["demand id"]).toUpperCase()
+    if (demandId.startsWith("OPS-RPT-FONO-")) return "FONO" as const
+    if (demandId.startsWith("SP-BOT-")) return "SP" as const
+    return null
+  }
+  const cumulativeDemandTotals = (model: "FONO" | "SP") => demandRows.filter((row) => demandSupplyModel(row) === model).reduce<{ demands: number; required: number; matched: number; remaining: number }>((totals, row) => {
+    const required = sheetNumber(row["headcount required"])
+    const matched = Math.min(required, sheetNumber(row["headcount matched"]))
+    totals.demands += 1
+    totals.required += required
+    totals.matched += matched
+    totals.remaining += Math.max(0, required - matched)
     return totals
-  }, { contracted: 0, vacantReserved: 0, hardwareReady: 0, independentlyReady: 0 })
-  const activationTotals = (model: "FONO" | "SP") => activationRows.reduce((totals, row) => {
-    if (studioSupplyById.get(liveText(row, ["studio id"])) !== model) return totals
+  }, { demands: 0, required: 0, matched: 0, remaining: 0 })
+  const demandModelById = new Map(demandRows.flatMap((row) => {
+    const id = liveText(row, ["demand id"])
+    const model = demandSupplyModel(row)
+    return id && model ? [[id, model] as const] : []
+  }))
+  const demandModelByEnterpriseId = new Map(demandRows.flatMap((row) => {
+    const id = liveText(row, ["enterprise id"])
+    const model = demandSupplyModel(row)
+    return id && model ? [[id, model] as const] : []
+  }))
+  const allActivationRows = Array.isArray(liveData?.activations) ? liveData.activations as Record<string, unknown>[] : []
+  const cumulativeActivationTotals = (model: "FONO" | "SP") => allActivationRows.reduce<{ arrived: number; billed: number }>((totals, row) => {
+    const activationModel = demandModelById.get(liveText(row, ["demand id"])) || demandModelByEnterpriseId.get(liveText(row, ["enterprise id"]))
+    if (activationModel !== model) return totals
     totals.arrived += 1
     if (sheetNumber(row["membership billed inr"]) > 0) totals.billed += 1
     return totals
   }, { arrived: 0, billed: 0 })
-  const fonoStudioTotals = studioTotals("FONO")
-  const spStudioTotals = studioTotals("SP")
-  const fonoActivationTotals = activationTotals("FONO")
-  const spActivationTotals = activationTotals("SP")
-  const spServicesLive = livingRows.filter((row) => liveText(row, ["supply model"]).toUpperCase() === "SP").reduce((total, row) => total + sheetNumber(row["occupied nests"]), 0)
+  const fonoDemandTotals = cumulativeDemandTotals("FONO")
+  const spDemandTotals = cumulativeDemandTotals("SP")
+  const fonoActivationTotals = cumulativeActivationTotals("FONO")
+  const spActivationTotals = cumulativeActivationTotals("SP")
+  const commercialStage = (row: Record<string, unknown>) => {
+    const status = liveText(row, ["status", "certainty"]).toLowerCase()
+    if (/closed|lost|cancelled|no action/.test(status)) return null
+    if (/contracted|onboarded|signed|committed|won/.test(status)) return "contracted" as const
+    if (/contracting|commercial|proposal|quote|escalate/.test(status)) return "contracting" as const
+    return "lead" as const
+  }
+  const fonoStageNests = demandRows.filter((row) => demandSupplyModel(row) === "FONO").reduce((totals, row) => {
+    const stage = commercialStage(row)
+    if (stage) totals[stage] += sheetNumber(row["headcount required"])
+    return totals
+  }, { lead: 0, contracting: 0, contracted: 0 })
+  const spStageLeadCounts = demandRows.filter((row) => demandSupplyModel(row) === "SP").reduce<Map<string, number>>((totals, row) => {
+    const stage = liveText(row, ["certainty", "status"]) || "Follow Up Action not recorded"
+    totals.set(stage, (totals.get(stage) || 0) + 1)
+    return totals
+  }, new Map())
+  const spStageLaneItems = [...spStageLeadCounts.entries()].map(([stage, count]) => ({ label: stage, count }))
+  const fonoPotentialNests = fonoStageNests.lead + fonoStageNests.contracting + fonoStageNests.contracted
+  const spLeadCount = spStageLaneItems.reduce((total, stage) => total + stage.count, 0)
   const supplyLanes = liveData ? [
     { supplyModel: "FONO" as const, stages: [
-      { label: "Vacant Nests reserved", count: fonoStudioTotals.vacantReserved },
-      { label: "Readiness verified", count: fonoStudioTotals.independentlyReady },
+      { label: "Lead · potential Nests", count: fonoStageNests.lead },
+      { label: "Contracting · potential Nests", count: fonoStageNests.contracting },
+      { label: "Contracted · potential Nests", count: fonoStageNests.contracted },
+      { label: "Total potential Nests", count: fonoPotentialNests },
       { label: "Members arrived", count: fonoActivationTotals.arrived },
       { label: "Billing", count: fonoActivationTotals.billed },
     ] },
     { supplyModel: "SP" as const, stages: [
-      { label: "Park contracted", count: spStudioTotals.contracted },
-      { label: "Build / hardware done", count: spStudioTotals.hardwareReady },
-      { label: "Services live", count: spServicesLive },
-      { label: "Spec verified", count: spStudioTotals.independentlyReady },
-      { label: "Members arrived", count: spActivationTotals.arrived },
-      { label: "Billing", count: spActivationTotals.billed },
+      ...spStageLaneItems,
+      { label: "Total visits / leads", count: spLeadCount },
     ] },
   ] : preview.supplyLanes
-  const channelProgressSummary = liveData ? `FONO ${fonoStudioTotals.independentlyReady} verified · SP ${spStudioTotals.independentlyReady} spec verified` : "FONO and SP are tracked separately."
+  const channelProgressSummary = liveData ? `FONO ${fonoPotentialNests} potential Nests · SP ${spLeadCount} leads` : "FONO and SP are tracked separately."
   const channelProgressImplication = liveData
-    ? `So what: FONO has ${fonoStudioTotals.independentlyReady} independently verified-ready Nests and SP has ${spStudioTotals.independentlyReady} spec-verified Nests; ${fonoActivationTotals.arrived + spActivationTotals.arrived} recorded Member arrivals and ${fonoActivationTotals.billed + spActivationTotals.billed} billed activations have advanced the channel outcomes.`
+    ? `So what: cumulative source records show ${fonoPotentialNests} FONO potential Nests by commercial stage and ${spLeadCount} SP leads by follow-up stage; SP current manpower is excluded from demand and matched Nests.`
     : "So what: FONO and SP progress on different stage sequences, so each channel needs its own follow-up, not one blended number."
   const nearbyPlanImplication = liveData
     ? steps.length === 0
@@ -496,18 +595,24 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
     next: string
   }> = []
 
-  if (liveData && demand && preview.activeNode.readinessGap > 0) {
-    const gap = preview.activeNode.readinessGap
+  if (liveData) for (const shortfallDemand of portfolioShortfallRows) {
+    const shortfallDemandId = liveText(shortfallDemand, ["demand id"])
+    const shortfallEnterpriseId = liveText(shortfallDemand, ["enterprise id"])
+    const shortfallEnterpriseName = liveText(shortfallDemand, ["enterprise name", "plant name"]) || "Named enterprise"
+    const required = sheetNumber(shortfallDemand["headcount required"])
+    const shortfallOwnerId = liveText(shortfallDemand, ["owner actor id", "owner"])
+    const shortfallOwner = personLabel(shortfallOwnerId)
+    const shortfallDueAt = validTimestamp(shortfallDemand["activation required at"]) || asOfTimestamp
     liveExceptions.push({
-      exceptionId: `demand-shortfall-${demandId || enterpriseId || "current"}`,
-      issue: `${gap} verified-ready Nests short · ${enterpriseName}`,
-      owner: ownerLabel,
-      dueAt: arrivalTimestamp || asOfTimestamp,
-      status: `Shortfall open · ${verifiedReadyNests}/${committedNests} recorded`,
-      action: `Close the ${gap}-Nest readiness gap`,
-      why: `${gap} of ${committedNests} signed Nests are not independently verified for the recorded arrival.`,
-      did: `Calculated the shortfall from the signed ${committedNests}-Nest target and ${verifiedReadyNests} verified-ready Nests.`,
-      next: `Recover ${gap} verified-ready Nests and record contract-matched proof before ${arrivalTimestamp ? date(arrivalTimestamp) : "the arrival deadline"}.`,
+      exceptionId: `demand-shortfall-${shortfallDemandId || shortfallEnterpriseId || liveExceptions.length}`,
+      issue: `${required} potential Nests · ${shortfallEnterpriseName}`,
+      owner: shortfallOwner,
+      dueAt: shortfallDueAt,
+      status: `Lead · ${required} potential Nests`,
+      action: "Advance the Lead to Contracting",
+      why: `${required} potential Nests remain in the FONO Funnel Lead stage.`,
+      did: `Read the Lead stage and ${required} Nests Potential directly from the FONO Funnel row.`,
+      next: `Advance the commercial stage and record the next action before ${shortfallDueAt ? date(shortfallDueAt) : "the recorded deadline"}.`,
     })
   }
 
@@ -600,23 +705,45 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
   const backgroundSummary = liveData
     ? `${backgroundEvents.length} Sheet audit events · governed controls retained`
     : `${shadowAudit.length} local dispositions · policies retained`
-  const decisionGap = preview.activeNode.readinessGap
-  const decisionSummary = !demand && hasLiveSnapshot ? "No matching demand decision" : decisionGap > 0 ? `Close the ${decisionGap}-Nest readiness gap` : "Signed readiness target verified"
+  const decisionGap = hasLiveSnapshot ? portfolioGapNests : preview.activeNode.readinessGap
+  const decisionSummary = !demand && hasLiveSnapshot ? "No matching demand decision" : decisionGap > 0 ? `${decisionGap} potential Nests across ${portfolioShortfallRows.length} FONO Leads` : "No FONO Lead-stage potential recorded"
   const decisionHeadline = !demand && hasLiveSnapshot
     ? "No Enterprise Demand decision is required for the selected filters."
     : decisionGap > 0
-    ? `Close the ${decisionGap}-Nest readiness gap and submit contract-matched proof.`
-    : `The signed ${committedNests}-Nest readiness target is independently verified.`
+    ? `Advance ${decisionGap} potential Nests across ${portfolioShortfallRows.length} FONO Lead-stage opportunities.`
+    : `No FONO Lead-stage potential requires advancement.`
   const decisionDetail = hasLiveSnapshot
     ? !demand
       ? "No matching signed demand, governed action, or arrival deadline is available; the dashboard will update automatically when a matching Sheet row is recorded."
       : decisionGap > 0
-      ? ring2Unlocked
+      ? portfolioShortfallRows.length > 1
+        ? `${portfolioShortfallRows.length} Lead-stage rows contain ${portfolioTargetNests} potential Nests; Contracting, Contracted and Onboarded supply (${portfolioSupplyNests} Nests) is shown separately and is not subtracted. Current occupancy is excluded.`
+        : ring2Unlocked
         ? `${ring1PotentialNests} Ring 1 Nests do not cover the ${decisionGap}-Nest gap, so the calculated Ring 2 search is open; ${ownerLabel} remains accountable until verified capacity is confirmed.`
         : `${ring1PotentialNests} Ring 1 Nests cover the ${decisionGap}-Nest gap, so the calculated Ring 2 search remains closed; ${ownerLabel} remains accountable until verified capacity is confirmed.`
       : `No readiness gap remains; the recorded evidence and arrival outcome remain visible for independent verification.`
     : "Approve the ordered 2 km plan; the 5 km search stays closed and accountability sits with Ops Control until verified capacity is confirmed."
   const decisionDueAt = arrivalTimestamp || asOfTimestamp || preview.activeNode.arrivalAt
+  const decisionOwnerLabel = hasLiveSnapshot && portfolioShortfallRows.length > 1 ? "Named row owners" : ownerLabel
+  const ownerDisplay = (row: Record<string, unknown>) => {
+    const ownerId = liveText(row, ["owner actor id", "owner"])
+    const resolved = personLabel(ownerId)
+    if (resolved && resolved !== ownerId) return resolved
+    if (ownerId.startsWith("ACT-")) return ownerId.slice(4).toLowerCase().replace(/(^|-)\w/g, (match) => match.replace("-", " ").toUpperCase())
+    return ownerId || "Unassigned"
+  }
+  const fonoOwnerBreakdown = [...portfolioShortfallRows.reduce<Map<string, { leads: number; nests: number }>>((totals, row) => {
+    const owner = ownerDisplay(row)
+    const current = totals.get(owner) || { leads: 0, nests: 0 }
+    totals.set(owner, { leads: current.leads + 1, nests: current.nests + sheetNumber(row["headcount required"]) })
+    return totals
+  }, new Map()).entries()].map(([owner, totals]) => ({ owner, ...totals })).sort((left, right) => right.nests - left.nests)
+  const spOutstandingRows = demandRows.filter((row) => demandSupplyModel(row) === "SP" && !/closed|lost|cancelled|dismissed/.test(liveText(row, ["status", "certainty"]).toLowerCase()))
+  const spOwnerBreakdown = [...spOutstandingRows.reduce<Map<string, number>>((totals, row) => {
+    const owner = ownerDisplay(row)
+    totals.set(owner, (totals.get(owner) || 0) + 1)
+    return totals
+  }, new Map()).entries()].map(([owner, leads]) => ({ owner, leads })).sort((left, right) => right.leads - left.leads)
   const connectedSourceFeeds = liveData ? [
     { name: "Enterprise_Demand", rows: liveData.enterpriseDemand },
     { name: "Studio_Master", rows: liveData.studios },
@@ -671,11 +798,11 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
     <section className={`enterprise-headline-measures${loopHealth.feeds.some((feed) => feed.stale) ? " has-stale-input" : ""}`} aria-label="Key numbers at glance">
       <article><span>Signed target</span><strong>{preview.activeNode.committedNests}</strong><small>Nests · {demandReference}</small></article>
       <ChevronRight aria-hidden />
-      <article><span>Verified ready</span><strong>{preview.activeNode.verifiedReadyNests}</strong><small>{liveData ? `FONO ${readyBySupply.FONO} · SP ${readyBySupply.SP}` : `FONO ${preview.activeNode.verifiedReadyBySupply.FONO} · SP ${preview.activeNode.verifiedReadyBySupply.SP}`}</small></article>
+      <article><span>Verified ready</span><strong>{preview.activeNode.verifiedReadyNests}</strong><small>{liveData ? `FONO ${selectedReadyBySupply.FONO} · SP ${selectedReadyBySupply.SP}` : `FONO ${preview.activeNode.verifiedReadyBySupply.FONO} · SP ${preview.activeNode.verifiedReadyBySupply.SP}`}</small></article>
       <ChevronRight aria-hidden />
       <article className="is-gap"><span>Gap to close</span><strong>{preview.activeNode.readinessGap}</strong><small>{liveData ? daysToArrival === null ? "Arrival date not recorded" : daysToArrival > 0 ? `${daysToArrival} days to arrival` : "Arrival due" : `${preview.activeNode.daysToArrival} days to arrival`}</small></article>
       <ChevronRight aria-hidden />
-      <article><span>Required run rate</span><strong>{liveData ? requiredRunRate : `${Math.ceil((preview.activeNode.dailyPlan.plannedStops + preview.activeNode.dailyPlan.missedStopsCarried - preview.activeNode.dailyPlan.completedStops) / 6)}/hr`}</strong><small>{liveData ? overdueFollowUps : preview.activeNode.dailyPlan.missedStopsCarried} missed follow-ups rolled forward</small></article>
+      <article><span>Required run rate</span><strong>{liveData ? requiredRunRate : `${Math.ceil((preview.activeNode.dailyPlan.plannedStops + preview.activeNode.dailyPlan.missedStopsCarried - preview.activeNode.dailyPlan.completedStops) / 6)} Nests/hour`}</strong><small>{liveData ? overdueFollowUps : preview.activeNode.dailyPlan.missedStopsCarried} missed follow-ups rolled forward</small></article>
     </section>
     <p className="enterprise-so-what">{arrivalImplicationDetail}</p>
 
@@ -729,8 +856,12 @@ export function EnterpriseDemandWorkspace({ preview: fixturePreview, liveData }:
         <strong>{decisionHeadline}</strong>
         <p>{decisionDetail}</p>
       </div>
+      {liveData ? <div className="enterprise-owner-breakdown" aria-label="Outstanding leads by channel and owner">
+        <section><b>FONO · Lead stage</b>{fonoOwnerBreakdown.length ? <ul>{fonoOwnerBreakdown.map((item) => <li key={`fono-${item.owner}`}><span>{item.owner}</span><strong>{item.leads} leads · {item.nests} Nests</strong></li>)}</ul> : <p>No outstanding FONO Leads</p>}</section>
+        <section><b>SP · Follow-ups open</b>{spOwnerBreakdown.length ? <ul>{spOwnerBreakdown.map((item) => <li key={`sp-${item.owner}`}><span>{item.owner}</span><strong>{item.leads} leads</strong></li>)}</ul> : <p>No outstanding SP follow-ups</p>}</section>
+      </div> : null}
       <dl>
-        <div><dt>Owner</dt><dd>{liveData ? ownerLabel : preview.activeNode.ownerActorId}</dd></div>
+        <div><dt>Owner</dt><dd>{liveData ? decisionOwnerLabel : preview.activeNode.ownerActorId}</dd></div>
         <div><dt>By</dt><dd><time dateTime={decisionDueAt}>{date(decisionDueAt)}</time></dd></div>
       </dl>
     </section>

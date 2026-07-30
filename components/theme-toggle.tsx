@@ -7,13 +7,20 @@ type Theme = "light" | "dark"
 
 // Toggles the document theme by setting `data-theme` on <html> via setAttribute
 // (never a JSX attribute, so the shared-shell contract stays intact) and persists
-// the choice. The initial value is applied pre-paint by the inline script in layout.
+// the choice without rendering an executable script inside the React tree.
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("dark")
 
   useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme")
-    setTheme(current === "light" ? "light" : "dark")
+    let initial: Theme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"
+    try {
+      const saved = localStorage.getItem("nia-theme")
+      if (saved === "light" || saved === "dark") initial = saved
+    } catch {
+      // Use the operating-system preference when storage is unavailable.
+    }
+    document.documentElement.setAttribute("data-theme", initial)
+    setTheme(initial)
   }, [])
 
   function toggle() {

@@ -312,7 +312,60 @@ const learningPolicy: LearningPolicy = {
 }
 
 export function buildNiaMarginsPreview(inputs: readonly MarginStudioInput[], asOf = "2026-07-17T14:00:00+05:30", closureInputs: readonly MarginClosureInput[] = NIA_MARGINS_SYNTHETIC_CLOSURES): NiaMarginsPreview {
-  if (inputs.length === 0) throw new Error("Nia Margins requires at least one Studio input.")
+  if (inputs.length === 0) {
+    const loopHealth = buildLoopHealth({
+      asOf,
+      feeds: Object.freeze([]),
+      clocks: Object.freeze([]),
+      verification: Object.freeze({ claimed: 0, verified: 0, awaiting: 0, reopened: 0, oldestAwaitingAt: null }),
+    })
+    const learning = evaluateLearningRecommendation({
+      recommendationId: "LEARN-NIA-MARGINS-NO-DATA",
+      domain: "Nia Margins",
+      policyVersion: "POL-MARGIN-DEFINITION@v1",
+      proposedChange: "No change proposed until a governed Studio margin input is recorded.",
+      expectedEffect: "Keep margin conclusions withheld when the governed source has no Studio rows.",
+      state: "Candidate",
+      evidenceCycles: 0,
+      sampleSize: 0,
+      forecastErrorPct: 100,
+      attributionGrade: "Observed",
+      confounders: Object.freeze(["No governed Studio margin input"]),
+      criticalDataFresh: false,
+      verificationRatePct: 0,
+      reversible: true,
+      rollbackTrigger: "Not applicable until a governed input is recorded.",
+      insideApprovedBoundary: true,
+      reversesHumanDecision: false,
+      categories: Object.freeze([]),
+      targetChangePct: 0,
+      channelMixChangePp: 0,
+      monthlyCmEffectInr: 0,
+      cashEffectInr: 0,
+      synthetic: false,
+    }, learningPolicy)
+    return Object.freeze({
+      mode: "Shadow only",
+      question: "Which operating cause is moving contribution, who owns it, and did contribution recover?",
+      answer: "Full-use CM2 cannot be calculated until a governed Studio input is recorded.",
+      measures: Object.freeze({
+        fullUseCm2Inr: 0,
+        fullUseTargetInr: 1_500,
+        pillarCm2Inr: Object.freeze({ living: 0, work: 0, essentials: 0 }),
+        occupancyPct: 0,
+        occupancyTargetPct: 78,
+        negativeContributionStudios: 0,
+        studioGrossMarginPct: 0,
+      }),
+      diagnoses: Object.freeze([]),
+      actions: Object.freeze([]),
+      despatchEscalations: Object.freeze([]),
+      loopHealth,
+      learning,
+      writesEnabled: false,
+      collectionLeakageIncludedInCm2: false,
+    })
+  }
   const baseDiagnoses = inputs.map(diagnoseMarginStudio)
   const createdActions = baseDiagnoses.map((diagnosis, index) => createMarginAction(diagnosis, inputs[index]!, "2026-07-18T14:00:00+05:30")).filter((action): action is MarginAction => action !== null)
   const closuresByAction = new Map<string, MarginClosureInput[]>()

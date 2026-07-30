@@ -1,6 +1,6 @@
 type SheetRow = Record<string, unknown>
 
-const amountFields = ["living billed inr", "living collected inr", "work billed inr", "work collected inr", "essentials billed inr", "essentials collected inr", "total billed inr", "total collected inr", "current due inr", "overdue inr", "opex mtd inr", "opex forecast inr", "opex cap inr", "cash balance inr", "cm1 inr", "cm2 inr"] as const
+const amountFields = ["living billed inr", "living collected inr", "work billed inr", "work collected inr", "essentials billed inr", "essentials collected inr", "total billed inr", "total collected inr", "current due inr", "overdue inr", "opex mtd inr", "opex forecast inr", "opex cap inr", "cash balance inr", "cash target inr", "cm target inr", "cm1 inr", "cm2 inr"] as const
 const timestampFields = ["updated at", "reported at", "business date"] as const
 
 const text = (row: SheetRow, key: string) => String(row[key] ?? "").trim()
@@ -33,5 +33,8 @@ export function aggregateLatestFinanceSnapshots(rows: readonly SheetRow[]): Shee
   }
   const cashStatuses = snapshots.map((row) => text(row, "cash guardrail status")).filter(Boolean)
   aggregate["cash guardrail status"] = cashStatuses.some((status) => /breach|at risk|fail/i.test(status)) ? "At risk" : cashStatuses.length && cashStatuses.every((status) => /protected|within control|passed|healthy/i.test(status)) ? "Protected" : cashStatuses[0] || ""
+  for (const field of ["destination approved", "destination owner actor id", "decision due at"] as const) {
+    aggregate[field] = snapshots.map((row) => text(row, field)).find(Boolean) || ""
+  }
   return aggregate
 }

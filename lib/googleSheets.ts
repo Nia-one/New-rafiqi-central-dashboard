@@ -1,17 +1,7 @@
-import "server-only";
 import { GoogleAuth } from "google-auth-library";
+import { googleServiceAccountCredentials } from "./googleCredentials";
 
-import fs from "fs";
-import path from "path";
-
-const keyFile = path.join(
-  process.cwd(),
-  process.env.GOOGLE_SERVICE_ACCOUNT_FILE || "service-account.json"
-);
-
-const credentials = JSON.parse(
-  fs.readFileSync(keyFile, "utf8")
-);
+const credentials = googleServiceAccountCredentials();
 const auth = new GoogleAuth({
   credentials,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],

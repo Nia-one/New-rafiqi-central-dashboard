@@ -1,7 +1,6 @@
 ﻿"use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
 import { CalendarDays, ChevronDown, LockKeyhole, LogOut, Paperclip, UserPlus } from "lucide-react"
 import { AllocationContextStrip } from "@/components/allocation-context-strip"
 import { AttachSlopeChart } from "@/components/charts/attach-slope-chart"
@@ -43,7 +42,7 @@ import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engage
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
-import { aggregateLoopHealth, buildDespatchQueue } from "@/lib/operating-loop/runtime-contracts"
+import { aggregateLoopHealth } from "@/lib/operating-loop/runtime-contracts"
 import { buildLoopHealth, type LoopHealth, type LoopHealthFeedInput } from "@/lib/operating-loop/loop-health"
 import { contentValue, type DashboardContent } from "@/lib/dashboard-content"
 import { buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot, type LiveSelfDriveFilters } from "@/lib/live-mappers/self-drive"
@@ -110,6 +109,18 @@ function validDate(value: unknown) {
   return date && Number.isFinite(Date.parse(date)) ? date : ""
 }
 
+function isInDashboardMonth(row: LiveRow, dashboardMonth: unknown) {
+  const period = String(dashboardMonth ?? "").trim()
+  const periodMatch = period.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
+  const expectedMonth = periodMatch ? monthNames.indexOf(periodMatch[1].toLowerCase()) : -1
+  const expectedYear = periodMatch ? Number(periodMatch[2]) : Number.NaN
+  const rowDate = validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"]))
+  if (expectedMonth < 0 || !Number.isFinite(expectedYear) || !rowDate) return false
+  const actual = new Date(rowDate)
+  return actual.getUTCFullYear() === expectedYear && actual.getUTCMonth() === expectedMonth
+}
+
 function newestLiveTimestamp(rows: readonly LiveRow[]) {
   return rows
     .flatMap((row) => [
@@ -126,7 +137,7 @@ function newestLiveTimestamp(rows: readonly LiveRow[]) {
  * Google Sheet tabs.  Preview loop health remains only as an offline fallback
  * when no Sheet dataset has loaded at all.
  */
-function liveOverviewLoopHealth(liveData: any, fallback: LoopHealth): LoopHealth {
+export function liveOverviewLoopHealth(liveData: any, fallback: LoopHealth): LoopHealth {
   if (!liveData || typeof liveData !== "object") return fallback
 
   const sources: Array<{ id: string; label: string; rows: LiveRow[]; critical?: boolean }> = [
@@ -135,15 +146,15 @@ function liveOverviewLoopHealth(liveData: any, fallback: LoopHealth): LoopHealth
     { id: "work", label: "Work", rows: Array.isArray(liveData.work) ? liveData.work : [] },
     { id: "essentials", label: "Essentials", rows: Array.isArray(liveData.essentials) ? liveData.essentials : [], critical: true },
     { id: "finance", label: "Finance", rows: Array.isArray(liveData.finance) ? liveData.finance : [], critical: true },
-    { id: "people", label: "People", rows: Array.isArray(liveData.peopleFollowThrough) ? liveData.peopleFollowThrough : [] },
+    { id: "people", label: "People", rows: Array.isArray(liveData.people) ? liveData.people : Array.isArray(liveData.peopleFollowThrough) ? liveData.peopleFollowThrough : [] },
     { id: "member-feedback", label: "Member feedback", rows: Array.isArray(liveData.memberNpsFeedback) ? liveData.memberNpsFeedback : [] },
   ].filter((source) => source.rows.length > 0)
 
-  const actionRows: LiveRow[] = (Array.isArray(liveData.actionLog) ? liveData.actionLog : [])
+  const actionRows: LiveRow[] = (Array.isArray(liveData.actions) ? liveData.actions : Array.isArray(liveData.actionLog) ? liveData.actionLog : [])
     .filter((row: LiveRow) => String(liveValue(row, ["state", "status"])).trim().toLowerCase() !== "dismissed")
-  const evidenceRows: LiveRow[] = Array.isArray(liveData.evidenceLog) ? liveData.evidenceLog : []
-  const approvalRows: LiveRow[] = Array.isArray(liveData.approvalLog) ? liveData.approvalLog : []
-  const asOf = validDate(liveData?.meta?.snapshotAt)
+  const evidenceRows: LiveRow[] = Array.isArray(liveData.evidence) ? liveData.evidence : Array.isArray(liveData.evidenceLog) ? liveData.evidenceLog : []
+  const approvalRows: LiveRow[] = Array.isArray(liveData.approvals) ? liveData.approvals : Array.isArray(liveData.approvalLog) ? liveData.approvalLog : []
+  const asOf = validDate(liveData.asOf) || validDate(liveData.fetchedAt) || validDate(liveData?.meta?.snapshotAt)
     || newestLiveTimestamp([...sources.flatMap((source) => source.rows), ...actionRows, ...evidenceRows, ...approvalRows])
 
   if (!asOf || (sources.length === 0 && actionRows.length === 0 && evidenceRows.length === 0 && approvalRows.length === 0)) return fallback
@@ -165,7 +176,8 @@ function liveOverviewLoopHealth(liveData: any, fallback: LoopHealth): LoopHealth
     .map((row) => validDate(liveValue(row, ["proposed at", "created at", "captured at", "updated at", "due at"])))
     .filter(Boolean)
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? (awaitingRows.length ? asOf : null)
-  const clocks = awaitingRows
+  const openClockRows = actionRows.filter((row) => !["verified", "closed", "resolved"].includes(actionState(row)))
+  const clocks = openClockRows
     .map((row, index) => {
       const dueAt = validDate(liveValue(row, ["due at", "deadline at", "next action due at"]))
       if (!dueAt) return null
@@ -178,7 +190,8 @@ function liveOverviewLoopHealth(liveData: any, fallback: LoopHealth): LoopHealth
       }
     })
     .filter((clock): clock is NonNullable<typeof clock> => clock !== null)
-  const quarantinedRecords = (Array.isArray(liveData.incidentLog) ? liveData.incidentLog : [])
+  const incidentRows: LiveRow[] = Array.isArray(liveData.incidents) ? liveData.incidents : Array.isArray(liveData.incidentLog) ? liveData.incidentLog : []
+  const quarantinedRecords = incidentRows
     .filter((row: LiveRow) => String(liveValue(row, ["state", "status"])).trim().toLowerCase() === "quarantined").length
 
   return buildLoopHealth({
@@ -222,7 +235,6 @@ function TableScreen({ tab, allocationFocus }: { tab: keyof typeof TABLE_SCREENS
 }
 
 export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, liveSelfDriveData, allocationData }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview: MemberEngagementPreview; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: any; liveSelfDriveData?: any; allocationData?: any }) {
-  const router = useRouter()
   const [active, setActive] = useState<DashboardTab>(POST_LOGIN_DASHBOARD_STATE.active)
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [overviewMode, setOverviewMode] = useState<OverviewMode>("reporting")
@@ -260,7 +272,19 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       person: unique(people, "actor id", "display name"),
     }
   }, [currentLiveSelfDriveData, filters.theatre, filters.location, filters.studio])
-  const filteredLiveSelfDriveData = useMemo(() => currentLiveSelfDriveData ? filterLiveSelfDriveSnapshot(currentLiveSelfDriveData, filters) : currentLiveSelfDriveData, [currentLiveSelfDriveData, filters])
+  const dimensionFilteredLiveSelfDriveData = useMemo(() => currentLiveSelfDriveData ? filterLiveSelfDriveSnapshot(currentLiveSelfDriveData, filters) : currentLiveSelfDriveData, [currentLiveSelfDriveData, filters])
+  const filteredLiveSelfDriveData = useMemo(() => {
+    if (!dimensionFilteredLiveSelfDriveData) return dimensionFilteredLiveSelfDriveData
+    return {
+      ...dimensionFilteredLiveSelfDriveData,
+      enterpriseDemand: dimensionFilteredLiveSelfDriveData.enterpriseDemand
+        .filter((row: LiveRow) => isInDashboardMonth(row, currentLiveOpsData?.meta?.month))
+        .sort((left: LiveRow, right: LiveRow) => {
+          const timestamp = (row: LiveRow) => Date.parse(validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"]))) || 0
+          return timestamp(right) - timestamp(left)
+        }),
+    }
+  }, [dimensionFilteredLiveSelfDriveData, currentLiveOpsData?.meta?.month])
   const filteredLiveOpsData = useMemo(() => !currentLiveOpsData || !filteredLiveSelfDriveData ? currentLiveOpsData : ({
     ...currentLiveOpsData,
     theatres: filteredLiveSelfDriveData.theatres,
@@ -276,6 +300,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     work: filteredLiveSelfDriveData.work,
     essentials: filteredLiveSelfDriveData.essentials,
     finance: filteredLiveSelfDriveData.finance,
+    learningHistory: filteredLiveSelfDriveData.learningHistory,
   }), [currentLiveOpsData, filteredLiveSelfDriveData])
   // Keep the page shell stable while the Overview mode changes. The mode bar
   // and the report body already explain the active operating view.
@@ -288,10 +313,10 @@ const baseMeta = screenMeta[active] ?? screenMeta.Overview
   const meta = {
     title: contentValue(content, active, "page", "title", baseMeta.title),
     subtitle: contentValue(content, active, "page", "subtitle", baseMeta.subtitle),
-    view: contentValue(content, active, "page", "view", baseMeta.view),
+    view: workspace === "self-drive" && active === "Nia Growth" && currentLiveSelfDriveData ? "Google Sheet · read-only" : contentValue(content, active, "page", "view", baseMeta.view),
   }
   const sectionTitle = active === "Member Feedback" ? "Member NPS" : active === "Definitions" ? "Learning history" : dashboardDisplayLabel(active)
-  const liveLearningHistory: readonly LearningHistoryEntry[] = (currentLiveOpsData?.learningHistory ?? []).map((entry: Record<string, unknown>) => ({
+  const liveLearningHistory: readonly LearningHistoryEntry[] = (filteredLiveOpsData?.learningHistory ?? []).map((entry: Record<string, unknown>) => ({
     domain: String(entry.domain ?? ""),
     observed: String(entry.observed ?? ""),
     proposedChange: String(entry.proposed_change ?? ""),
@@ -300,7 +325,7 @@ const baseMeta = screenMeta[active] ?? screenMeta.Overview
     confidence: String(entry.confidence ?? ""),
     disposition: String(entry.disposition ?? ""),
   })).filter((entry: LearningHistoryEntry) => entry.domain && entry.observed)
-  const learningHistory: readonly LearningHistoryEntry[] = liveLearningHistory.length > 0 ? liveLearningHistory : (controlledAutonomyPreview?.learningQueue ?? []).map((entry) => ({
+  const learningHistory: readonly LearningHistoryEntry[] = filteredLiveOpsData !== undefined ? liveLearningHistory : (controlledAutonomyPreview?.learningQueue ?? []).map((entry) => ({
     domain: entry.domain,
     observed: entry.observed,
     proposedChange: entry.proposedChange,
@@ -322,15 +347,6 @@ const baseMeta = screenMeta[active] ?? screenMeta.Overview
     workspace === "self-drive" ? filteredLiveSelfDriveData : filteredLiveOpsData,
     previewPlatformLoopHealth,
   ), [filteredLiveOpsData, filteredLiveSelfDriveData, previewPlatformLoopHealth, workspace])
-  const platformDespatchQueue = useMemo(() => buildDespatchQueue([
-    ...(enterpriseDemandPreview?.despatchEscalations ?? []),
-    ...newAddsPreview.despatchEscalations,
-    ...memberEngagementPreview.despatchEscalations,
-    ...memberSavingsPreview.despatchEscalations,
-    ...niaMarginsPreview.despatchEscalations,
-    ...niaGrowthPreview.despatchEscalations,
-    ...(cashControlPreview?.despatchEscalations ?? []),
-  ], Number.MAX_SAFE_INTEGER), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview.despatchEscalations, memberSavingsPreview.despatchEscalations, newAddsPreview.despatchEscalations, niaGrowthPreview.despatchEscalations, niaMarginsPreview.despatchEscalations])
   const workspaceTabs: readonly DashboardTab[] = workspace === "self-drive"
     ? OPERATIONS_TABS.filter((tab) => (tab !== "Enterprise Demand" || enterpriseDemandPreview !== null) && (tab !== "Your Sign-Off" || controlledAutonomyPreview !== null))
     : workspace === "self-learn"
@@ -421,26 +437,45 @@ useEffect(() => {
     window.location.assign("/login")
   }
 
-  const refreshLiveData = useCallback(async (refreshServer = true) => {
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const refreshLiveData = useCallback(async (refreshSources = false, automaticSourceSync = false) => {
     try {
+      if (refreshSources) {
+        setIsRefreshing(true)
+        const syncResponse = await fetch(`/api/ops-data${automaticSourceSync ? "?auto=1" : ""}`, { method: "POST", cache: "no-store" })
+        if (!syncResponse.ok) {
+          const syncFailure = await syncResponse.json().catch(() => null)
+          throw new Error(syncFailure?.error || "Source synchronization failed")
+        }
+      }
       const response = await fetch(`/api/ops-data?refresh=${Date.now()}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } })
       const payload = await response.json()
       if (response.ok && payload?.success && payload.data) {
         setCurrentLiveOpsData(payload.data)
+      } else {
+        console.warn("Dashboard data refresh was deferred; retaining the last dashboard snapshot.", payload?.error || response.statusText)
       }
+    } catch (error) {
+      console.warn("Dashboard refresh request was deferred; retaining the last dashboard snapshot.", error)
     } finally {
-      if (refreshServer) router.refresh()
+      if (refreshSources) setIsRefreshing(false)
     }
-  }, [router])
+  }, [])
 
   useEffect(() => {
-    const timer = window.setInterval(() => void refreshLiveData(false), 60_000)
-    return () => window.clearInterval(timer)
+    void refreshLiveData()
+    const snapshotTimer = window.setInterval(() => void refreshLiveData(), 60_000)
+    const sourceTimer = window.setInterval(() => void refreshLiveData(true, true), 300_000)
+    return () => {
+      window.clearInterval(snapshotTimer)
+      window.clearInterval(sourceTimer)
+    }
   }, [refreshLiveData])
 
   return <main className="central-shell">
     <div className="central-main">
-    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>PERIOD</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><button className="date"><CalendarDays aria-hidden />{currentLiveOpsData?.meta?.month || "No data"}<ChevronDown aria-hidden /></button><button className="upload" onClick={() => void refreshLiveData()}><Paperclip aria-hidden />Data refresh</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
+    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>PERIOD</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><button className="date"><CalendarDays aria-hidden />{currentLiveOpsData?.meta?.month || "No data"}<ChevronDown aria-hidden /></button><button className="upload" type="button" disabled={isRefreshing} onClick={() => void refreshLiveData(true)}><Paperclip aria-hidden />{isRefreshing ? "Syncing…" : "Refresh data"}</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
     <nav id="dashboard-navigation" className="platform-domain-nav" aria-label={`${workspace} navigation`}><div className="platform-domain-tabs">{workspaceTabs.map((item) => <button key={item} className={`${active === item ? "active" : ""}${item === "Despatch" ? " despatch-nav" : ""}`} aria-current={active === item ? "page" : undefined} onClick={() => navigate({ screen: item })}><span>{item === "Member Feedback" ? "Member NPS" : item === "Definitions" ? "Learning history" : dashboardDisplayLabel(item)}</span></button>)}</div></nav>
     <section className="platform-heading"><h1>{sectionTitle}</h1><p className="subtitle">{meta.title === sectionTitle ? meta.subtitle : `${meta.title} ${meta.subtitle}`}</p></section>
     <Filters className="platform-filters" value={filters} options={filterOptions} onChange={(key, nextValue) => setFilters((current) => key === "theatre" ? { theatre: nextValue, location: "", studio: "", person: "" } : key === "location" ? { ...current, location: nextValue, studio: "", person: "" } : key === "studio" ? { ...current, studio: nextValue, person: "" } : { ...current, person: nextValue })} />
@@ -469,7 +504,7 @@ useEffect(() => {
           verifiedLearningsLabel={contentValue(content, "Definitions", "learning_history", "verified_learnings_label", "Verified outcome learnings")}
           adoptionRuleLabel={contentValue(content, "Definitions", "learning_history", "adoption_rule_label", "Adoption rule")}
         />}
-      {active === "Despatch" && <DespatchScreen commitments={commitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} loopHealth={platformLoopHealth} onValidateAction={validateExecutionAction} />}
+      {active === "Despatch" && <DespatchScreen commitments={commitments} loopHealth={platformLoopHealth} onValidateAction={validateExecutionAction} liveData={{ asOf: filteredLiveSelfDriveData.asOf, actions: filteredLiveSelfDriveData.actions, incidents: filteredLiveSelfDriveData.incidents, people: filteredLiveSelfDriveData.people, evidence: filteredLiveSelfDriveData.evidence, approvals: filteredLiveSelfDriveData.approvals, theatres: filteredLiveSelfDriveData.theatres, studios: filteredLiveSelfDriveData.studios, policies: filteredLiveSelfDriveData.policies }} />}
       {active === "Economics" && <TableScreen tab={active} allocationFocus={allocationFocus} />}
     </section>
     </div></main>

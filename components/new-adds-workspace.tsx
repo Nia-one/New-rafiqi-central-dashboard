@@ -7,7 +7,7 @@ import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/
 import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { approvalsForDomain } from "@/lib/live-approvals"
-import { buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress } from "@/lib/live-mappers/self-drive"
+import { buildLiveNewAddsFillStatus, buildLiveNewAddsFillTasks, buildLiveNewAddsProof, buildLiveNewAddsTheatreProgress, buildLiveNewAddsVacancyGroups } from "@/lib/live-mappers/self-drive"
 import styles from "./new-adds-workspace.module.css"
 
 type Props = { preview: NewAddsPreview; liveData?: any }
@@ -29,16 +29,16 @@ function percent(value: number, total: number) {
 
 function TaskSummary({ preview }: Props) {
   const items = [
-    ["Target", `${preview.taskSummary.target} today`],
-    ["Current", `${preview.taskSummary.current} billing-live`],
-    ["Gap", `${preview.taskSummary.gap} fills`],
+    ["Contracted", `${preview.taskSummary.target} Nests`],
+    ["Occupied", `${preview.taskSummary.current} Nests`],
+    ["Vacant", `${preview.taskSummary.gap} Nests`],
     ["Owner", preview.taskSummary.owner],
     ["Progress", `${preview.taskSummary.progressPercent}%`],
-    ["Verified result", preview.taskSummary.verifiedResult],
+    ["Source result", preview.taskSummary.verifiedResult],
   ] as const
   const behind = preview.taskSummary.gap > 0
   return <section className={styles.summaryFlow} aria-label="Today's target vs actual">
-    {items.map(([label, value], index) => <div className={styles.summaryItem} data-metric={label} data-behind={label === "Gap" && behind ? "true" : undefined} key={label}>
+    {items.map(([label, value], index) => <div className={styles.summaryItem} data-metric={label} data-behind={label === "Vacant" && behind ? "true" : undefined} key={label}>
       <span>{label}</span><strong>{value}</strong>
       {label === "Progress" ? <div className={styles.summaryBar} aria-hidden><i style={{ width: `${Math.min(100, Math.max(0, preview.taskSummary.progressPercent))}%` }} /></div> : null}
       {index < items.length - 1 ? <ChevronRight aria-hidden /> : null}
@@ -48,26 +48,26 @@ function TaskSummary({ preview }: Props) {
 
 function TheatreVisual({ preview }: Props) {
   const belowTarget = preview.theatres.filter((theatre) => theatre.dailyTarget > theatre.verifiedBillingLiveFills)
-  const theatreCountLabel = `${belowTarget.length || "No"} Theatre${belowTarget.length === 1 ? " is" : "s are"} below today’s target.`
+  const theatreCountLabel = `${belowTarget.length || "No"} Theatre${belowTarget.length === 1 ? " has" : "s have"} vacant Nests.`
   return <section className={styles.theatrePanel} aria-label="Empty spots by location">
     <div className={styles.sectionHeader}>
       <div><span>Empty spots by location</span><strong>{theatreCountLabel}</strong></div>
-      <p><i className={styles.fillKey} />Members billing <i className={styles.targetKey} />Today’s target</p>
+      <p><i className={styles.fillKey} />Occupied Nests <i className={styles.targetKey} />Contracted Nests</p>
     </div>
     <div className={styles.theatreCards}>
       {preview.theatres.map((theatre) => {
         const remainingToday = Math.max(0, theatre.dailyTarget - theatre.verifiedBillingLiveFills)
         const variables = { "--fills": percent(theatre.verifiedBillingLiveFills, theatre.dailyTarget), "--target": "100%" } as CSSProperties
         return <article data-theatre={theatre.theatre} key={theatre.theatre}>
-          <header className={styles.theatreIdentity}><strong>{theatre.theatre} needs {remainingToday} more Member{remainingToday === 1 ? "" : "s"} today</strong><span>Owner · {theatre.ownerRole}</span></header>
+          <header className={styles.theatreIdentity}><strong>{theatre.theatre} has {remainingToday} vacant Nest{remainingToday === 1 ? "" : "s"}</strong><span>Owner · {theatre.ownerRole}</span></header>
           <div className={styles.barCell} style={variables}>
-            <div className={styles.barLabels}><span>{theatre.verifiedBillingLiveFills} Members billing</span><b>Target {theatre.dailyTarget}</b></div>
-            <div className={styles.barTrack} aria-label={`${theatre.theatre}: ${theatre.verifiedBillingLiveFills} Members billing against today’s target of ${theatre.dailyTarget}; ${remainingToday} more needed`}>
+            <div className={styles.barLabels}><span>{theatre.verifiedBillingLiveFills} occupied</span><b>{theatre.dailyTarget} contracted</b></div>
+            <div className={styles.barTrack} aria-label={`${theatre.theatre}: ${theatre.verifiedBillingLiveFills} occupied Nests of ${theatre.dailyTarget} contracted; ${remainingToday} vacant`}>
               <i className={styles.fillBar} /><i className={styles.targetLine} />
             </div>
           </div>
           <dl className={styles.theatreStats}>
-            <div><dt>Still needed</dt><dd>{remainingToday} <small>Members</small></dd></div>
+            <div><dt>Vacancy gap</dt><dd>{remainingToday} <small>Nests</small></dd></div>
             <div><dt>Vacant Nests</dt><dd>{theatre.vacantNests}</dd></div>
             <div><dt>Average fill time</dt><dd>{theatre.averageFillTimeLabel ?? theatre.daysToFill} {!theatre.averageFillTimeLabel ? <small>days</small> : null}</dd></div>
           </dl>
@@ -81,7 +81,7 @@ function Gauge({ progressPercent, current, target, gap }: { progressPercent: num
   const r = 56
   const circumference = 2 * Math.PI * r
   const dash = Math.min(100, Math.max(0, progressPercent)) / 100 * circumference
-  return <div className={styles.gauge} role="img" aria-label={`${current} of ${target} verified, ${progressPercent}% of target, ${gap} remaining`}>
+  return <div className={styles.gauge} role="img" aria-label={`${current} of ${target} contracted Nests occupied, ${progressPercent}% occupancy, ${gap} vacant`}>
     <svg viewBox="0 0 140 140" className={styles.gaugeSvg} aria-hidden>
       <circle cx="70" cy="70" r={r} className={styles.gaugeTrack} />
       <circle cx="70" cy="70" r={r} className={styles.gaugeValue} strokeDasharray={`${dash} ${circumference - dash}`} />
@@ -143,6 +143,10 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
   const fillStatus = liveData ? buildLiveNewAddsFillStatus(liveData) : null
   const liveProof = liveData ? buildLiveNewAddsProof(liveData) : null
   const liveTheatres = liveData ? buildLiveNewAddsTheatreProgress(liveData) : fixturePreview.theatres
+  const vacancyGroups = liveData ? buildLiveNewAddsVacancyGroups(liveData) : []
+  const vacancyStudioCount = vacancyGroups.reduce((sum, group) => sum + group.studios.length, 0)
+  const netPendingNests = vacancyGroups.reduce((sum, group) => sum + group.pendingNests, 0)
+  const grossVacantNests = vacancyGroups.reduce((sum, group) => sum + group.studios.reduce((studioSum, studio) => studioSum + studio.pendingNests, 0), 0)
   const liveTarget = fillStatus?.target ?? fixturePreview.taskSummary.target
   const liveCurrent = fillStatus?.verified ?? fixturePreview.taskSummary.current
   const liveGap = fillStatus?.gap ?? fixturePreview.taskSummary.gap
@@ -156,6 +160,15 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     ...liveApprovals.map((approval) => ({ policy: String(approval.approvalRow["decision type"] || approval.title), value: approval.currentTerms && approval.proposedTerms ? `${approval.currentTerms} → ${approval.proposedTerms}` : approval.proposedTerms || approval.expectedResult || "No value recorded", version: approval.approvalId, approver: `${approval.owner} · ${approval.decision}` })),
   ]
   const liveSignOffs = liveApprovals.filter((approval) => approval.pending)
+  const derivedRecoverySignOffs = liveData
+    ? vacancyGroups.filter((group) => group.pendingNests > 0).map((group) => ({
+        id: `AUTO-FILL-${group.theatre}`,
+        theatre: group.theatre,
+        title: `Recover ${group.pendingNests} vacant Nests in ${group.theatre}`,
+        owner: liveTheatres.find((row) => row.theatre === group.theatre)?.ownerRole || "Unassigned",
+        studioCount: group.studios.length,
+      }))
+    : []
   const preview: NewAddsPreview = {
     ...fixturePreview,
     question: liveData
@@ -163,7 +176,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
         ? `Are ${liveGap} vacant FONO Nests filling at the approved run rate, cost and billing standard?`
         : "No FONO vacancy data is available for the selected filters."
       : fixturePreview.question,
-    headline: liveData ? `${liveCurrent} verified billing-live Members in a ${liveTarget}-fill FONO loop; ${liveGap} vacancies remain.` : fixturePreview.headline,
+    headline: liveData ? `${liveCurrent} occupied of ${liveTarget} contracted FONO Nests; ${liveGap} vacancies remain.` : fixturePreview.headline,
     taskSummary: {
       ...fixturePreview.taskSummary,
       target: liveTarget,
@@ -171,7 +184,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       gap: liveGap,
       owner: liveOwner,
       progressPercent: fillStatus?.progressPercent ?? fixturePreview.taskSummary.progressPercent,
-      verifiedResult: `${liveCurrent} independently verified billing-live Members`,
+      verifiedResult: `${liveCurrent} occupied Nests recorded in Studios`,
     },
     measures: liveProof?.measures ?? fixturePreview.measures,
     loopHealth: liveProof?.loopHealth ?? fixturePreview.loopHealth,
@@ -203,7 +216,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
   const behind = hasLiveData && gap > 0
   const verdictState = behind ? "behind" : "on-track"
   const verdictLabel = !hasLiveData ? "No FONO data" : behind ? `Behind · ${gap} to go` : "On track"
-  const openSignOff = liveData ? liveSignOffs.length : preview.despatchEscalations.length
+  const openSignOff = liveData ? liveSignOffs.length + derivedRecoverySignOffs.length : preview.despatchEscalations.length
   const theatresBehind = preview.theatres.filter((theatre) => theatre.dailyTarget > theatre.verifiedBillingLiveFills)
   const theatreRecoveryScope = theatresBehind.length === 0
     ? "the selected FONO scope"
@@ -215,14 +228,16 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     : theatresBehind.length === 1
       ? `So what: the ${theatresBehind[0].vacantNests}-Nest gap is in ${theatresBehind[0].theatre}, so recovery effort belongs there.`
       : `So what: the gap is concentrated in ${theatresBehind.map((row) => row.theatre).join(" and ")}, so recovery effort belongs there first, not spread evenly.`
-  const fillTaskCountLabel = `${tasks.length} fill${tasks.length === 1 ? "" : "s"} awaiting verified billing`
+  const fillTaskCountLabel = liveData
+    ? `${netPendingNests} Nests pending across ${vacancyStudioCount} Studios`
+    : `${tasks.length} fill${tasks.length === 1 ? "" : "s"} awaiting verified billing`
   const signOffCountLabel = openSignOff === 0
     ? "No decisions are blocked"
     : `${openSignOff} decision${openSignOff === 1 ? " is" : "s are"} blocked`
   const signOffImplication = openSignOff === 0
     ? "So what: no Member Adds approval currently blocks the verified-fill plan."
     : openSignOff === 1
-      ? `So what: ${liveData ? liveSignOffs[0].title : "this decision"} is holding the governed fill plan; ${liveData ? liveSignOffs[0].owner : owner} must record the decision before the blocked work can advance.`
+      ? `So what: ${liveData ? (liveSignOffs[0]?.title || derivedRecoverySignOffs[0]?.title) : "this decision"} needs ownership; ${liveData ? (liveSignOffs[0]?.owner || derivedRecoverySignOffs[0]?.owner) : owner} must close the recovery gap.`
       : `So what: ${openSignOff} governed decisions are holding the fill plan; their named owners must record the decisions before the blocked work can advance.`
   const unconfirmedOutcomes = preview.loopHealth.verification.awaiting + preview.loopHealth.verification.reopened
   const proofImplication = `So what: ${preview.loopHealth.verification.verified} of ${preview.loopHealth.verification.claimed} recorded outcomes are independently confirmed; ${unconfirmedOutcomes} unconfirmed outcome${unconfirmedOutcomes === 1 ? " does" : "s do"} not close the ${gap}-fill gap.`
@@ -240,7 +255,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
 
   return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-supply-model="FONO" ariaLabel="Member Adds sections" sections={[
     { title: "Fill status", summary: verdictLabel },
-    { title: "Theatre progress", summary: `${current}/${target} verified · ${gap} still needed` },
+    { title: "Theatre progress", summary: `${current}/${target} occupied · ${gap} vacant` },
     { title: "Spots to fill", summary: fillTaskCountLabel },
     { title: "Your sign-off", summary: `${openSignOff} blocked decision${openSignOff === 1 ? "" : "s"}` },
     { title: "Proof and controls", summary: `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes confirmed` },
@@ -256,9 +271,9 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       <div className={styles.questionGauge}>
         <Gauge progressPercent={progressPercent} current={current} target={target} gap={gap} />
         <ul className={styles.gaugeLegend}>
-          <li data-key="verified"><i /><span>Verified</span><b>{current}</b></li>
+          <li data-key="verified"><i /><span>Occupied</span><b>{current}</b></li>
           <li data-key="gap"><i /><span>Gap</span><b>{gap}</b></li>
-          <li data-key="target"><i /><span>Target</span><b>{target}</b></li>
+          <li data-key="target"><i /><span>Contracted</span><b>{target}</b></li>
         </ul>
       </div>
     </section>
@@ -271,13 +286,16 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
     </div>
 
     <div className={styles.zone}>
-      <p className={styles.stepLabel}><span>03</span>Spots to fill today · {owner}</p>
+      <p className={styles.stepLabel}><span>03</span>Studios with vacant Nests</p>
       <section className={styles.workPanel} aria-label="Spots to fill today">
         <div className={styles.sectionHeader}>
           <div><span>Spots to fill today</span><strong>{fillTaskCountLabel}</strong></div>
-          <p><MessageSquareDashed aria-hidden />{liveData ? "Google Sheet · read-only" : "WhatsApp stays shadow-only"}</p>
+          <p><MessageSquareDashed aria-hidden />{liveData ? "Studios tab · read-only" : "WhatsApp stays shadow-only"}</p>
         </div>
-        <OperationalCardStack label="Member Adds fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: task.dueAt ? <time dateTime={task.dueAt}>{date(task.dueAt)}</time> : "No deadline recorded" }, { label: "Expected outcome", value: task.expectedOutcome }]}>{liveData ? <div className={styles.shadowControls}><small>Read-only · status updates automatically from Action_Log and Evidence_Log.</small></div> : <div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div>}</OperationalCard>)}</OperationalCardStack>
+        {liveData ? <div className={styles.vacancyGroups}>{vacancyGroups.map((group) => <section className={styles.vacancyGroup} key={group.theatre}>
+          <header><div><strong>{group.theatre}</strong><span>{group.studios.length} Studio{group.studios.length === 1 ? "" : "s"} need filling</span></div><b>{group.pendingNests}<small> pending Nests</small></b></header>
+          <div className={styles.vacancyTable}><table><thead><tr><th>Studio</th><th>Contracted</th><th>Occupied</th><th>Occupancy</th><th>Pending to fill</th></tr></thead><tbody>{group.studios.map((studio) => <tr key={studio.studioId}><td><strong>{studio.studioName}</strong><span>{studio.studioId}</span></td><td>{studio.contractedNests}</td><td>{studio.occupiedNests}</td><td>{studio.occupancyPercent}%</td><td><b>{studio.pendingNests}</b></td></tr>)}</tbody></table></div>
+        </section>)}<p className={styles.vacancyNote}><strong>{netPendingNests} net pending Nests</strong> come from total Contracted minus total Occupied. Studio rows contain {grossVacantNests} gross vacancies; {Math.max(0, grossVacantNests - netPendingNests)} Nests occupied above contract elsewhere are included in the net total.</p></div> : <OperationalCardStack label="Member Adds fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: task.dueAt ? <time dateTime={task.dueAt}>{date(task.dueAt)}</time> : "No deadline recorded" }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>}
       </section>
     </div>
 
@@ -285,7 +303,7 @@ export function NewAddsWorkspace({ preview: fixturePreview, liveData }: Props) {
       <p className={styles.stepLabel}><span>04</span>Your Sign-Off{openSignOff > 0 ? ` · ${openSignOff} open` : ""}</p>
       <section className={styles.exceptionPanel} aria-label="Decisions blocking progress">
         <div className={styles.sectionHeader}><div><span>Decisions blocking progress</span><strong>{signOffCountLabel}</strong></div><p>Human decision</p></div>
-        <OperationalCardStack label="Decisions blocking progress">{liveData ? liveSignOffs.map((approval) => <OperationalCard key={approval.approvalId} title={approval.title} status="Pending human approval" domain={approval.approvalId} action={approval.action} fields={[{ label: "Owner", value: approval.owner }, { label: "Due", value: approval.dueAt ? <time dateTime={approval.dueAt}>{date(approval.dueAt)}</time> : "No deadline recorded" }, { label: "Amount", value: approval.amountInr ? `₹${approval.amountInr.toLocaleString("en-IN")}` : "No amount" }, { label: "Expected result", value: approval.expectedResult || "Not recorded" }]} />) : preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Adds" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Detected the repeated failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover the fill outcome and submit billing-live proof for independent verification." }]} />)}</OperationalCardStack>
+        <OperationalCardStack label="Decisions blocking progress">{liveData ? <>{liveSignOffs.map((approval) => <OperationalCard key={approval.approvalId} title={approval.title} status="Pending human approval" domain={approval.approvalId} action={approval.action} fields={[{ label: "Owner", value: approval.owner }, { label: "Due", value: approval.dueAt ? <time dateTime={approval.dueAt}>{date(approval.dueAt)}</time> : "No deadline recorded" }, { label: "Amount", value: approval.amountInr ? `₹${approval.amountInr.toLocaleString("en-IN")}` : "No amount" }, { label: "Expected result", value: approval.expectedResult || "Not recorded" }]} />)}{derivedRecoverySignOffs.map((decision) => <OperationalCard key={decision.id} title={decision.title} status="Recovery decision required" domain={`${decision.theatre ?? "Member Adds"} · Auto-derived from Studios`} action={`Assign and recover the Theatre vacancy across ${decision.studioCount} Studios.`} fields={[{ label: "Owner", value: decision.owner }, { label: "Source", value: "Studios · Contracted minus Occupied" }, { label: "Approval_Log", value: "Not required to generate" }, { label: "Expected result", value: "Vacancy gap reduced to zero" }]} />)}</> : preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Adds" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Detected the repeated failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover the fill outcome and submit billing-live proof for independent verification." }]} />)}</OperationalCardStack>
       </section>
       <p className={styles.soWhat}>{signOffImplication}</p>
     </div>

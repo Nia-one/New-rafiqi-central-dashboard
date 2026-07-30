@@ -84,7 +84,7 @@ test("live Sheet snapshot drives the remaining Cash and Control sections", () =>
   assert.match(componentSource, /affectedClaims\.join/)
   assert.match(componentSource, /content\("monthly_command", "question"/)
   assert.match(componentSource, /content\("monthly_command", "owner_note"/)
-  assert.match(componentSource, /monthlyCmTargetValue = optionalNumberFor\(liveData\?\.monthlyCMTarget\)/)
+  assert.match(componentSource, /optionalNumberFor\(finance\?\.\["cm target inr"\]\) \?\? optionalNumberFor\(liveData\?\.monthlyCMTarget\)/)
   assert.match(componentSource, /aggregateLatestFinanceSnapshots\(financeRows\)/)
   assert.match(componentSource, /optionalSheetNumber as optionalNumberFor/)
   assert.match(componentSource, /Balance not recorded/)

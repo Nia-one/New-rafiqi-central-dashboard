@@ -28,9 +28,9 @@ const rowsToSeed = [
   ["self-learn", "Overview", "continuity_flywheel", "work_supply_label", "Members matched to work", "text", "Operations", "Dashboard_Content", ""],
   ["self-learn", "Overview", "continuity_flywheel", "work_supply_note", "Work_Hourly · matched headcount", "text", "Operations", "Dashboard_Content", ""],
   ["self-learn", "Overview", "continuity_flywheel", "essentials_description", "Stage 3 · Lower-cost Essentials protect savings and encourage another order.", "text", "Operations", "Dashboard_Content", ""],
-  ["self-learn", "Overview", "continuity_flywheel", "essentials_demand_label", "Eligible / purchasing Members", "text", "Operations", "Dashboard_Content", ""],
-  ["self-learn", "Overview", "continuity_flywheel", "essentials_demand_note", "Eligible / purchasing · live", "text", "Operations", "Dashboard_Content", ""],
-  ["self-learn", "Overview", "continuity_flywheel", "essentials_supply_label", "SKU fulfilment", "text", "Operations", "Dashboard_Content", ""],
+  ["self-learn", "Overview", "continuity_flywheel", "essentials_demand_label", "Occupant demand / purchasing Members", "text", "Operations", "Dashboard_Content", ""],
+  ["self-learn", "Overview", "continuity_flywheel", "essentials_demand_note", "Member purchasing demand · live", "text", "Operations", "Dashboard_Content", ""],
+  ["self-learn", "Overview", "continuity_flywheel", "essentials_supply_label", "Vendor / SKU fulfilment", "text", "Operations", "Dashboard_Content", ""],
   ["self-learn", "Overview", "continuity_flywheel", "essentials_supply_note", "Essentials_Hourly · orders fulfilled", "text", "Operations", "Dashboard_Content", ""],
 ];
 

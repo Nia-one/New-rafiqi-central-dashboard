@@ -11,6 +11,30 @@ import { LivingSupplyModelReport } from "@/components/living-supply-model-report
 import type { LivingSection } from "@/lib/dashboard-model"
 import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
 
+const LIVING_COPY_FALLBACKS: Record<string, string> = {
+  accordion_main_title: "Living performance",
+  accordion_main_summary: "Current demand, capacity and occupancy.",
+  accordion_allocation_title: "Allocation context",
+  accordion_allocation_summary: "Demand-to-supply allocation and exceptions.",
+  accordion_supply_title: "Supply model",
+  accordion_supply_summary: "FONO and Shram Park capacity view.",
+  accordion_pacing_title: "Monthly pacing",
+  accordion_pacing_summary: "Progress against FONO and SP targets.",
+  accordion_fono_title: "FONO funnel and occupancy",
+  accordion_fono_summary: "Contracted, ready and occupied nests.",
+  accordion_demand_title: "Open demand",
+  accordion_demand_summary: "Required, matched and remaining members.",
+  accordion_sp_supply_title: "Shram Park supply",
+  accordion_sp_supply_summary: "Available options and proximity.",
+  accordion_summary_title: "Living reconciliation",
+  accordion_summary_summary: "Demand, capacity and occupied nests together.",
+  fono_stage_visits: "Visits",
+  fono_stage_agreed: "Agreed",
+  fono_stage_contracted: "Contracted",
+  fono_stage_kyc: "KYC complete",
+  fono_stage_live: "Live",
+}
+
 function LivePacingCard({ channel, actual, target, elapsed, days, owner, copy }: { channel: "FONO" | "SP"; actual: number; target: number; elapsed: number; days: number; owner: string; copy: (key: string) => string }) {
   const left = Math.max(0, days - elapsed)
   const runRate = elapsed > 0 ? Math.round(actual / elapsed * days) : 0
@@ -23,7 +47,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData, allocationDa
   const live = buildLivingScreenData(liveOpsData)
   const openDemandNodes = live.proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0)
   const liveCapacity = live.fonoReady + live.spReady
-  const copy = (key: string) => live.metricTemplate(key, "No data")
+  const copy = (key: string) => live.metricTemplate(key, LIVING_COPY_FALLBACKS[key] || key.replaceAll("_", " "))
   const [openIndex, setOpenIndex] = useState(-1)
 
   useEffect(() => {
@@ -68,7 +92,7 @@ return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLa
       <div className="channel-grid fono-channel-grid">
         <div className="fono-channel-chart semantic-supply"><div className="fono-channel-heading"><h3>{copy("fono_supply_headline")}</h3><p className="chart-reads"><span>{copy("chart_explanation_label")}</span>{copy("fono_supply_explanation")}</p></div><TodayMtdFunnel stages={live.fonoSupply} copy={(key, fallback) => live.metricTemplate(key, fallback)} /></div>
         <div className="fono-channel-chart semantic-demand"><div className="fono-channel-heading"><h3>{copy("fono_demand_headline")}</h3><p className="chart-reads"><span>{copy("chart_explanation_label")}</span>{copy("fono_demand_explanation")}</p></div><TodayMtdFunnel stages={live.fonoDemand} copy={(key, fallback) => live.metricTemplate(key, fallback)} /></div>
-        <ol className="fono-funnel" aria-label="FONO supply stages">{fonoStages.map((item, index) => <li key={item.stage}><span className="fono-stage-rank">{String(index + 1).padStart(2, "0")}</span><strong className="fono-stage-name">{item.stage}</strong><span><b>{typeof item.studios === "number" ? item.studios.toLocaleString("en-IN") : item.studios}</b> {copy("fono_stage_studios_unit")}</span><span><b>{typeof item.nests === "number" ? item.nests.toLocaleString("en-IN") : item.nests}</b> {copy("fono_stage_nests_unit")}</span><span><b>{item.conversion}</b> {copy("fono_stage_conversion_unit")}</span><span className="fono-stage-owner"><b>{item.owner}</b> {copy("fono_stage_owner_unit")}</span></li>)}</ol>
+        <ol className="fono-funnel" aria-label="FONO supply stages">{fonoStages.map((item, index) => <li key={`${item.stage}-${index}`}><span className="fono-stage-rank">{String(index + 1).padStart(2, "0")}</span><strong className="fono-stage-name">{item.stage}</strong><span><b>{typeof item.studios === "number" ? item.studios.toLocaleString("en-IN") : item.studios}</b> {copy("fono_stage_studios_unit")}</span><span><b>{typeof item.nests === "number" ? item.nests.toLocaleString("en-IN") : item.nests}</b> {copy("fono_stage_nests_unit")}</span><span><b>{item.conversion}</b> {copy("fono_stage_conversion_unit")}</span><span className="fono-stage-owner"><b>{item.owner}</b> {copy("fono_stage_owner_unit")}</span></li>)}</ol>
         <DataTable className="compact-table occupancy-table" caption={copy("fono_occupancy_caption")} columns={["STUDIO", "THEATRE", "AVAILABLE", "OCCUPIED", "OCCUPANCY", "DAYS LIVE", "THEATRE OPS OWNER"]} rows={live.occupancyRows} />
       </div>
     </section>

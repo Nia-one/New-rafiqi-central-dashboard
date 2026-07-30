@@ -169,7 +169,7 @@ export function ActionSegment({ segment, count, children, defaultOpen = segment 
   </details>
 }
 
-export function OperationalCard({ title, subtitle, description, status, tone = operationalTone(status), domain, fields, story, progress, optic, action, children }: {
+export function OperationalCard({ title, subtitle, description, status, tone = operationalTone(status), domain, fields, story, progress, optic, action, cause, showProgress = true, children }: {
   title: ReactNode
   subtitle?: ReactNode
   description?: ReactNode
@@ -181,6 +181,8 @@ export function OperationalCard({ title, subtitle, description, status, tone = o
   progress?: ActionStage
   optic?: OperationalOptic
   action?: ReactNode
+  cause?: ReactNode
+  showProgress?: boolean
   children?: ReactNode
 }) {
   const summaryFields = fields?.slice(0, 2)
@@ -193,12 +195,12 @@ export function OperationalCard({ title, subtitle, description, status, tone = o
   // Only surface a root cause when the card supplies a real written reason. A generic
   // fallback (e.g. "Vacancy not yet filled") only restates the card and adds noise.
   const hasWrittenCause = Boolean(textFromNode(reason).trim())
-  const rootCause = hasWrittenCause ? compactSignal(reason, fallbackCause(domain, stage), "cause") : null
+  const rootCause = cause ?? (hasWrittenCause ? compactSignal(reason, fallbackCause(domain, stage), "cause") : null)
   const requiredAction = stage === "verified" ? "No further action" : action ?? actionForTitle(title, compactSignal(next, "Complete and submit proof", "action"))
   return <article className={`operational-card operational-card-${tone}`} data-tone={tone} role="listitem">
     <header><div><h3>{title}</h3>{subtitle ? <p className="operational-card-subtitle">{subtitle}</p> : null}{domain ? <p className="operational-card-domain">{domain}</p> : null}</div><span className="operational-card-status" data-tone={tone}>{status}</span></header>
     {summaryFields?.length ? <dl>{summaryFields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>)}</dl> : null}
-    {optic ? <OperationalOpticBar optic={optic} /> : <ActionProgress current={stage} percent={progressPercent} />}
+    {optic ? <OperationalOpticBar optic={optic} /> : showProgress ? <ActionProgress current={stage} percent={progressPercent} /> : null}
     <dl className="operational-card-signals" data-single={rootCause ? undefined : "action"}>
       {rootCause ? <div><dt>Root cause</dt><dd>{rootCause}</dd></div> : null}
       <div><dt>Action</dt><dd>{requiredAction}</dd></div>

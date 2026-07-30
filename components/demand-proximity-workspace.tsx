@@ -58,11 +58,11 @@ export function DemandProximityWorkspace({ nodes }: { nodes: DemandProximityNode
         <p className="proximity-no-results">No demand matches that search.</p>
       ) : (
         <ul className="proximity-list" role="listbox" aria-label="Open demand nodes">
-          {filtered.map(node => {
+          {filtered.map((node, index) => {
             const nearest = nearestDistanceKm(node)
             const noNear = nearest > 2
             const isSelected = selected?.id === node.id
-            return <li key={node.id}>
+            return <li key={`${node.id}-${index}`}>
               <button
                 type="button"
                 role="option"

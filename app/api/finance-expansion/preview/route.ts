@@ -10,6 +10,6 @@ export async function GET(request: NextRequest) {
   const actor = await actorFromRequest(request)
   if (!actor) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
   if (!financeAccessAllowed(actor.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  if (!selfDrivePlatformEnabled() || !financeExpansionControlEnabled()) return NextResponse.json({ error: "Finance and expansion control is disabled." }, { status: 404 })
+  if (process.env.RAFIQI_SELF_DRIVE_PLATFORM?.trim().toLowerCase() !== "true" || !selfDrivePlatformEnabled() || !financeExpansionControlEnabled()) return NextResponse.json({ error: "Finance and expansion control is disabled." }, { status: 404 })
   return NextResponse.json({ actor: { actorId: actor.actorId, role: actor.role }, preview: buildFinanceExpansionPreview(), writesEnabled: false }, { headers: { "Cache-Control": "no-store" } })
 }

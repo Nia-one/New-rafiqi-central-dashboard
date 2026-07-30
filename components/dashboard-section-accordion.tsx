@@ -26,8 +26,11 @@ export function DashboardSectionAccordion({
   openIndex?: number
   onOpenIndexChange?: (index: number) => void
 } & Omit<HTMLAttributes<HTMLDivElement>, "children" | "aria-label">) {
-  const items = Children.toArray(children)
-  const [uncontrolledOpenIndex, setUncontrolledOpenIndex] = useState(defaultOpenIndex ?? -1)
+  const directItems = Children.toArray(children)
+  const items = directItems.length === 1 && sections.length > 1 && isValidElement(directItems[0])
+    ? Children.toArray((directItems[0].props as { children?: ReactNode }).children)
+    : directItems
+  const [uncontrolledOpenIndex, setUncontrolledOpenIndex] = useState(defaultOpenIndex ?? 0)
   const openIndex = controlledOpenIndex ?? uncontrolledOpenIndex
   const baseId = useId()
 
