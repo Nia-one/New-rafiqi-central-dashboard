@@ -182,6 +182,93 @@ export function headerRow(rows: unknown[][], targetHeaders: string[]) {
   return bestIndex;
 }
 
+async function syncNiaGrowthInputs(
+  sheets: ReturnType<typeof google.sheets>, sourceSpreadsheetId: string, spreadsheetId: string,
+) {
+  const tab = "TEAM_NIA_GROWTH";
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: sourceSpreadsheetId, fields: "sheets.properties.title" });
+  if (!(metadata.data.sheets || []).some((sheet) => sheet.properties?.title === tab)) return null;
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId: sourceSpreadsheetId, range: `${tab}!A:AZ` });
+  const rows = (response.data.values || []) as unknown[][];
+  const headerIndex = rows.findIndex((row) => row.map(normal).includes("growth record id") && row.map(normal).includes("supply model"));
+  if (headerIndex < 0) return null;
+  const headers = rows[headerIndex].map(normal);
+  const objects = rows.slice(headerIndex + 1)
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])))
+    .filter((row) => normal(row["growth record id"]));
+  const now = new Date().toISOString();
+  const amount = (row: Record<string, unknown>, key: string) => numberFor(row[normal(key)]);
+  const field = (row: Record<string, unknown>, key: string) => String(row[normal(key)] ?? "").trim();
+  const actions: Record<string, unknown>[] = [];
+  const evidence: Record<string, unknown>[] = [];
+  const approvals: Record<string, unknown>[] = [];
+  const policies: Record<string, unknown>[] = [];
+  const learning: Record<string, unknown>[] = [];
+  for (const row of objects) {
+    const model = field(row, "supply model").toUpperCase();
+    if (!model) continue;
+    const required = amount(row, "required nests");
+    const ready = amount(row, "activation ready nests");
+    const gap = Math.max(0, required - ready);
+    const owner = field(row, "owner actor id") || "ACT-UNASSIGNED";
+    const actionId = `OPS-NIA-GROWTH-${model}`;
+    if (gap > 0) {
+      actions.push({
+        "action id": actionId, "operating objective": `Nia Growth ${model} readiness gap`,
+        "expected metric": "Activation-ready Nests", "baseline value": ready, "target value": required,
+        confidence: field(row, "verification status") === "Verified" ? "High" : "Cannot confirm",
+        "owner actor id": owner, "due at": normalizeTeamInputDate("due at", field(row, "action due at")),
+        "required evidence": `${model} readiness evidence and authorised approval`, "approval tier": "Growth / capital",
+        state: field(row, "readiness status") === "Ready" && field(row, "verification status") === "Verified" ? "Proof submitted" : "Open",
+        "proposed at": now, "source submission id": `TEAM-NIA-GROWTH-${model}`, "updated at": now,
+        "next action": field(row, "notes") || `Close and independently verify the ${gap}-Nest ${model} readiness gap`,
+      });
+      approvals.push({
+        "approval id": `OPS-NIA-GROWTH-APR-${model}`, "linked action id": actionId,
+        "decision type": `${model} capacity readiness`, "current terms": model === "FONO"
+          ? `${ready} activation-ready Nests; ${field(row, "nia filled nests") ? `${amount(row, "nia filled nests")} Nia-filled Nests` : "Nia-fill split not recorded"}`
+          : `${ready} activation-ready Nests; ${field(row, "signed contract covered nests") ? `${amount(row, "signed contract covered nests")} signed-contract-covered Nests` : "Signed contract coverage not recorded"}`,
+        "proposed terms": `${required} required Nests`, "business reason": `${gap}-Nest governed readiness gap`,
+        "expected result": `${required} independently verified activation-ready Nests`, "approver role": "Growth owner",
+        "approver actor id": owner, decision: field(row, "approval decision") || "Pending",
+        "decision reason": field(row, "notes"), "source submission id": `TEAM-NIA-GROWTH-APR-${model}`, "updated at": now,
+      });
+    }
+    const evidenceUrl = field(row, "evidence url");
+    if (evidenceUrl) evidence.push({
+      "evidence id": `OPS-NIA-GROWTH-EVD-${model}`, "linked type": "Action", "linked id": actionId,
+      "evidence type": `${model} capacity readiness`, "protected url": evidenceUrl, "uploaded by actor id": owner,
+      "uploaded at": normalizeTeamInputDate("verified at", field(row, "readiness verified at")) || now,
+      description: `${ready} of ${required} Nests recorded activation-ready`,
+      "verification status": field(row, "verification status") || "Pending",
+      "source submission id": `TEAM-NIA-GROWTH-EVD-${model}`, "updated at": now,
+    });
+    const sla = amount(row, "readiness sla days");
+    const policyStatus = field(row, "policy status");
+    const policyApprover = field(row, "policy approved by actor id");
+    if (sla > 0 && policyStatus === "Approved" && policyApprover) policies.push({
+      "policy id": `OPS-NIA-GROWTH-SLA-${model}`, "policy name": `Nia Growth ${model} readiness SLA and verified closure`,
+      "policy value": sla, unit: "days", "effective from": now.slice(0, 10), "approved by": policyApprover,
+      status: "Approved", "source note": "Closure requires independently verified readiness evidence and human approval.", "updated at": now,
+    });
+    const observed = field(row, "learning observation");
+    const proposal = field(row, "learning proposal");
+    if (observed || proposal) learning.push({
+      id: `OPS-NIA-GROWTH-LEARN-${model}`, domain: "Nia Growth", observed,
+      "proposed change": proposal, "expected effect": `Improve verified ${model} readiness without automatic capital commitment`,
+      attribution: "Connected operations data", confidence: field(row, "verification status") === "Verified" ? "Medium" : "Low",
+      disposition: "Human sign-off", "owner actor id": owner, "updated at": now, notes: field(row, "notes"),
+    });
+  }
+  return {
+    actions: await upsertObjects(sheets, spreadsheetId, "Action_Log", "action id", actions, "OPS-NIA-GROWTH-"),
+    evidence: await upsertObjects(sheets, spreadsheetId, "Evidence_Log", "evidence id", evidence, "OPS-NIA-GROWTH-EVD-"),
+    approvals: await upsertObjects(sheets, spreadsheetId, "Approval_Log", "approval id", approvals, "OPS-NIA-GROWTH-APR-"),
+    policies: await upsertObjects(sheets, spreadsheetId, "Policy_Registry", "policy id", policies, "OPS-NIA-GROWTH-SLA-"),
+    learning: await upsertObjects(sheets, spreadsheetId, "Learning_History", "id", learning, "OPS-NIA-GROWTH-LEARN-"),
+  };
+}
+
 const financeSourceTabs = ["Living_Hourly", "Work_Hourly", "Essentials_Hourly"] as const;
 const numberFor = (value: unknown) => {
   const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
@@ -346,6 +433,12 @@ export async function syncTeamInputs() {
   if ((sourceMetadata.data.sheets || []).some((sheet) => sheet.properties?.title === enterpriseOutcomeTab)) {
     const result = await syncEnterpriseOutcomes(sheets, sourceSpreadsheetId, spreadsheetId);
     report.push([new Date().toISOString(), enterpriseOutcomeTab, "Action_Log + Evidence_Log", String(result.actions.inserted + result.evidence.inserted), String(result.actions.updated + result.evidence.updated), String(result.skipped), "ok"]);
+  }
+
+  const growth = await syncNiaGrowthInputs(sheets, sourceSpreadsheetId, spreadsheetId);
+  if (growth) {
+    const totals = Object.values(growth).reduce((sum, item) => ({ inserted: sum.inserted + item.inserted, updated: sum.updated + item.updated, removed: sum.removed + item.removed }), { inserted: 0, updated: 0, removed: 0 });
+    report.push([new Date().toISOString(), "TEAM_NIA_GROWTH", "Governed growth logs", String(totals.inserted), String(totals.updated), String(totals.removed), "ok"]);
   }
 
   const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });

@@ -195,6 +195,14 @@ test("open opportunities use only Nia Growth Action_Log records in live read-onl
   assert.match(componentSource, /No open Nia Growth action is recorded in Action_Log/)
 })
 
+test("channel coverage comes from governed TEAM_NIA_GROWTH approval terms", () => {
+  assert.match(componentSource, /OPS-NIA-GROWTH-/)
+  assert.match(componentSource, /current terms/)
+  assert.match(componentSource, /TEAM_NIA_GROWTH user input/)
+  assert.match(componentSource, /Nia-filled Nests field/)
+  assert.match(componentSource, /signed-contract-covered Nests field/)
+})
+
 test("learning section exposes domain inputs, Low confidence and no auto-adoption", () => {
   for (const label of ["Channel / proposal", "Expected effect", "Evidence", "Attribution", "Forecast error", "Fresh / reversible", "Approved boundary", "Human controls", "Effects", "Confidence / adoption", "Rollback"]) assert.match(componentSource, new RegExp(label.replace("/", "\\/")))
   assert.ok(preview.learningInputs.every((input) => input.production_confidence === "Low" && input.auto_adopt === false))

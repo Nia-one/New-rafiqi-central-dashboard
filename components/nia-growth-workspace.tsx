@@ -80,6 +80,7 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
   const demandRows = Array.isArray(liveData?.enterpriseDemand) ? liveData.enterpriseDemand as Record<string, unknown>[] : []
   const actionRows = Array.isArray(liveData?.actions) ? liveData.actions as Record<string, unknown>[] : []
   const evidenceRows = Array.isArray(liveData?.evidence) ? liveData.evidence as Record<string, unknown>[] : []
+  const approvalRows = Array.isArray(liveData?.approvals) ? liveData.approvals as Record<string, unknown>[] : []
   const growthActions = actionRows.filter(isNiaGrowthAction)
   const growthActionIds = new Set(growthActions.map((row) => rowText(row, "action id", "id")).filter(Boolean))
   const growthEvidence = evidenceRows.filter((row) => growthActionIds.has(rowText(row, "linked id")))
@@ -132,6 +133,8 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
     const activationReadyNests = rows.reduce((sum, row) => sum + (Number(rowText(row, "headcount matched")) || 0), 0)
     const gapNests = Math.max(0, plannedNests - activationReadyNests)
     const hasRows = rows.length > 0
+    const growthApproval = approvalRows.find((row) => rowText(row, "linked action id") === `OPS-NIA-GROWTH-${supplyModel}`)
+    const coverage = rowText(growthApproval, "current terms").split(";").slice(1).join(";").trim()
     return {
       supplyModel,
       capacityLabel: supplyModel === "FONO" ? "Franchise-operated, Nia-supported" : "Shram Park",
@@ -139,8 +142,8 @@ export function NiaGrowthWorkspace({ preview: fixturePreview, liveData }: Props)
       activationReadyNests,
       gapNests,
       timeToReadyLabel: "Not recorded",
-      coverageLabel: supplyModel === "FONO" ? "Base / Nia-fill split not recorded" : "Signed contract coverage not recorded",
-      coverageDetail: supplyModel === "FONO" ? "FONO Funnel required and matched capacity" : "Shram Park demand required and matched capacity",
+      coverageLabel: coverage || (supplyModel === "FONO" ? "Base / Nia-fill split not recorded" : "Signed contract coverage not recorded"),
+      coverageDetail: coverage ? "TEAM_NIA_GROWTH user input · governed Approval_Log sync" : supplyModel === "FONO" ? "FONO Funnel required and matched capacity; complete the black Nia-filled Nests field in TEAM_NIA_GROWTH" : "Shram Park demand required and matched capacity; complete the black signed-contract-covered Nests field in TEAM_NIA_GROWTH",
       progressPct: plannedNests > 0 ? Math.min(100, Math.round(activationReadyNests / plannedNests * 100)) : 0,
       stages: [
         { label: "Required capacity", value: hasRows ? `${plannedNests} recorded` : "Not recorded", state: hasRows ? "Complete" as const : "Open" as const },
