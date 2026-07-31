@@ -54,11 +54,11 @@ async function main() {
     const headers = rows[headerIndex]?.map(normal) || []
     return rows.slice(headerIndex + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])))
   }
-  const [demand, actions, evidence, approvals, learning, policies, fono, growthInput] = await Promise.all([
+  const [demand, actions, evidence, approvals, learning, policies, fono, growthInput, people] = await Promise.all([
     readObjects(backendId, "Enterprise_Demand"), readObjects(backendId, "Action_Log"),
     readObjects(backendId, "Evidence_Log"), readObjects(backendId, "Approval_Log"),
     readObjects(backendId, "Learning_History"), readObjects(backendId, "Policy_Registry"),
-    readObjects(inputId, "Fono Funnel"), readObjects(inputId, "TEAM_NIA_GROWTH"),
+    readObjects(inputId, "Fono Funnel"), readObjects(inputId, "TEAM_NIA_GROWTH"), readObjects(backendId, "People_Roster"),
   ])
   const number = (value) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0
   const channel = (row) => {
@@ -79,6 +79,7 @@ async function main() {
     dashboardDemand: channelSummary,
     fonoInput: { rows: fono.length, columns: fono[0] ? Object.keys(fono[0]) : [], nonEmptyByColumn: fono[0] ? Object.fromEntries(Object.keys(fono[0]).map((key) => [key, fono.filter((row) => String(row[key] ?? "").trim()).length])) : {} },
     growthInput: growthInput.map((row) => ({ supplyModel: row["supply model"], requiredNests: row["required nests"], activationReadyNests: row["activation ready nests"], gapNests: row["gap nests"], ownerActorId: row["owner actor id"], signedContractCoveredNests: row["signed contract covered nests"], readinessStatus: row["readiness status"], learningObservation: row["learning observation"] })),
+    spOwners: Object.fromEntries([...new Set(demand.filter((row) => channel(row) === "SP").map((row) => row["owner actor id"]))].map((actorId) => [actorId, { rows: demand.filter((row) => channel(row) === "SP" && row["owner actor id"] === actorId).length, displayName: people.find((row) => row["actor id"] === actorId)?.["display name"] || "" }])),
     governance: { actions: growthRows(actions).length, evidence: growthRows(evidence).length, approvals: growthRows(approvals).length, learning: learning.filter((row) => normal(row.domain) === "nia growth").length, policies: growthRows(policies).length },
   }
   console.log(JSON.stringify({ auditedAt: new Date().toISOString(), backend, input, sourceAudit }, null, 2))

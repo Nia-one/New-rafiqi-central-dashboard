@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapShramParkDemandRow } from "./shramParkDemandBotSync";
+import { mapShramParkDemandRow, shramParkOwnerForTheatre } from "./shramParkDemandBotSync";
 
 const headers = ["Submission Timestamp", "Submission ID", "Company Name", "Location", "Theatre", "Requirement", "Male Requirement", "Female Requirement", "Total Requirement", "Follow Up Action", "Assigned To", "Source", "Activation Required At", "Headcount Matched", "Monthly Wage INR", "Latitude", "Longitude"];
 
@@ -13,6 +13,7 @@ test("maps a complete Shram Park demand bot row to Enterprise_Demand", () => {
   assert.equal(result.record.status, "Contracting");
   assert.equal(result.record.certainty, "Send Proposal / Quote");
   assert.equal(result.record["source submission id"], "SUB-1");
+  assert.equal(result.record["owner actor id"], "ACT-PRASHANT-WAHIRE");
 });
 
 test("keeps the fixed bot format when Requirement is N without treating current manpower as demand", () => {
@@ -26,6 +27,19 @@ test("keeps the fixed bot format when Requirement is N without treating current 
   assert.equal(result.record.status, "Lead");
   assert.equal(result.record.certainty, "Schedule Next Visit");
   assert.equal(result.record["activation required at"], "2026-07-11");
+  assert.equal(result.record["owner actor id"], "ACT-SATISH-SANGHY");
+});
+
+test("assigns the accountable owner from all accepted Theatre spellings", () => {
+  for (const theatre of ["Rajputana", "Deccan", "Decaan"]) assert.equal(shramParkOwnerForTheatre(theatre), "Prashant Wahire");
+  for (const theatre of ["Coromandel", "Coromandal", "Wellington", "Welington"]) assert.equal(shramParkOwnerForTheatre(theatre), "Satish Sanghy");
+  assert.equal(shramParkOwnerForTheatre("Unknown"), "");
+});
+
+test("repeated bot submission IDs still produce stable row-unique demand IDs", () => {
+  const first = mapShramParkDemandRow(["2026-07-29T09:00:00+05:30", "SUB-REPEAT", "Acme", "Plant A", "Rajputana", "Y", 10, 0, 10, "Proposal", "", "WhatsApp", "2026-08-05", 0, 18000, 28.32, 76.82], headers);
+  const second = mapShramParkDemandRow(["2026-07-30T09:00:00+05:30", "SUB-REPEAT", "Beta", "Plant B", "Coromandel", "Y", 20, 0, 20, "Proposal", "", "WhatsApp", "2026-08-06", 0, 18000, 12.97, 77.59], headers);
+  assert.notEqual(first.record["demand id"], second.record["demand id"]);
 });
 
 test("quarantines test data and incomplete governed fields", () => {

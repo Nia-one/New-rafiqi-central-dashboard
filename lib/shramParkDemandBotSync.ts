@@ -16,6 +16,14 @@ const value = (row: unknown[], headers: string[], ...names: string[]) => {
   return index < 0 ? "" : row[index];
 };
 const stable = (prefix: string, raw: unknown) => `${prefix}-${slug(raw) || createHash("sha1").update(String(raw ?? "")).digest("hex").slice(0, 12).toUpperCase()}`;
+const stableRow = (prefix: string, raw: unknown) => `${prefix}-${createHash("sha1").update(String(raw ?? "")).digest("hex").slice(0, 16).toUpperCase()}`;
+
+export function shramParkOwnerForTheatre(theatre: unknown) {
+  const name = norm(theatre);
+  if (/rajputana|deccan|decaan/.test(name)) return "Prashant Wahire";
+  if (/coromandal|coromandel|wellington|welington/.test(name)) return "Satish Sanghy";
+  return "";
+}
 
 function credentials() {
   return googleServiceAccountCredentials();
@@ -35,6 +43,7 @@ const requiredSourceColumns = [
   "Monthly Wage INR",
   "Latitude",
   "Longitude",
+  "Owner Name",
 ];
 
 async function mirrorShramParkSource(values: unknown[][]) {
@@ -120,9 +129,11 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     : /won|contracted|agreement signed/i.test(followUp) ? "Contracted"
       : /proposal|quote|commercial|contracting|escalate/i.test(followUp) ? "Contracting"
         : "Lead";
-  const owner = String(value(row, headers, "Assigned To")).trim();
+  const owner = shramParkOwnerForTheatre(theatre) || String(value(row, headers, "Owner Name")).trim() || String(value(row, headers, "Assigned To")).trim();
   const record: ShramParkDemandRecord = {
-    "demand id": stable("SP-BOT", submissionId),
+    // Some bot exports repeat Submission ID across multiple visits. Include
+    // stable business identity so every source row remains independently owned.
+    "demand id": stableRow("SP-BOT", `${submissionId}|${company}|${location}|${openedAt}`),
     "enterprise id": stable("ENT", company),
     "enterprise name": company,
     "plant id": stable("PLANT", `${company}-${location}`),
@@ -146,6 +157,38 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     "updated at": openedAt,
   };
   return { record, errors };
+}
+
+async function upsertShramParkOwners() {
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
+  const sheets = await sheetsClient(true);
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: "People_Roster!A:Z" });
+  const rows = (response.data.values || []) as unknown[][];
+  const headers = (rows[0] || []).map(String);
+  const keyIndex = headers.findIndex((header) => norm(header) === "actor id");
+  if (keyIndex < 0) throw new Error("People_Roster is missing actor id");
+  const now = new Date().toISOString();
+  const owners = ["Prashant Wahire", "Satish Sanghy"].map((name) => ({
+    "actor id": stable("ACT", name), "display name": name, role: "Shram Park Theatre Owner",
+    "active shift": "Active", language: "English / Hindi", "updated at": now,
+  }));
+  const output = rows.map((row) => [...row]);
+  const existing = new Map(output.slice(1).map((row, index) => [norm(row[keyIndex]), index + 1]));
+  let inserted = 0, updated = 0;
+  for (const owner of owners) {
+    const key = norm(owner["actor id"]);
+    const found = existing.get(key);
+    const destination = found == null ? Array(headers.length).fill("") : [...output[found]];
+    headers.forEach((header, index) => {
+      const ownerValue = owner[norm(header) as keyof typeof owner];
+      if (ownerValue !== undefined) destination[index] = ownerValue;
+    });
+    if (found == null) { output.push(destination); existing.set(key, output.length - 1); inserted++; }
+    else { output[found] = destination; updated++; }
+  }
+  await sheets.spreadsheets.values.update({ spreadsheetId, range: "People_Roster!A1", valueInputOption: "USER_ENTERED", requestBody: { values: output } });
+  return { inserted, updated };
 }
 
 async function upsertEnterpriseDemand(records: ShramParkDemandRecord[]) {
@@ -207,8 +250,14 @@ export async function syncShramParkDemandBotData() {
   ];
   const mirror = await mirrorShramParkSource(mirrorValues);
   const valid = mapped.filter((item) => item.errors.length === 0).map((item) => item.record);
+  const ownerDistribution = valid.reduce<Record<string, number>>((counts, record) => {
+    const owner = String(record["owner actor id"] || "ACT-UNASSIGNED");
+    counts[owner] = (counts[owner] || 0) + 1;
+    return counts;
+  }, {});
   const quarantineByReason = mapped.flatMap((item) => item.errors).reduce<Record<string, number>>((counts, reason) => ({ ...counts, [reason]: (counts[reason] || 0) + 1 }), {});
   const enterpriseDemand = await upsertEnterpriseDemand(valid);
+  const peopleRoster = await upsertShramParkOwners();
   const removedStale = await reconcileShramParkDemand(valid);
   return {
     mirror,
@@ -216,8 +265,11 @@ export async function syncShramParkDemandBotData() {
     sourceTab: SOURCE_TAB,
     sourceRows: mapped.length,
     validRows: valid.length,
+    uniqueDemandIds: new Set(valid.map((record) => String(record["demand id"]))).size,
+    ownerDistribution,
     quarantinedRows: mapped.length - valid.length,
     quarantineByReason,
     enterpriseDemand: { ...enterpriseDemand, removedStale },
+    peopleRoster,
   };
 }
