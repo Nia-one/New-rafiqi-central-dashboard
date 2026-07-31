@@ -35,6 +35,13 @@ test("margin verdict is a direct live Sheet projection with honest missing-contr
   assert.match(source, /verdictProgress/)
 })
 
+test("finance owner accepts either a People_Roster name or Actor ID", () => {
+  assert.match(source, /liveOwnerReference/)
+  assert.match(source, /display name", "name/)
+  assert.match(source, /recordedOwnerName/)
+  assert.match(source, /\^\(yes\|no\|true\|false\)\$/)
+})
+
 test("every headline exhibit closes with a so-what implication", () => {
   assert.ok((source.match(/styles\.soWhat/g) ?? []).length >= 3, "expected at least three So what lines")
   assert.ok((source.match(/So what:/g) ?? []).length >= 3)

@@ -97,8 +97,13 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     : baseLiveMarginHealth
   const marginHealth = liveMarginHealth ?? preview.loopHealth
   const marginAction = marginActions[0]
-  const liveOwnerActorId = rowText(marginAction, "owner actor id") || rowText(currentFinanceRows[0], "reported by actor id")
-  const liveOwnerPerson = peopleRows.find((row) => rowText(row, "actor id") === liveOwnerActorId)
+  const liveOwnerReference = rowText(marginAction, "owner actor id") || rowText(currentFinanceRows[0], "reported by actor id")
+  const liveOwnerPerson = peopleRows.find((row) => {
+    const reference = liveOwnerReference.toLowerCase()
+    return rowText(row, "actor id").toLowerCase() === reference
+      || rowText(row, "display name", "name").toLowerCase() === reference
+  })
+  const recordedOwnerName = /^(yes|no|true|false)$/i.test(liveOwnerReference) ? "" : liveOwnerReference
   const contractedNests = livingRows.reduce((sum, row) => sum + (rowNumber(row, "contracted nests") ?? 0), 0)
   const liveOccupancyPct = contractedNests > 0 ? Math.round(occupiedNests / contractedNests * 1_000) / 10 : null
   const occupancyPolicy = policyRows.find((row) => {
@@ -136,7 +141,7 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     ? liveOccupancyPct === null ? "Cannot calculate · CM2 and occupancy missing" : "Cannot calculate · Finance CM2 missing"
     : isLive && verdictTargetInr === null ? "Control not recorded" : behind ? `Below control · ${inr(gapInr)}/unit to recover` : "At or above control"
   const marginApproval = approvalsForDomain(liveData, "nia-margins", true)[0]
-  const liveOwner = rowText(liveOwnerPerson, "display name") || marginApproval?.owner || liveOwnerActorId || "No owner recorded"
+  const liveOwner = rowText(liveOwnerPerson, "display name", "name") || marginApproval?.owner || recordedOwnerName || "No owner recorded"
   const decisionOwner = isLive ? liveOwner : marginApproval?.owner || (preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO")
   const decisionDue = isLive ? marginApproval?.dueAt : marginApproval?.dueAt || preview.actions[0]?.dueAt
   const decisionTitle = !isLive

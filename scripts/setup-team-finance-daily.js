@@ -31,7 +31,7 @@ const columns = [
   ["decision_due_at", true, "REQUIRED — Deadline for the destination decision. Format: YYYY-MM-DD."],
   ["cm1_inr", true, "REQUIRED — Current governed CM1 for this date/scope: revenue minus governed direct variable costs, in INR."],
   ["cm2_inr", false, "AUTO / DO NOT TOUCH — Calculated per row as CM1 minus OPEX Actual (MTD). Both inputs must use the same date and scope."],
-  ["reported_by_actor_id", true, "REQUIRED — Actor ID of the Finance person submitting this snapshot; must exist in People_Roster."],
+  ["reported_by_actor_id", true, "REQUIRED — Finance person name or Actor ID. If a name is entered, use the same spelling as People_Roster."],
   ["notes", true, "OPTIONAL — Brief explanation of exception, reconciliation gap, approval condition or unusual movement."],
   ["finance_daily_id", false, "AUTO / DO NOT TOUCH — Stable finance snapshot ID generated during synchronization."],
   ["total_billed_inr", false, "AUTO / DO NOT TOUCH — Aggregated billed revenue from Living, Work and Essentials source feeds for the same scope/date."],
