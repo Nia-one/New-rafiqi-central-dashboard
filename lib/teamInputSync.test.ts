@@ -12,3 +12,15 @@ test("headerRow selects the machine-header row in multi-row input sheets", () =>
 
   assert.equal(headerRow(rows, targetHeaders), 2);
 });
+
+test("headerRow recognises user-input aliases used by policy and action tabs", () => {
+  assert.equal(headerRow([
+    ["Required: Policy/targets"],
+    ["policy_id", "metric_name", "threshold_value", "unit", "status", "approved_by_actor_id", "updated_at"],
+  ], ["policy id", "policy name", "policy value", "unit", "status", "approved by", "updated at"]), 1);
+
+  assert.equal(headerRow([
+    ["Required: Action log"],
+    ["action_id", "objective", "expected_metric", "financial_impact", "owner_actor_id", "state", "updated_at"],
+  ], ["action id", "operating objective", "expected metric", "expected financial impact inr", "owner actor id", "state", "updated at"]), 1);
+});

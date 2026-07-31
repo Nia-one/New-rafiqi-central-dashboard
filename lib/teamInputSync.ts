@@ -30,6 +30,10 @@ const generatedKeyPrefixes: Record<string, string> = {
 const aliases: Record<string, string> = {
   "approved by actor id": "approved by",
   "active status": "active shift",
+  "metric name": "policy name",
+  "threshold value": "policy value",
+  "objective": "operating objective",
+  "financial impact": "expected financial impact inr",
 };
 
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
