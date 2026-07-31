@@ -443,7 +443,7 @@ export async function syncTeamInputs() {
   }
 
   const ownerRegistry = await syncOwnerRegistry(sheets, sourceSpreadsheetId, spreadsheetId);
-  report.push([new Date().toISOString(), "TEAM_OWNER_REGISTRY", "Owner_Registry + owner-bearing tabs", "0", String(Object.values(ownerRegistry.tabs).reduce((sum, item) => sum + item.updated, 0) + ownerRegistry.people.updated), String(ownerRegistry.people.inserted), "ok"]);
+  report.push([new Date().toISOString(), "TEAM_OWNER_REGISTRY", "Owner_Registry + owner-bearing tabs", "0", String(Object.values(ownerRegistry.tabs).reduce((sum, item) => sum + item.updated, 0) + ownerRegistry.people.updated + ownerRegistry.niaGrowthCascaded), String(ownerRegistry.people.inserted), "ok"]);
 
   const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
   if (!(metadata.data.sheets || []).some((sheet) => sheet.properties?.title === "TEAM_SYNC_STATUS")) {

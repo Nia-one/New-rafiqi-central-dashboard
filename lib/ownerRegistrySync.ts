@@ -61,8 +61,13 @@ async function upsertPeople(sheets: SheetsClient, spreadsheetId: string, assignm
   const existing = new Map(output.slice(1).map((row, index) => [normal(row[keyIndex]), index + 1]));
   const now = new Date().toISOString();
   let inserted = 0, updated = 0;
-  for (const item of new Map(assignments.filter((item) => normal(item.status) === "active").map((item) => [normal(item.ownerName), item])).values()) {
+  const active = assignments.filter((item) => normal(item.status) === "active");
+  const people = [...new Map(active.map((item) => [normal(item.ownerName), item])).values()];
+  const spOwners = [...new Set(active.filter((item) => normal(item.vertical) === "sp supply" && normal(item.role) === "owner").map((item) => item.ownerName))];
+  if (spOwners.length) people.push({ assignmentId: "OWNER-SP-THEATRE-GROUP", vertical: "SP Supply", scope: "All", theatre: "All", role: "Owner", ownerName: spOwners.join(" / "), responsibility: "Derived Shram Park theatre-owner group", effectiveFrom: "", effectiveTo: "", status: "Active" });
+  for (const item of people) {
     const record: Record<string, unknown> = { "actor id": actorId(item.ownerName), "display name": item.ownerName, role: `${item.vertical} ${item.role}`, "active shift": "Active", language: "English / Hindi", "updated at": now };
+    if (item.assignmentId === "OWNER-SP-THEATRE-GROUP") record["actor id"] = "ACT-SP-THEATRE-OWNERS";
     const found = existing.get(normal(record["actor id"]));
     const destination = found == null ? Array(headers.length).fill("") : [...output[found]];
     headers.forEach((header, index) => { if (record[header] !== undefined) destination[index] = record[header]; });
@@ -70,6 +75,32 @@ async function upsertPeople(sheets: SheetsClient, spreadsheetId: string, assignm
   }
   await sheets.spreadsheets.values.update({ spreadsheetId, range: "People_Roster!A1", valueInputOption: "USER_ENTERED", requestBody: { values: output } });
   return { inserted, updated };
+}
+
+async function cascadeNiaGrowthOwners(sheets: SheetsClient, spreadsheetId: string) {
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: ["Action_Log!A:AZ", "Approval_Log!A:AZ", "Evidence_Log!A:AZ", "Learning_History!A:AZ"] });
+  const [actions, approvals, evidence, learning] = (response.data.valueRanges || []).map((range) => ((range.values || []) as unknown[][]).map((row) => [...row]));
+  const actionHeaders = (actions[0] || []).map(normal), actionIdIndex = actionHeaders.indexOf("action id"), actionOwnerIndex = actionHeaders.indexOf("owner actor id");
+  const owners = new Map(actions.slice(1).filter((row) => /^OPS-NIA-GROWTH-/.test(String(row[actionIdIndex] || ""))).map((row) => [String(row[actionIdIndex]), String(row[actionOwnerIndex] || "")]).filter(([, owner]) => owner));
+  let updated = 0;
+  const update = (rows: unknown[][], keyHeader: string, ownerHeader: string, ownerForRow: (row: unknown[], headers: string[]) => string) => {
+    const headers = (rows[0] || []).map(normal), ownerIndex = headers.indexOf(normal(ownerHeader));
+    if (ownerIndex < 0) return 0;
+    let count = 0;
+    rows.slice(1).forEach((row) => { const owner = ownerForRow(row, headers); if (owner && row[ownerIndex] !== owner) { row[ownerIndex] = owner; count++; } });
+    return count;
+  };
+  updated += update(approvals, "approval id", "approver actor id", (row, headers) => owners.get(String(row[headers.indexOf("linked action id")])) || "");
+  updated += update(evidence, "evidence id", "uploaded by actor id", (row, headers) => owners.get(String(row[headers.indexOf("linked id")])) || "");
+  updated += update(learning, "id", "owner actor id", (row, headers) => {
+    const id = String(row[headers.indexOf("id")] || "");
+    const model = id.endsWith("-FONO") ? "FONO" : id.endsWith("-SP") ? "SP" : "";
+    return model ? owners.get(`OPS-NIA-GROWTH-${model}`) || (model === "SP" ? "ACT-SP-THEATRE-OWNERS" : "") : "";
+  });
+  if (updated) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: [
+    { range: "Approval_Log!A1", values: approvals }, { range: "Evidence_Log!A1", values: evidence }, { range: "Learning_History!A1", values: learning },
+  ] } });
+  return updated;
 }
 
 async function updateTab(sheets: SheetsClient, spreadsheetId: string, tab: string, assignments: Assignment[]) {
@@ -112,5 +143,6 @@ export async function syncOwnerRegistry(sheets: SheetsClient, sourceSpreadsheetI
   const people = await upsertPeople(sheets, spreadsheetId, assignments);
   const tabs: Record<string, { updated: number }> = {};
   for (const tab of ["Living_Hourly", "Essentials_Hourly", "Finance_Daily", "Enterprise_Demand", "Action_Log"]) tabs[tab] = await updateTab(sheets, spreadsheetId, tab, assignments);
-  return { assignments: assignments.length, people, tabs };
+  const niaGrowthCascaded = await cascadeNiaGrowthOwners(sheets, spreadsheetId);
+  return { assignments: assignments.length, people, tabs, niaGrowthCascaded };
 }
