@@ -12,10 +12,9 @@ const headers = [
   "learning_observation", "learning_proposal", "notes",
 ]
 const manualHeaders = new Set([
-  "owner_actor_id", "readiness_sla_days", "nia_filled_nests", "signed_contract_covered_nests",
-  "readiness_status", "readiness_verified_at", "action_due_at", "evidence_url",
+  "readiness_sla_days", "nia_filled_nests", "readiness_verified_at", "action_due_at", "evidence_url",
   "verification_status", "approval_decision", "policy_status", "policy_approved_by_actor_id",
-  "learning_observation", "learning_proposal", "notes",
+  "learning_proposal", "notes",
 ])
 const BLACK = { red: 0.03, green: 0.03, blue: 0.03 }
 const WHITE = { red: 1, green: 1, blue: 1 }
@@ -44,8 +43,8 @@ async function main() {
     ["NIA GROWTH — LIVE INPUT", "Black cells are the only manual inputs. Grey cells calculate from Fono Funnel and Shram Park demand."],
     ["Flow", "User Input → automated sync → backend logs → Nia Growth dashboard. Do not enter data directly in the backend workbook."],
     headers,
-    ["NIA-GROWTH-FONO", "FONO", "=SUM('Fono Funnel'!H2:H)", "=SUM('Fono Funnel'!J2:J)", "=MAX(0,C4-D4)", "=IFERROR(INDEX('Fono Funnel'!B2:B,MATCH(TRUE,INDEX('Fono Funnel'!B2:B<>\"\",0),0)),\"\")", "", "", "", "Not reviewed", "", "", "", "Pending", "Pending", "Draft", "", "", "", ""],
-    ["NIA-GROWTH-SP", "SP", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!R2:R)", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!X2:X)", "=MAX(0,C5-D5)", "=IFERROR(INDEX('TEAM_SHRAMPARK_DEMAND'!U2:U,MATCH(\"Y\",'TEAM_SHRAMPARK_DEMAND'!O2:O,0)),\"\")", "", "", "", "Not reviewed", "", "", "", "Pending", "Pending", "Draft", "", "", "", ""],
+    ["NIA-GROWTH-FONO", "FONO", "=SUM('Fono Funnel'!H3:H)", "=SUM('Fono Funnel'!J3:J)", "=MAX(0,C4-D4)", "=IFERROR(INDEX(FILTER('Fono Funnel'!B:B,'Fono Funnel'!B:B<>\"\",LOWER('Fono Funnel'!B:B)<>\"acquirer\"),1),\"\")", "", "", "", "=IF(C4=0,\"Not reviewed\",IF(E4=0,\"Ready\",\"In progress\"))", "", "", "", "Pending", "Pending", "Draft", "", "=\"FONO has \"&E4&\" Nest gap: \"&D4&\" activation-ready against \"&C4&\" required.\"", "", ""],
+    ["NIA-GROWTH-SP", "SP", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!R2:R)", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!X2:X)", "=MAX(0,C5-D5)", "=IFERROR(INDEX('TEAM_SHRAMPARK_DEMAND'!U2:U,MATCH(\"Y\",'TEAM_SHRAMPARK_DEMAND'!O2:O,0)),\"\")", "", "", "=IFERROR(SUM(FILTER('TEAM_SHRAMPARK_DEMAND'!R2:R,REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!S2:S),\"won|contracted|agreement signed\"),REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!O2:O),\"^y(es)?$\"))),0)", "=IF(C5=0,\"Not reviewed\",IF(E5=0,\"Ready\",\"In progress\"))", "", "", "", "Pending", "Pending", "Draft", "", "=\"SP has \"&E5&\" Nest gap: \"&D5&\" activation-ready against \"&C5&\" required.\"", "", ""],
   ]
   await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${TAB}'!A1`, valueInputOption: "USER_ENTERED", requestBody: { values } })
 

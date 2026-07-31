@@ -11,7 +11,7 @@ const credentials = () => {
 
 const relevant = {
   backend: ["Enterprise_Demand", "Action_Log", "Evidence_Log", "Approval_Log", "Learning_History", "Policy_Registry", "People_Roster", "Studio_Master", "Living_Hourly"],
-  input: ["TEAM_FONO_SUPPLY_DEMAND", "TEAM_SHRAMPARK_DEMAND", "TEAM_OCCUPANCY", "TEAM_REQ_ACTION_LOG", "TEAM_REQ_EVIDENCE_LOG", "TEAM_REQ_APPROVAL_LOG", "TEAM_LEARNING_HISTORY", "TEAM_REQ_POLICY_REGISTRY", "TEAM_REQ_PEOPLE_ROSTER"],
+  input: ["TEAM_NIA_GROWTH", "TEAM_FONO_SUPPLY_DEMAND", "TEAM_SHRAMPARK_DEMAND", "TEAM_OCCUPANCY", "TEAM_REQ_ACTION_LOG", "TEAM_REQ_EVIDENCE_LOG", "TEAM_REQ_APPROVAL_LOG", "TEAM_LEARNING_HISTORY", "TEAM_REQ_POLICY_REGISTRY", "TEAM_REQ_PEOPLE_ROSTER"],
 }
 
 async function inspectWorkbook(sheets, spreadsheetId, kind) {
@@ -54,11 +54,11 @@ async function main() {
     const headers = rows[headerIndex]?.map(normal) || []
     return rows.slice(headerIndex + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])))
   }
-  const [demand, actions, evidence, approvals, learning, policies, fono] = await Promise.all([
+  const [demand, actions, evidence, approvals, learning, policies, fono, growthInput] = await Promise.all([
     readObjects(backendId, "Enterprise_Demand"), readObjects(backendId, "Action_Log"),
     readObjects(backendId, "Evidence_Log"), readObjects(backendId, "Approval_Log"),
     readObjects(backendId, "Learning_History"), readObjects(backendId, "Policy_Registry"),
-    readObjects(inputId, "Fono Funnel"),
+    readObjects(inputId, "Fono Funnel"), readObjects(inputId, "TEAM_NIA_GROWTH"),
   ])
   const number = (value) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0
   const channel = (row) => {
@@ -78,6 +78,7 @@ async function main() {
   const sourceAudit = {
     dashboardDemand: channelSummary,
     fonoInput: { rows: fono.length, columns: fono[0] ? Object.keys(fono[0]) : [], nonEmptyByColumn: fono[0] ? Object.fromEntries(Object.keys(fono[0]).map((key) => [key, fono.filter((row) => String(row[key] ?? "").trim()).length])) : {} },
+    growthInput: growthInput.map((row) => ({ supplyModel: row["supply model"], requiredNests: row["required nests"], activationReadyNests: row["activation ready nests"], gapNests: row["gap nests"], ownerActorId: row["owner actor id"], signedContractCoveredNests: row["signed contract covered nests"], readinessStatus: row["readiness status"], learningObservation: row["learning observation"] })),
     governance: { actions: growthRows(actions).length, evidence: growthRows(evidence).length, approvals: growthRows(approvals).length, learning: learning.filter((row) => normal(row.domain) === "nia growth").length, policies: growthRows(policies).length },
   }
   console.log(JSON.stringify({ auditedAt: new Date().toISOString(), backend, input, sourceAudit }, null, 2))
