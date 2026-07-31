@@ -37,6 +37,8 @@ test("margin verdict is a direct live Sheet projection with honest missing-contr
 
 test("finance owner accepts either a People_Roster name or Actor ID", () => {
   assert.match(source, /liveOwnerReference/)
+  assert.match(source, /financeOwnerReference/)
+  assert.match(source, /validOwnerReference\(actionOwnerReference\) \|\| validOwnerReference\(financeOwnerReference\)/)
   assert.match(source, /display name", "name/)
   assert.match(source, /recordedOwnerName/)
   assert.match(source, /\^\(yes\|no\|true\|false\)\$/)

@@ -97,13 +97,16 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     : baseLiveMarginHealth
   const marginHealth = liveMarginHealth ?? preview.loopHealth
   const marginAction = marginActions[0]
-  const liveOwnerReference = rowText(marginAction, "owner actor id") || rowText(currentFinanceRows[0], "reported by actor id")
+  const actionOwnerReference = rowText(marginAction, "owner actor id")
+  const financeOwnerReference = rowText(currentFinanceRows[0], "reported by actor id")
+  const validOwnerReference = (value: string) => !/^(yes|no|true|false)$/i.test(value) ? value : ""
+  const liveOwnerReference = validOwnerReference(actionOwnerReference) || validOwnerReference(financeOwnerReference)
   const liveOwnerPerson = peopleRows.find((row) => {
     const reference = liveOwnerReference.toLowerCase()
     return rowText(row, "actor id").toLowerCase() === reference
       || rowText(row, "display name", "name").toLowerCase() === reference
   })
-  const recordedOwnerName = /^(yes|no|true|false)$/i.test(liveOwnerReference) ? "" : liveOwnerReference
+  const recordedOwnerName = liveOwnerReference
   const contractedNests = livingRows.reduce((sum, row) => sum + (rowNumber(row, "contracted nests") ?? 0), 0)
   const liveOccupancyPct = contractedNests > 0 ? Math.round(occupiedNests / contractedNests * 1_000) / 10 : null
   const occupancyPolicy = policyRows.find((row) => {
