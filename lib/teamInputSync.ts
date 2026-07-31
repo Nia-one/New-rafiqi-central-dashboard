@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { syncOwnerRegistry } from "./ownerRegistrySync";
 
 const mappings = [
   ["TEAM_FINANCE_DAILY", "Finance_Daily"],
@@ -440,6 +441,9 @@ export async function syncTeamInputs() {
     const totals = Object.values(growth).reduce((sum, item) => ({ inserted: sum.inserted + item.inserted, updated: sum.updated + item.updated, removed: sum.removed + item.removed }), { inserted: 0, updated: 0, removed: 0 });
     report.push([new Date().toISOString(), "TEAM_NIA_GROWTH", "Governed growth logs", String(totals.inserted), String(totals.updated), String(totals.removed), "ok"]);
   }
+
+  const ownerRegistry = await syncOwnerRegistry(sheets, sourceSpreadsheetId, spreadsheetId);
+  report.push([new Date().toISOString(), "TEAM_OWNER_REGISTRY", "Owner_Registry + owner-bearing tabs", "0", String(Object.values(ownerRegistry.tabs).reduce((sum, item) => sum + item.updated, 0) + ownerRegistry.people.updated), String(ownerRegistry.people.inserted), "ok"]);
 
   const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
   if (!(metadata.data.sheets || []).some((sheet) => sheet.properties?.title === "TEAM_SYNC_STATUS")) {
