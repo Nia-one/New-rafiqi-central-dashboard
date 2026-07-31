@@ -38,6 +38,30 @@ const aliases: Record<string, string> = {
 
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 
+const dateOnlyTargetHeaders = new Set(["business date", "effective from", "effective to"]);
+const userDateTargetHeaders = new Set([
+  "activation required at", "activated at", "decision due at", "due at",
+  "effective from", "effective to", "verified at", "shift start at", "shift end at",
+]);
+
+/** Converts a user-entered DD-MM-YYYY date into the canonical Sheet value. */
+export function normalizeTeamInputDate(header: string, value: unknown) {
+  const field = normal(header);
+  const raw = String(value ?? "").trim();
+  if (!raw || !userDateTargetHeaders.has(field)) return value;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw;
+
+  const indian = raw.match(/^(\d{1,2})[-\/]([0-1]?\d)[-\/](\d{4})$/);
+  const isoDate = raw.match(/^(\d{4})[-\/]([0-1]?\d)[-\/](\d{1,2})$/);
+  const parts = indian
+    ? { year: indian[3], month: indian[2], day: indian[1] }
+    : isoDate ? { year: isoDate[1], month: isoDate[2], day: isoDate[3] } : null;
+  if (!parts) return value;
+
+  const date = `${parts.year}-${parts.month.padStart(2, "0")}-${parts.day.padStart(2, "0")}`;
+  return dateOnlyTargetHeaders.has(field) ? date : `${date}T00:00:00+05:30`;
+}
+
 const enterpriseOutcomeTab = "TEAM_ENTERPRISE_OUTCOMES";
 
 function stableEnterpriseId(prefix: string, ...parts: unknown[]) {
@@ -253,9 +277,12 @@ export async function syncTeamInputs() {
       const targetRowIndex = existing.get(key);
       const destination = targetRowIndex == null ? Array(targetHeaders.length).fill("") : [...output[targetRowIndex]];
       sourceHeaders.forEach((header, sourceIndex) => {
-        const destinationIndex = targetIndex.get(aliases[header] || header);
+        const targetHeader = aliases[header] || header;
+        const destinationIndex = targetIndex.get(targetHeader);
         const value = row[sourceIndex];
-        if (destinationIndex != null && value !== "" && value != null) destination[destinationIndex] = value;
+        if (destinationIndex != null && value !== "" && value != null) {
+          destination[destinationIndex] = normalizeTeamInputDate(targetHeader, value);
+        }
       });
       if (generatedKey) destination[0] = String(suppliedKey || key).toUpperCase();
       if (source === "TEAM_MEMBER_ACTIVATION") {

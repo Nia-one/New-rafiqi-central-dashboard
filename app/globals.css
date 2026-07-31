@@ -1329,6 +1329,7 @@
   .demand-bar > span { color: var(--interactive-blue-deep); } .demand-bar > b { margin-left: auto; font-size: 12px; font-weight: 600; }
   .demand-detail { display: grid; grid-template-columns: 1.1fr 1.4fr 1.2fr auto; gap: 8px; padding: 0 10px 8px; color: var(--muted); font-size: 11px; } .demand-detail strong { color: var(--ink); }
   .reconciliation-strip { display: grid; grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr) 44px minmax(0, 1fr); align-items: stretch; margin-top: 18px; }
+  .living-occupancy-overview .reconciliation-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
   .reconciliation-strip article { display: flex; min-width: 0; min-height: 144px; flex-direction: column; justify-content: center; gap: 8px; padding: 22px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-blue); }
   .reconciliation-strip article span { color: var(--interactive-blue-deep); font-size: 11px; font-weight: 600; letter-spacing: .06em; }
   .reconciliation-strip article strong { display: block; font-size: 30px; font-weight: 600; line-height: 1; } .reconciliation-strip article small { color: var(--muted); line-height: 1.45; }
@@ -1370,6 +1371,7 @@
   .channel-grid { grid-template-columns: minmax(0, 1fr); }
   .fono-channel-grid { grid-template-areas: "supply-chart" "supply-detail" "demand-chart" "demand-detail"; }
   .reconciliation-strip { grid-template-columns: 1fr; }
+  .living-occupancy-overview .reconciliation-strip { grid-template-columns: 1fr; }
   .reconciliation-strip > i { min-height: 38px; } .reconciliation-strip > i svg { display: none; } .reconciliation-strip > i svg + svg { display: block; }
   .flywheel-loop { grid-template-columns: 1fr; gap: 10px; padding: 10px 0 42px; }
   .flywheel-loop-item, .flywheel-loop-item:last-of-type { grid-column: auto; }

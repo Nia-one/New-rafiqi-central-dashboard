@@ -296,7 +296,7 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
     ...cashApprovalRegistry.map((approval) => approval.linkedActionId),
     ...actionRows.filter(isCashControlRow).map((row) => valueFor(row, ["action id", "id"])),
   ].filter(Boolean))
-  const liveAuditEvents = [
+  const liveAuditEvents = Array.from(new Map([
     ...cashApprovalRegistry.map((approval) => ({
       id: `approval-${approval.approvalId}`,
       type: "Approval",
@@ -318,7 +318,8 @@ export function CashControlWorkspace({ preview: fixturePreview, liveData }: Prop
       detail: valueFor(row, ["description", "evidence type"]) || "Evidence detail not recorded",
       at: latestTimestamp([row]),
     })),
-  ].sort((left, right) => Date.parse(right.at || "1970-01-01") - Date.parse(left.at || "1970-01-01"))
+  ].map((entry) => [entry.id, entry] as const)).values())
+    .sort((left, right) => Date.parse(right.at || "1970-01-01") - Date.parse(left.at || "1970-01-01"))
   const preview: CashControlPreview = {
     ...fixturePreview,
     headline: liveData ? currentValue !== null ? `Live cash balance is ₹${current.toLocaleString("en-IN")} against the current finance plan.` : "Live cash balance is not recorded in the current finance snapshot." : fixturePreview.headline,

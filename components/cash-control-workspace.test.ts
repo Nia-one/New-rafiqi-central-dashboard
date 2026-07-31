@@ -113,6 +113,8 @@ test("live Sheet snapshot drives the remaining Cash and Control sections", () =>
   assert.match(componentSource, /learningHistoryRows/)
   assert.match(componentSource, /Approval_Log \$\{approval\.approvalId\}/)
   assert.match(componentSource, /liveAuditEvents/)
+  assert.match(componentSource, /new Map\(\[/)
+  assert.match(componentSource, /entry\.id, entry/)
   assert.match(componentSource, /Append-only Sheet audit/)
   assert.match(componentSource, /Automatically enforced system policy/)
   assert.match(componentSource, /content\("human_approvals", "heading"/)

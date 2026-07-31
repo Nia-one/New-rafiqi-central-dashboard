@@ -44,6 +44,46 @@ function earliestTimestamp(rows: readonly Record<string, unknown>[], ...keys: st
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0] || ""
 }
 
+function latestRecordedNumber(rows: readonly Record<string, unknown>[], ...keys: string[]) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const value = rowNumber(rows[index], ...keys)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function uniqueRowsById(rows: readonly Record<string, unknown>[], ...keys: string[]) {
+  const seen = new Set<string>()
+  return rows.filter((row) => {
+    const id = rowText(row, ...keys).toLowerCase()
+    if (!id) return true
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+}
+
+function uniqueEvidenceRowsById(rows: readonly Record<string, unknown>[]) {
+  const statusRank = (row: Record<string, unknown>) => {
+    const status = rowText(row, "verification status", "status").toLowerCase()
+    if (["verified", "approved", "accepted"].includes(status)) return 3
+    if (["reopened", "rejected", "failed"].includes(status)) return 2
+    return 1
+  }
+  const selected = new Map<string, Record<string, unknown>>()
+  const withoutId: Record<string, unknown>[] = []
+  for (const row of rows) {
+    const id = rowText(row, "evidence id", "id").toLowerCase()
+    if (!id) {
+      withoutId.push(row)
+      continue
+    }
+    const current = selected.get(id)
+    if (!current || statusRank(row) > statusRank(current)) selected.set(id, row)
+  }
+  return [...selected.values(), ...withoutId]
+}
+
 export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMarginsPreview; liveData?: any }) {
   const isLive = Boolean(liveData)
   const financeRows = Array.isArray(liveData?.finance) ? liveData.finance as Record<string, unknown>[] : []
@@ -65,9 +105,14 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     return /nia margin|full.?use cm2|margin control/.test(descriptor) && rowText(row, "status").toLowerCase() === "approved"
   })
   const liveFullUseTargetInr = rowNumber(marginPolicy, "policy value", "value")
-  const marginActions = actionRows.filter((row) => /nia margin|cm1|cm2|unit economics|margin recovery/.test(`${rowText(row, "operating objective", "title")} ${rowText(row, "expected metric")}`.toLowerCase()))
+  const marginActions = uniqueRowsById(
+    actionRows.filter((row) => /nia margin|cm1|cm2|unit economics|margin recovery/.test(`${rowText(row, "operating objective", "title")} ${rowText(row, "expected metric")}`.toLowerCase())),
+    "action id", "id",
+  )
   const marginActionIds = new Set(marginActions.map((row) => rowText(row, "action id", "id")).filter(Boolean))
-  const marginEvidence = evidenceRows.filter((row) => marginActionIds.has(rowText(row, "linked id")))
+  const marginEvidence = uniqueEvidenceRowsById(
+    evidenceRows.filter((row) => marginActionIds.has(rowText(row, "linked id"))),
+  )
   const verifiedMarginOutcomes = marginEvidence.filter((row) => ["verified", "approved", "accepted"].includes(rowText(row, "verification status", "status").toLowerCase())).length
   const reopenedMarginOutcomes = marginEvidence.filter((row) => ["reopened", "rejected", "failed"].includes(rowText(row, "verification status", "status").toLowerCase())).length
     + marginActions.filter((row) => ["reopened", "escalated", "failed"].includes(rowText(row, "state", "status").toLowerCase())).length
@@ -76,7 +121,7 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
   const asOf = rowText(liveData, "asOf") || new Date().toISOString()
   const feedDefinitions = [
     { id: "FINANCE-DAILY", label: "Finance CM2", rows: financeRows.filter((row) => rowText(row, "finance daily id") && latestTimestamp([row], "updated at", "reported at", "business date")), cadence: 1_440, claims: ["Recorded CM2"] },
-    { id: "LIVING-HOURLY", label: "Living occupancy", rows: livingRows.filter((row) => rowText(row, "living hourly id") && latestTimestamp([row], "updated at", "captured at")), cadence: 240, claims: ["Occupied Nests"] },
+    { id: "LIVING-HOURLY", label: "Living occupancy", rows: livingRows.filter((row) => rowText(row, "living hourly id") && latestTimestamp([row], "updated at", "captured at")), cadence: 1_440, claims: ["Occupied Nests"] },
     { id: "WORK-HOURLY", label: "Work contribution", rows: (Array.isArray(liveData?.work) ? liveData.work as Record<string, unknown>[] : []).filter((row) => rowText(row, "work hourly id") && latestTimestamp([row], "updated at", "captured at")), cadence: 240, claims: ["Work CM2"] },
     { id: "ESSENTIALS-HOURLY", label: "Essentials contribution", rows: (Array.isArray(liveData?.essentials) ? liveData.essentials as Record<string, unknown>[] : []).filter((row) => rowText(row, "essentials hourly id") && latestTimestamp([row], "updated at", "captured at")), cadence: 240, claims: ["Essentials CM2"] },
   ]
@@ -115,9 +160,12 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
   })
   const liveOccupancyTargetPct = rowNumber(occupancyPolicy, "policy value", "value")
   const pillarCm2 = {
-    living: currentFinanceRows.some((row) => rowNumber(row, "living cm2 inr") !== null) ? currentFinanceRows.reduce((sum, row) => sum + (rowNumber(row, "living cm2 inr") ?? 0), 0) : null,
-    work: currentFinanceRows.some((row) => rowNumber(row, "work cm2 inr") !== null) ? currentFinanceRows.reduce((sum, row) => sum + (rowNumber(row, "work cm2 inr") ?? 0), 0) : null,
-    essentials: currentFinanceRows.some((row) => rowNumber(row, "essentials cm2 inr") !== null) ? currentFinanceRows.reduce((sum, row) => sum + (rowNumber(row, "essentials cm2 inr") ?? 0), 0) : null,
+    // Pillar CM2 is supplied as one cumulative total per pillar, not as a
+    // studio-level amount. Read the latest populated value so a cumulative
+    // total entered once is never multiplied by the number of Studio rows.
+    living: latestRecordedNumber(currentFinanceRows, "living cm2 cumulative inr", "living cm2 inr"),
+    work: latestRecordedNumber(currentFinanceRows, "work cm2 cumulative inr", "work cm2 inr"),
+    essentials: latestRecordedNumber(currentFinanceRows, "essentials cm2 cumulative inr", "essentials cm2 inr"),
   }
   const livePillarCm2Inr = Object.values(pillarCm2).every((value) => value !== null) ? (pillarCm2.living ?? 0) + (pillarCm2.work ?? 0) + (pillarCm2.essentials ?? 0) : null
   const negativeContributionStudios = recordedCm2Rows.filter((row) => (rowNumber(row, "cm2 inr") ?? 0) < 0).length
@@ -181,14 +229,26 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     const baseline = rowNumber(action, "baseline value")
     const target = rowNumber(action, "target value")
     const unit = rowText(action, "unit", "target unit") || "recorded units"
+    const objective = rowText(action, "objective", "operating objective", "title")
+    const expectedMetric = rowText(action, "expected metric")
+    const actionScopeText = `${objective} ${expectedMetric}`.toLowerCase()
+    const isGlobalMarginAction =
+      !studioId &&
+      (/full[-\s]?use\s*cm2/.test(actionScopeText) ||
+        /nia margins?/.test(actionScopeText) ||
+        /cumulative/.test(actionScopeText))
+    const resolvedStudioName = rowText(studio, "studio name", "studio") || studioId
     return {
       id: rowText(action, "action id", "id"),
-      studio: rowText(studio, "studio name", "studio") || studioId || "Studio not recorded",
-      context: [rowText(studio, "supply model"), rowText(action, "state", "status")].filter(Boolean).join(" · ") || "Context not recorded",
-      cause: rowText(action, "operating objective", "title") || "Operating cause not recorded",
+      studio: resolvedStudioName || (isGlobalMarginAction ? "All Studios" : "Studio not recorded"),
+      context:
+        [rowText(studio, "supply model") || (isGlobalMarginAction ? "Global scope" : ""), rowText(action, "state", "status")]
+          .filter(Boolean)
+          .join(" · ") || "Context not recorded",
+      cause: objective || "Operating cause not recorded",
       variance: baseline !== null && target !== null ? `${Math.abs(target - baseline).toLocaleString("en-IN")} ${unit} from recorded target` : "Baseline or target not recorded",
       owner: rowText(ownerPerson, "display name") || ownerActorId || "No owner recorded",
-      route: rowText(action, "expected metric") || "Expected metric not recorded",
+      route: expectedMetric || "Expected metric not recorded",
       state: rowText(action, "state", "status") || "State not recorded",
     }
   })
@@ -250,7 +310,7 @@ export function NiaMarginsWorkspace({ preview, liveData }: { preview: NiaMargins
     <LoopHealthStrip health={marginHealth} />
     <div className={styles.measures} data-kpi-group aria-label="Nia Margins measures">
       <article className={styles.measure}><span>Full-use CM2</span><strong>{measureFullUseCm2 === null ? "No data" : inr(measureFullUseCm2)}</strong>{measureFullUseCm2 !== null && measureFullUseTarget !== null ? <MeasureViz showCaption={false} value={inr(measureFullUseCm2)} target={inr(measureFullUseTarget)} /> : null}<small>{measureFullUseCm2 === null ? "CM2 not recorded in Finance_Daily" : measureFullUseTarget === null ? "Approved Policy_Registry control not recorded" : `Target ${inr(measureFullUseTarget)}`}</small></article>
-      <article className={styles.measure}><span>Pillar CM2</span><strong>{measurePillarCm2 === null ? "No data" : inr(measurePillarCm2)}</strong><small>{measurePillarCm2 === null ? "Pillar CM2 fields not recorded in Finance_Daily" : "Living · Work · Essentials"}</small></article>
+      <article className={styles.measure}><span>Pillar CM2</span><strong>{measurePillarCm2 === null ? "No data" : inr(measurePillarCm2)}</strong><small>{measurePillarCm2 === null ? "Enter each cumulative pillar total once in Finance_Daily" : "Cumulative Living · Work · Essentials"}</small></article>
       <article className={styles.measure}><span>Occupancy</span><strong>{measureOccupancyPct === null ? "No data" : `${measureOccupancyPct}%`}</strong>{measureOccupancyPct !== null && measureOccupancyTargetPct !== null ? <MeasureViz showCaption={false} value={`${measureOccupancyPct}%`} target={`${measureOccupancyTargetPct}%`} /> : null}<small>{measureOccupancyTargetPct === null ? "Approved occupancy control not recorded" : `Control ${measureOccupancyTargetPct}% · ramp separate`}</small></article>
       <article className={styles.measure}><span>Studio health</span><strong>{measureNegativeStudios === null ? "No data" : measureNegativeStudios}</strong><small>{measureNegativeStudios === null ? "Studio CM2 not recorded" : `${measureNegativeStudios} negative`} · GM {measureGrossMarginPct === null ? "not recorded" : `${measureGrossMarginPct}%`}</small></article>
     </div>

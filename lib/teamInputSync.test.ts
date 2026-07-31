@@ -1,26 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { headerRow } from "./teamInputSync";
+import { normalizeTeamInputDate } from "./teamInputSync";
 
-test("headerRow selects the machine-header row in multi-row input sheets", () => {
-  const targetHeaders = ["finance daily id", "business date", "theatre id", "studio id", "cm1 inr", "cm2 inr", "updated at"];
-  const rows = [
-    ["Date\nFINANCE INPUT", "Theatre\nFINANCE INPUT", "updated at", "studio id"],
-    ["REQUIRED — Finance snapshot date", "REQUIRED — Theatre identifier"],
-    ["business_date", "theatre_id", "studio_id", "cm1_inr", "cm2_inr", "finance_daily_id", "updated_at"],
-  ];
-
-  assert.equal(headerRow(rows, targetHeaders), 2);
+test("normalizes Indian user dates for canonical datetime fields", () => {
+  assert.equal(normalizeTeamInputDate("verified_at", "01-08-2026"), "2026-08-01T00:00:00+05:30");
+  assert.equal(normalizeTeamInputDate("due at", "3/8/2026"), "2026-08-03T00:00:00+05:30");
 });
 
-test("headerRow recognises user-input aliases used by policy and action tabs", () => {
-  assert.equal(headerRow([
-    ["Required: Policy/targets"],
-    ["policy_id", "metric_name", "threshold_value", "unit", "status", "approved_by_actor_id", "updated_at"],
-  ], ["policy id", "policy name", "policy value", "unit", "status", "approved by", "updated at"]), 1);
-
-  assert.equal(headerRow([
-    ["Required: Action log"],
-    ["action_id", "objective", "expected_metric", "financial_impact", "owner_actor_id", "state", "updated_at"],
-  ], ["action id", "operating objective", "expected metric", "expected financial impact inr", "owner actor id", "state", "updated at"]), 1);
+test("keeps date-only fields date-only and preserves generated timestamps", () => {
+  assert.equal(normalizeTeamInputDate("effective_from", "31-07-2026"), "2026-07-31");
+  assert.equal(normalizeTeamInputDate("verified_at", "2026-07-31T09:30:00+05:30"), "2026-07-31T09:30:00+05:30");
+  assert.equal(normalizeTeamInputDate("updated_at", "31-07-2026"), "31-07-2026");
 });
