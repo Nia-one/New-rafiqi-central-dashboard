@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { ownerFor } from "./ownerRegistry";
 
 const SOURCE_SHEET_ID = process.env.SHRAM_PARK_DEMAND_BOT_SHEET_ID || "1cF4YdD3ydSwqhKCN5KzSV3CdATLZaiTR-Gu0Xm39d9Y";
 const SOURCE_TAB = process.env.SHRAM_PARK_DEMAND_BOT_TAB || "Demand Visit Data";
@@ -19,10 +20,7 @@ const stable = (prefix: string, raw: unknown) => `${prefix}-${slug(raw) || creat
 const stableRow = (prefix: string, raw: unknown) => `${prefix}-${createHash("sha1").update(String(raw ?? "")).digest("hex").slice(0, 16).toUpperCase()}`;
 
 export function shramParkOwnerForTheatre(theatre: unknown) {
-  const name = norm(theatre);
-  if (/rajputana|deccan|decaan/.test(name)) return "Prashant Wahire";
-  if (/coromandal|coromandel|wellington|welington/.test(name)) return "Satish Sanghy";
-  return "";
+  return ownerFor("SP Demand", { theatre, scope: "SP Demand Bot" });
 }
 
 function credentials() {
@@ -169,7 +167,7 @@ async function upsertShramParkOwners() {
   const keyIndex = headers.findIndex((header) => norm(header) === "actor id");
   if (keyIndex < 0) throw new Error("People_Roster is missing actor id");
   const now = new Date().toISOString();
-  const owners = ["Prashant Wahire", "Satish Sanghy"].map((name) => ({
+  const owners = ["Prashant Waghire", "Satish Sanghey"].map((name) => ({
     "actor id": stable("ACT", name), "display name": name, role: "Shram Park Theatre Owner",
     "active shift": "Active", language: "English / Hindi", "updated at": now,
   }));

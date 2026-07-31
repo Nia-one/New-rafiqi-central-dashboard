@@ -13,7 +13,7 @@ test("maps a complete Shram Park demand bot row to Enterprise_Demand", () => {
   assert.equal(result.record.status, "Contracting");
   assert.equal(result.record.certainty, "Send Proposal / Quote");
   assert.equal(result.record["source submission id"], "SUB-1");
-  assert.equal(result.record["owner actor id"], "ACT-PRASHANT-WAHIRE");
+  assert.equal(result.record["owner actor id"], "ACT-PRASHANT-WAGHIRE");
 });
 
 test("keeps the fixed bot format when Requirement is N without treating current manpower as demand", () => {
@@ -27,12 +27,12 @@ test("keeps the fixed bot format when Requirement is N without treating current 
   assert.equal(result.record.status, "Lead");
   assert.equal(result.record.certainty, "Schedule Next Visit");
   assert.equal(result.record["activation required at"], "2026-07-11");
-  assert.equal(result.record["owner actor id"], "ACT-SATISH-SANGHY");
+  assert.equal(result.record["owner actor id"], "ACT-SATISH-SANGHEY");
 });
 
 test("assigns the accountable owner from all accepted Theatre spellings", () => {
-  for (const theatre of ["Rajputana", "Deccan", "Decaan"]) assert.equal(shramParkOwnerForTheatre(theatre), "Prashant Wahire");
-  for (const theatre of ["Coromandel", "Coromandal", "Wellington", "Welington"]) assert.equal(shramParkOwnerForTheatre(theatre), "Satish Sanghy");
+  for (const theatre of ["Rajputana", "Deccan", "Decaan"]) assert.equal(shramParkOwnerForTheatre(theatre), "Prashant Waghire");
+  for (const theatre of ["Coromandel", "Coromandal", "Commandal", "Wellington", "Welington"]) assert.equal(shramParkOwnerForTheatre(theatre), "Satish Sanghey");
   assert.equal(shramParkOwnerForTheatre("Unknown"), "");
 });
 

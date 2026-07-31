@@ -34,11 +34,11 @@ async function main() {
     await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${tab}'!${columnName(ownerIndex)}1`, valueInputOption: "RAW", requestBody: { values: [["Owner Name"]] } })
   }
   const ownerColumn = columnName(ownerIndex)
-  const formula = '=ARRAYFORMULA(IF(F2:F="","",IF(REGEXMATCH(LOWER(F2:F),"rajputana|deccan|decaan"),"Prashant Wahire",IF(REGEXMATCH(LOWER(F2:F),"coromandal|coromandel|wellington|welington"),"Satish Sanghy",""))))'
+  const formula = '=ARRAYFORMULA(IF(F2:F="","",IF(REGEXMATCH(LOWER(F2:F),"rajputana|deccan|decaan"),"Prashant Waghire",IF(REGEXMATCH(LOWER(F2:F),"coromandal|coromandel|commandal|wellington|welington"),"Satish Sanghey",""))))'
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: `'${tab}'!${ownerColumn}2:${ownerColumn}` })
   await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${tab}'!${ownerColumn}2`, valueInputOption: "USER_ENTERED", requestBody: { values: [[formula]] } })
   await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [
-    { repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: ownerIndex, endColumnIndex: ownerIndex + 1 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.8, green: 0.05, blue: 0.05 }, textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true }, wrapStrategy: "WRAP" }, note: "AUTO / DO NOT EDIT — Theatre owner: Rajputana/Deccan → Prashant Wahire; Coromandel/Wellington → Satish Sanghy." }, fields: "userEnteredFormat,note" } },
+    { repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: ownerIndex, endColumnIndex: ownerIndex + 1 }, cell: { userEnteredFormat: { backgroundColor: { red: 0.8, green: 0.05, blue: 0.05 }, textFormat: { foregroundColor: { red: 1, green: 1, blue: 1 }, bold: true }, wrapStrategy: "WRAP" }, note: "AUTO / DO NOT EDIT — Theatre owner: Rajputana/Deccan → Prashant Waghire; Coromandel/Wellington → Satish Sanghey." }, fields: "userEnteredFormat,note" } },
     { autoResizeDimensions: { dimensions: { sheetId: sheet.properties.sheetId, dimension: "COLUMNS", startIndex: ownerIndex, endIndex: ownerIndex + 1 } } },
   ] } })
   const check = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: [`'${tab}'!F2:F`, `'${tab}'!${ownerColumn}2:${ownerColumn}`] })
@@ -49,7 +49,7 @@ async function main() {
     const key = `${String(row[0] || "(blank)").trim()} → ${String(owners[index]?.[0] || "(blank)").trim()}`
     distribution[key] = (distribution[key] || 0) + 1
   })
-  console.log(JSON.stringify({ spreadsheetId, tab, ownerColumn, mappings: { "Rajputana / Deccan": "Prashant Wahire", "Coromandel / Wellington": "Satish Sanghy" }, distribution }, null, 2))
+  console.log(JSON.stringify({ spreadsheetId, tab, ownerColumn, mappings: { "Rajputana / Deccan": "Prashant Waghire", "Coromandel / Wellington": "Satish Sanghey" }, distribution }, null, 2))
 }
 
 main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1 })
