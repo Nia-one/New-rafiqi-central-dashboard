@@ -16,6 +16,9 @@ test("Nia Growth user input synchronizes governed records without manual backend
     assert.match(source, new RegExp(`upsertObjects\\(sheets, spreadsheetId, "${target}"`));
   }
   assert.match(source, /Closure requires independently verified readiness evidence and human approval/);
+  assert.match(source, /readinessComplete = required > 0 && ready >= required/);
+  assert.match(source, /financeApproved = \/\^approved\$\/i\.test/);
+  assert.match(source, /protected:\/\/governed\/nia-growth/);
 });
 
 test("keeps date-only fields date-only and preserves generated timestamps", () => {

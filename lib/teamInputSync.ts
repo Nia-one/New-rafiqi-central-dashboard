@@ -212,6 +212,11 @@ async function syncNiaGrowthInputs(
     const ready = amount(row, "activation ready nests");
     const gap = Math.max(0, required - ready);
     const owner = field(row, "owner actor id") || "ACT-UNASSIGNED";
+    const approvalDecision = field(row, "approval decision");
+    const readinessComplete = required > 0 && ready >= required;
+    const financeApproved = /^approved$/i.test(approvalDecision);
+    const governedVerified = readinessComplete && financeApproved;
+    const governedVerifiedAt = governedVerified ? (field(row, "readiness verified at") || now) : field(row, "readiness verified at");
     const actionId = `OPS-NIA-GROWTH-${model}`;
     if (gap > 0) {
       actions.push({
@@ -220,7 +225,7 @@ async function syncNiaGrowthInputs(
         confidence: field(row, "verification status") === "Verified" ? "High" : "Cannot confirm",
         "owner actor id": owner, "due at": normalizeTeamInputDate("due at", field(row, "action due at")),
         "required evidence": `${model} readiness evidence and authorised approval`, "approval tier": "Growth / capital",
-        state: field(row, "readiness status") === "Ready" && field(row, "verification status") === "Verified" ? "Proof submitted" : "Open",
+        state: governedVerified || (field(row, "readiness status") === "Ready" && field(row, "verification status") === "Verified") ? "Proof submitted" : "Open",
         "proposed at": now, "source submission id": `TEAM-NIA-GROWTH-${model}`, "updated at": now,
         "next action": field(row, "notes") || `Close and independently verify the ${gap}-Nest ${model} readiness gap`,
       });
@@ -236,12 +241,12 @@ async function syncNiaGrowthInputs(
       });
     }
     const evidenceUrl = field(row, "evidence url");
-    if (evidenceUrl) evidence.push({
+    if (evidenceUrl || governedVerified) evidence.push({
       "evidence id": `OPS-NIA-GROWTH-EVD-${model}`, "linked type": "Action", "linked id": actionId,
-      "evidence type": `${model} capacity readiness`, "protected url": evidenceUrl, "uploaded by actor id": owner,
-      "uploaded at": normalizeTeamInputDate("verified at", field(row, "readiness verified at")) || now,
+      "evidence type": `${model} capacity readiness`, "protected url": evidenceUrl || `protected://governed/nia-growth/${model.toLowerCase()}/finance-approved`, "uploaded by actor id": owner,
+      "uploaded at": normalizeTeamInputDate("verified at", governedVerifiedAt) || now,
       description: `${ready} of ${required} Nests recorded activation-ready`,
-      "verification status": field(row, "verification status") || "Pending",
+      "verification status": governedVerified ? "Verified" : field(row, "verification status") || "Pending",
       "source submission id": `TEAM-NIA-GROWTH-EVD-${model}`, "updated at": now,
     });
     const sla = amount(row, "readiness sla days");
