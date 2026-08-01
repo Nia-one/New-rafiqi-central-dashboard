@@ -8,7 +8,7 @@ const headers = [
   "growth_record_id", "supply_model", "required_nests", "activation_ready_nests", "gap_nests",
   "owner_actor_id", "readiness_sla_days", "nia_filled_nests", "signed_contract_covered_nests",
   "readiness_status", "readiness_verified_at", "action_due_at", "evidence_url",
-  "verification_status", "approval_decision", "policy_status", "policy_approved_by_actor_id",
+  "approval_decision", "policy_status", "policy_approved_by_actor_id",
   "learning_observation", "learning_proposal", "notes",
 ]
 const manualHeaders = new Set([
@@ -43,8 +43,8 @@ async function main() {
     ["NIA GROWTH — LIVE INPUT", "Black cells are the only manual inputs. Grey cells calculate from Fono Funnel and Shram Park demand."],
     ["Flow", "User Input → automated sync → backend logs → Nia Growth dashboard. Do not enter data directly in the backend workbook."],
     headers,
-    ["NIA-GROWTH-FONO", "FONO", "=SUM('Fono Funnel'!H3:H)", "=SUM('Fono Funnel'!J3:J)", "=MAX(0,C4-D4)", "=IFERROR(\"ACT-\"&REGEXREPLACE(UPPER(INDEX(FILTER(TEAM_OWNER_REGISTRY!F:F,TEAM_OWNER_REGISTRY!B:B=\"FONO Supply\",TEAM_OWNER_REGISTRY!E:E=\"Owner\",TEAM_OWNER_REGISTRY!J:J=\"Active\"),1)),\"[^A-Z0-9]+\",\"-\"),\"ACT-UNASSIGNED\")", "", "", "", "=IF(C4=0,\"Not reviewed\",IF(E4=0,\"Ready\",\"In progress\"))", "", "", "", "Pending", "Pending", "Draft", "", "=\"FONO has \"&E4&\" Nest gap: \"&D4&\" activation-ready against \"&C4&\" required.\"", "", ""],
-    ["NIA-GROWTH-SP", "SP", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!R2:R)", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!X2:X)", "=MAX(0,C5-D5)", "=IF(COUNTIFS(TEAM_OWNER_REGISTRY!B:B,\"SP Supply\",TEAM_OWNER_REGISTRY!E:E,\"Owner\",TEAM_OWNER_REGISTRY!J:J,\"Active\")>0,\"ACT-SP-THEATRE-OWNERS\",\"ACT-UNASSIGNED\")", "", "", "=IFERROR(SUM(FILTER('TEAM_SHRAMPARK_DEMAND'!R2:R,REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!S2:S),\"won|contracted|agreement signed\"),REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!O2:O),\"^y(es)?$\"))),0)", "=IF(C5=0,\"Not reviewed\",IF(E5=0,\"Ready\",\"In progress\"))", "", "", "", "Pending", "Pending", "Draft", "", "=\"SP has \"&E5&\" Nest gap: \"&D5&\" activation-ready against \"&C5&\" required.\"", "", ""],
+    ["NIA-GROWTH-FONO", "FONO", "=SUM('Fono Funnel'!H3:H)", "=SUM('Fono Funnel'!J3:J)", "=MAX(0,C4-D4)", "=IFERROR(\"ACT-\"&REGEXREPLACE(UPPER(INDEX(FILTER(TEAM_OWNER_REGISTRY!F:F,TEAM_OWNER_REGISTRY!B:B=\"FONO Supply\",TEAM_OWNER_REGISTRY!E:E=\"Owner\",TEAM_OWNER_REGISTRY!J:J=\"Active\"),1)),\"[^A-Z0-9]+\",\"-\"),\"ACT-UNASSIGNED\")", "", "", "", "=IF(C4=0,\"Not reviewed\",IF(E4=0,\"Ready\",\"In progress\"))", "=IF(N4=\"Verified\",TODAY(),\"\")", "", "", "=IF(AND(C4>0,D4>=C4,O4=\"Approved\"),\"Verified\",\"Pending\")", "Pending", "Draft", "", "=\"FONO has \"&E4&\" Nest gap: \"&D4&\" activation-ready against \"&C4&\" required.\"", "", ""],
+    ["NIA-GROWTH-SP", "SP", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!R2:R)", "=SUMIF('TEAM_SHRAMPARK_DEMAND'!O2:O,\"Y\",'TEAM_SHRAMPARK_DEMAND'!X2:X)", "=MAX(0,C5-D5)", "=IF(COUNTIFS(TEAM_OWNER_REGISTRY!B:B,\"SP Supply\",TEAM_OWNER_REGISTRY!E:E,\"Owner\",TEAM_OWNER_REGISTRY!J:J,\"Active\")>0,\"ACT-SP-THEATRE-OWNERS\",\"ACT-UNASSIGNED\")", "", "", "=IFERROR(SUM(FILTER('TEAM_SHRAMPARK_DEMAND'!R2:R,REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!S2:S),\"won|contracted|agreement signed\"),REGEXMATCH(LOWER('TEAM_SHRAMPARK_DEMAND'!O2:O),\"^y(es)?$\"))),0)", "=IF(C5=0,\"Not reviewed\",IF(E5=0,\"Ready\",\"In progress\"))", "=IF(N5=\"Verified\",TODAY(),\"\")", "", "", "=IF(AND(C5>0,D5>=C5,O5=\"Approved\"),\"Verified\",\"Pending\")", "Pending", "Draft", "", "=\"SP has \"&E5&\" Nest gap: \"&D5&\" activation-ready against \"&C5&\" required.\"", "", ""],
   ]
   await sheets.spreadsheets.values.update({ spreadsheetId, range: `'${TAB}'!A1`, valueInputOption: "USER_ENTERED", requestBody: { values } })
 
