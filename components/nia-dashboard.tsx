@@ -262,7 +262,10 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [filters, setFilters] = useState<LiveSelfDriveFilters>({ theatre: "", location: "", studio: "", person: "" })
   const [periodFilter, setPeriodFilter] = useState("All")
   const availablePeriods = useMemo(() => {
-    if (!currentLiveSelfDriveData) return ["All"]
+    if (!currentLiveSelfDriveData) {
+      const now = new Date()
+      return ["All", `${now.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${now.getUTCFullYear()}`]
+    }
     const periodRows = [
       currentLiveSelfDriveData.enterpriseDemand,
       currentLiveSelfDriveData.activations,
@@ -284,6 +287,10 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       const latestDate = new Date(latest)
       const latestMonth = `${latestDate.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${latestDate.getUTCFullYear()}`
       if (!periods.includes(latestMonth)) periods.splice(1, 0, latestMonth)
+    }
+    if (periods.length === 1) {
+      const now = new Date()
+      periods.push(`${now.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${now.getUTCFullYear()}`)
     }
     return periods
   }, [currentLiveSelfDriveData, currentLiveOpsData?.meta?.month, liveOpsData?.meta?.month])
