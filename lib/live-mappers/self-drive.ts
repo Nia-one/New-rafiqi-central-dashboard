@@ -1032,7 +1032,12 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const contractedNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount required"), 0)
   const activationReadyNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
   const gapNests = Math.max(0, contractedNests - activationReadyNests)
-  const ownerActorId = governedLiving.map((row) => text(row, "owner actor id")).find(Boolean) || ""
+  const growthAction = snapshot.actions.find((row) => {
+    const identity = `${text(row, "action id")} ${text(row, "operating objective")}`.toLowerCase()
+    return identity.includes("nia-growth") || identity.includes("nia growth")
+  })
+  const growthApproval = snapshot.approvals.find((row) => text(row, "linked action id") === text(growthAction ?? {}, "action id"))
+  const ownerActorId = text(growthAction ?? {}, "owner actor id") || text(growthApproval ?? {}, "approver actor id") || governedLiving.map((row) => text(row, "owner actor id")).find(Boolean) || ""
   const owner = String(snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned").trim()
   const progress = contractedNests > 0 ? `${Math.round(activationReadyNests / contractedNests * 100)}%` : "No data"
   const summary = Object.freeze({
