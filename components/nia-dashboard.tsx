@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CalendarDays, ChevronDown, LockKeyhole, LogOut, Paperclip, UserPlus } from "lucide-react"
@@ -48,24 +48,24 @@ import { contentValue, type DashboardContent } from "@/lib/dashboard-content"
 import { buildLiveSelfDriveSnapshot, filterLiveSelfDriveSnapshot, type LiveSelfDriveFilters } from "@/lib/live-mappers/self-drive"
 
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
-  "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode Â· synthetic fixture" },
-  "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode Â· synthetic fixture" },
-  "New Adds": { title: "Fill contracted FONO and Shram Park Nest potential with Members.", subtitle: "Track contracted/onboarded supply against current occupancy; existing Studios remain separate.", view: "Shadow mode Â· synthetic fixture" },
-  "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Shadow mode Â· synthetic fixture" },
-  "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Shadow mode Â· synthetic fixture" },
-  "Nia Growth": { title: "Add capacity where demand supports it.", subtitle: "Keep FONO and Shram Park separate and expose capital risk before any commitment.", view: "Shadow mode Â· synthetic fixture" },
+  "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode · synthetic fixture" },
+  "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode · synthetic fixture" },
+  "New Adds": { title: "Fill contracted FONO and Shram Park Nest potential with Members.", subtitle: "Track contracted/onboarded supply against current occupancy; existing Studios remain separate.", view: "Shadow mode · synthetic fixture" },
+  "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Shadow mode · synthetic fixture" },
+  "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Shadow mode · synthetic fixture" },
+  "Nia Growth": { title: "Add capacity where demand supports it.", subtitle: "Keep FONO and Shram Park separate and expose capital risk before any commitment.", view: "Shadow mode · synthetic fixture" },
   "Your Sign-Off": { title: "Your Sign-Off", subtitle: "Only material changes and unresolved exceptions wait here for a human decision.", view: "Pending decisions" },
-  "Finance control": { title: "Control capital before expansion commits it.", subtitle: "Compare Studio economics, enforce cash and opex guardrails, route exceptions, and close War Room cases only after independent verification.", view: "Shadow mode Â· synthetic Preview" },
+  "Finance control": { title: "Control capital before expansion commits it.", subtitle: "Compare Studio economics, enforce cash and opex guardrails, route exceptions, and close War Room cases only after independent verification.", view: "Shadow mode · synthetic Preview" },
   "Nia Margins": { title: "Nia Margins", subtitle: "Protect the margin behind every verified Member outcome.", view: "Shadow preview" },
-  Overview: { title: "Making Leaving Home Worth It.", subtitle: "Nia is the Migrant Worker Continuity Platform. Living, Work and Essentials operate as one flywheel for people who leave home for work.", view: "This month Â· every 2 hours" },
-  Living: { title: "Community Living and Well-Being.", subtitle: "Create a safe, connected community where Members can live well and thrive.", view: "This month Â· every 2 hours" },
+  Overview: { title: "Making Leaving Home Worth It.", subtitle: "Nia is the Migrant Worker Continuity Platform. Living, Work and Essentials operate as one flywheel for people who leave home for work.", view: "This month · every 2 hours" },
+  Living: { title: "Community Living and Well-Being.", subtitle: "Create a safe, connected community where Members can live well and thrive.", view: "This month · every 2 hours" },
   Work: { title: "Enable upskilling and higher incomes.", subtitle: "Connect Members to skills, better work, and sustained income growth.", view: "Data needed" },
   Essentials: TABLE_SCREENS.Essentials,
   Economics: TABLE_SCREENS.Economics,
   People: TABLE_SCREENS.People,
-  "Member Feedback": { title: "Fix the signal before a Member exits.", subtitle: "Turn feedback and monthly NPS into named actions, proof and verified closure.", view: "Illustrative Â· connector pending" },
+  "Member Feedback": { title: "Fix the signal before a Member exits.", subtitle: "Turn feedback and monthly NPS into named actions, proof and verified closure.", view: "Illustrative · connector pending" },
   Definitions: TABLE_SCREENS.Definitions,
-  Despatch: { title: "Catch silence before it becomes delay.", subtitle: "Live heartbeat monitoring for active shifts, people, and categories.", view: "Live Â· every 45 seconds" },
+  Despatch: { title: "Catch silence before it becomes delay.", subtitle: "Live heartbeat monitoring for active shifts, people, and categories.", view: "Live · every 45 seconds" },
 }
 
 type FilterOption = { value: string; label: string }
@@ -279,6 +279,12 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     const periods = periodOptions(periodRows)
     const metaMonth = String(currentLiveOpsData?.meta?.month ?? liveOpsData?.meta?.month ?? "").trim()
     if (/^[A-Za-z]+\s+\d{4}$/.test(metaMonth) && !periods.includes(metaMonth)) periods.splice(1, 0, metaMonth)
+    const latest = newestLiveTimestamp(periodRows)
+    if (latest) {
+      const latestDate = new Date(latest)
+      const latestMonth = `${latestDate.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${latestDate.getUTCFullYear()}`
+      if (!periods.includes(latestMonth)) periods.splice(1, 0, latestMonth)
+    }
     return periods
   }, [currentLiveSelfDriveData])
   const filterOptions = useMemo<Record<keyof LiveSelfDriveFilters, readonly FilterOption[]>>(() => {
@@ -358,7 +364,7 @@ const baseMeta = screenMeta[active] ?? screenMeta.Overview
   const meta = {
     title: contentValue(content, active, "page", "title", baseMeta.title),
     subtitle: contentValue(content, active, "page", "subtitle", baseMeta.subtitle),
-    view: workspace === "self-drive" && active === "Nia Growth" && currentLiveSelfDriveData ? "Google Sheet · read-only" : contentValue(content, active, "page", "view", baseMeta.view),
+    view: "Dashboard",
   }
   const sectionTitle = active === "Member Feedback" ? "Member NPS" : active === "Definitions" ? "Learning history" : dashboardDisplayLabel(active)
   const liveLearningHistory: readonly LearningHistoryEntry[] = (filteredLiveOpsData?.learningHistory ?? []).map((entry: Record<string, unknown>) => ({
@@ -520,7 +526,7 @@ useEffect(() => {
 
   return <main className="central-shell">
     <div className="central-main">
-    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>PERIOD</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><details className="date period-picker"><summary aria-label="Reporting period"><CalendarDays aria-hidden /><strong>{periodFilter}</strong><ChevronDown aria-hidden /></summary><div className="period-menu" role="listbox" aria-label="Reporting period options">{availablePeriods.map((period) => <button type="button" role="option" aria-selected={periodFilter === period} className={periodFilter === period ? "selected" : ""} onClick={(event) => { setPeriodFilter(period); event.currentTarget.closest("details")?.removeAttribute("open") }} key={period}>{period}</button>)}</div></details><button className="upload" type="button" disabled={isRefreshing} onClick={() => void refreshLiveData(true)}><Paperclip aria-hidden />{isRefreshing ? "Syncing…" : "Refresh data"}</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
+    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>VIEW</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><details className="date period-picker"><summary aria-label="Reporting period"><CalendarDays aria-hidden /><strong>{periodFilter}</strong><ChevronDown aria-hidden /></summary><div className="period-menu" role="listbox" aria-label="Reporting period options">{availablePeriods.map((period) => <button type="button" role="option" aria-selected={periodFilter === period} className={periodFilter === period ? "selected" : ""} onClick={(event) => { setPeriodFilter(period); event.currentTarget.closest("details")?.removeAttribute("open") }} key={period}>{period}</button>)}</div></details><button className="upload" type="button" disabled={isRefreshing} onClick={() => void refreshLiveData(true)}><Paperclip aria-hidden />{isRefreshing ? "Syncing�" : "Refresh data"}</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
     <nav id="dashboard-navigation" className="platform-domain-nav" aria-label={`${workspace} navigation`}><div className="platform-domain-tabs">{workspaceTabs.map((item) => <button key={item} className={`${active === item ? "active" : ""}${item === "Despatch" ? " despatch-nav" : ""}`} aria-current={active === item ? "page" : undefined} onClick={() => navigate({ screen: item })}><span>{item === "Member Feedback" ? "Member NPS" : item === "Definitions" ? "Learning history" : dashboardDisplayLabel(item)}</span></button>)}</div></nav>
     <section className="platform-heading"><h1>{sectionTitle}</h1><p className="subtitle">{meta.title === sectionTitle ? meta.subtitle : `${meta.title} ${meta.subtitle}`}</p></section>
     <Filters className="platform-filters" value={filters} options={filterOptions} onChange={(key, nextValue) => setFilters((current) => key === "theatre" ? { theatre: nextValue, location: "", studio: "", person: "" } : key === "location" ? { ...current, location: nextValue, studio: "", person: "" } : key === "studio" ? { ...current, studio: nextValue, person: "" } : { ...current, person: nextValue })} />
