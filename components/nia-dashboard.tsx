@@ -286,7 +286,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       if (!periods.includes(latestMonth)) periods.splice(1, 0, latestMonth)
     }
     return periods
-  }, [currentLiveSelfDriveData])
+  }, [currentLiveSelfDriveData, currentLiveOpsData?.meta?.month, liveOpsData?.meta?.month])
   const filterOptions = useMemo<Record<keyof LiveSelfDriveFilters, readonly FilterOption[]>>(() => {
     const unique = (rows: readonly Record<string, unknown>[], valueKey: string, labelKey: string): FilterOption[] => Array.from(new Map(rows.map((row) => {
       const optionValue = String(row[valueKey] ?? "").trim()
