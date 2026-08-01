@@ -125,7 +125,7 @@ function filterRowsByPeriod(rows: readonly LiveRow[] | undefined, period: string
   if (!rows || period === "All") return rows
   return rows.filter((row) => {
     const dateValue = liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at", "event at", "date", "period start", "timestamp"])
-    return !dateValue || isInDashboardMonth(row, period)
+    return Boolean(dateValue) && isInDashboardMonth(row, period)
   })
 }
 
@@ -276,7 +276,10 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       currentLiveSelfDriveData.finance,
       currentLiveSelfDriveData.learningHistory,
     ].flatMap((rows) => rows ?? [])
-    return periodOptions(periodRows)
+    const periods = periodOptions(periodRows)
+    const metaMonth = String(currentLiveOpsData?.meta?.month ?? liveOpsData?.meta?.month ?? "").trim()
+    if (/^[A-Za-z]+\s+\d{4}$/.test(metaMonth) && !periods.includes(metaMonth)) periods.splice(1, 0, metaMonth)
+    return periods
   }, [currentLiveSelfDriveData])
   const filterOptions = useMemo<Record<keyof LiveSelfDriveFilters, readonly FilterOption[]>>(() => {
     const unique = (rows: readonly Record<string, unknown>[], valueKey: string, labelKey: string): FilterOption[] => Array.from(new Map(rows.map((row) => {
