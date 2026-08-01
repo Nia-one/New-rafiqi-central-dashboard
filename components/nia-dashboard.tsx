@@ -121,6 +121,14 @@ function isInDashboardMonth(row: LiveRow, dashboardMonth: unknown) {
   return actual.getUTCFullYear() === expectedYear && actual.getUTCMonth() === expectedMonth
 }
 
+function filterRowsByPeriod(rows: readonly LiveRow[] | undefined, period: string) {
+  if (!rows || period === "All") return rows
+  return rows.filter((row) => {
+    const dateValue = liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at", "event at", "date", "period start", "timestamp"])
+    return !dateValue || isInDashboardMonth(row, period)
+  })
+}
+
 function periodOptions(rows: readonly LiveRow[]) {
   const months = new Set(rows.map((row) => validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"])))
     .filter(Boolean)
@@ -286,12 +294,21 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     if (!dimensionFilteredLiveSelfDriveData) return dimensionFilteredLiveSelfDriveData
     return {
       ...dimensionFilteredLiveSelfDriveData,
-      enterpriseDemand: dimensionFilteredLiveSelfDriveData.enterpriseDemand
-        .filter((row: LiveRow) => periodFilter === "All" || isInDashboardMonth(row, periodFilter))
+      enterpriseDemand: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.enterpriseDemand, periodFilter)
         .sort((left: LiveRow, right: LiveRow) => {
           const timestamp = (row: LiveRow) => Date.parse(validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"]))) || 0
           return timestamp(right) - timestamp(left)
         }),
+      activations: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.activations, periodFilter),
+      incidents: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.incidents, periodFilter),
+      actions: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.actions, periodFilter),
+      evidence: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.evidence, periodFilter),
+      approvals: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.approvals, periodFilter),
+      living: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.living, periodFilter),
+      work: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.work, periodFilter),
+      essentials: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.essentials, periodFilter),
+      finance: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.finance, periodFilter),
+      learningHistory: filterRowsByPeriod(dimensionFilteredLiveSelfDriveData.learningHistory, periodFilter),
     }
   }, [dimensionFilteredLiveSelfDriveData, periodFilter])
   const filteredLiveOpsData = useMemo(() => !currentLiveOpsData || !filteredLiveSelfDriveData ? currentLiveOpsData : ({

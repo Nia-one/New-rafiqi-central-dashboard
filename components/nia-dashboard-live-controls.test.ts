@@ -59,7 +59,7 @@ test("live Sheet data polls automatically and supports a forced manual source sy
 test("reporting period is a real All-or-month filter", () => {
   assert.match(source, /const \[periodFilter, setPeriodFilter\] = useState\("All"\)/)
   assert.match(source, /periodOptions\(/)
-  assert.match(source, /periodFilter === "All" \|\| isInDashboardMonth/)
+  assert.match(source, /filterRowsByPeriod\(/)
   assert.match(source, /aria-label="Reporting period"/)
 })
 
