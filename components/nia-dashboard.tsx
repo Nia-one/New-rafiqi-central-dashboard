@@ -125,7 +125,7 @@ function filterRowsByPeriod(rows: readonly LiveRow[] | undefined, period: string
   if (!rows || period === "All") return rows
   return rows.filter((row) => {
     const dateValue = liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at", "event at", "date", "period start", "timestamp"])
-    return Boolean(dateValue) && isInDashboardMonth(row, period)
+    return !dateValue || isInDashboardMonth(row, period)
   })
 }
 
