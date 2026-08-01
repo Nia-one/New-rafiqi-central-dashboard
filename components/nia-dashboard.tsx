@@ -115,7 +115,7 @@ function isInDashboardMonth(row: LiveRow, dashboardMonth: unknown) {
   const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"]
   const expectedMonth = periodMatch ? monthNames.indexOf(periodMatch[1].toLowerCase()) : -1
   const expectedYear = periodMatch ? Number(periodMatch[2]) : Number.NaN
-  const rowDate = validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"]))
+  const rowDate = validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at", "event at", "date", "period start", "timestamp", "month"]))
   if (expectedMonth < 0 || !Number.isFinite(expectedYear) || !rowDate) return false
   const actual = new Date(rowDate)
   return actual.getUTCFullYear() === expectedYear && actual.getUTCMonth() === expectedMonth
@@ -130,7 +130,7 @@ function filterRowsByPeriod(rows: readonly LiveRow[] | undefined, period: string
 }
 
 function periodOptions(rows: readonly LiveRow[]) {
-  const months = new Set(rows.map((row) => validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"])))
+  const months = new Set(rows.map((row) => validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at", "event at", "date", "period start", "timestamp", "month"])))
     .filter(Boolean)
     .map((date) => { const value = new Date(date); return `${value.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${value.getUTCFullYear()}` }));
   return ["All", ...Array.from(months).sort((left, right) => Date.parse(`1 ${right}`) - Date.parse(`1 ${left}`))];
@@ -261,7 +261,23 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const currentLiveSelfDriveData = useMemo(() => currentLiveOpsData ? buildLiveSelfDriveSnapshot(currentLiveOpsData) : liveSelfDriveData, [currentLiveOpsData, liveSelfDriveData])
   const [filters, setFilters] = useState<LiveSelfDriveFilters>({ theatre: "", location: "", studio: "", person: "" })
   const [periodFilter, setPeriodFilter] = useState("All")
-  const availablePeriods = useMemo(() => periodOptions(currentLiveSelfDriveData?.enterpriseDemand ?? []), [currentLiveSelfDriveData?.enterpriseDemand])
+  const availablePeriods = useMemo(() => {
+    if (!currentLiveSelfDriveData) return ["All"]
+    const periodRows = [
+      currentLiveSelfDriveData.enterpriseDemand,
+      currentLiveSelfDriveData.activations,
+      currentLiveSelfDriveData.incidents,
+      currentLiveSelfDriveData.actions,
+      currentLiveSelfDriveData.evidence,
+      currentLiveSelfDriveData.approvals,
+      currentLiveSelfDriveData.living,
+      currentLiveSelfDriveData.work,
+      currentLiveSelfDriveData.essentials,
+      currentLiveSelfDriveData.finance,
+      currentLiveSelfDriveData.learningHistory,
+    ].flatMap((rows) => rows ?? [])
+    return periodOptions(periodRows)
+  }, [currentLiveSelfDriveData])
   const filterOptions = useMemo<Record<keyof LiveSelfDriveFilters, readonly FilterOption[]>>(() => {
     const unique = (rows: readonly Record<string, unknown>[], valueKey: string, labelKey: string): FilterOption[] => Array.from(new Map(rows.map((row) => {
       const optionValue = String(row[valueKey] ?? "").trim()
