@@ -121,6 +121,13 @@ function isInDashboardMonth(row: LiveRow, dashboardMonth: unknown) {
   return actual.getUTCFullYear() === expectedYear && actual.getUTCMonth() === expectedMonth
 }
 
+function periodOptions(rows: readonly LiveRow[]) {
+  const months = new Set(rows.map((row) => validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"])))
+    .filter(Boolean)
+    .map((date) => { const value = new Date(date); return `${value.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} ${value.getUTCFullYear()}` }));
+  return ["All", ...Array.from(months).sort((left, right) => Date.parse(`1 ${right}`) - Date.parse(`1 ${left}`))];
+}
+
 function newestLiveTimestamp(rows: readonly LiveRow[]) {
   return rows
     .flatMap((row) => [
@@ -245,6 +252,8 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [currentLiveOpsData, setCurrentLiveOpsData] = useState(liveOpsData)
   const currentLiveSelfDriveData = useMemo(() => currentLiveOpsData ? buildLiveSelfDriveSnapshot(currentLiveOpsData) : liveSelfDriveData, [currentLiveOpsData, liveSelfDriveData])
   const [filters, setFilters] = useState<LiveSelfDriveFilters>({ theatre: "", location: "", studio: "", person: "" })
+  const [periodFilter, setPeriodFilter] = useState("All")
+  const availablePeriods = useMemo(() => periodOptions(currentLiveSelfDriveData?.enterpriseDemand ?? []), [currentLiveSelfDriveData?.enterpriseDemand])
   const filterOptions = useMemo<Record<keyof LiveSelfDriveFilters, readonly FilterOption[]>>(() => {
     const unique = (rows: readonly Record<string, unknown>[], valueKey: string, labelKey: string): FilterOption[] => Array.from(new Map(rows.map((row) => {
       const optionValue = String(row[valueKey] ?? "").trim()
@@ -278,13 +287,13 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     return {
       ...dimensionFilteredLiveSelfDriveData,
       enterpriseDemand: dimensionFilteredLiveSelfDriveData.enterpriseDemand
-        .filter((row: LiveRow) => isInDashboardMonth(row, currentLiveOpsData?.meta?.month))
+        .filter((row: LiveRow) => periodFilter === "All" || isInDashboardMonth(row, periodFilter))
         .sort((left: LiveRow, right: LiveRow) => {
           const timestamp = (row: LiveRow) => Date.parse(validDate(liveValue(row, ["opened at", "updated at", "source updated at", "submitted at", "created at"]))) || 0
           return timestamp(right) - timestamp(left)
         }),
     }
-  }, [dimensionFilteredLiveSelfDriveData, currentLiveOpsData?.meta?.month])
+  }, [dimensionFilteredLiveSelfDriveData, periodFilter])
   const filteredLiveOpsData = useMemo(() => !currentLiveOpsData || !filteredLiveSelfDriveData ? currentLiveOpsData : ({
     ...currentLiveOpsData,
     theatres: filteredLiveSelfDriveData.theatres,
@@ -475,7 +484,7 @@ useEffect(() => {
 
   return <main className="central-shell">
     <div className="central-main">
-    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>PERIOD</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><button className="date"><CalendarDays aria-hidden />{currentLiveOpsData?.meta?.month || "No data"}<ChevronDown aria-hidden /></button><button className="upload" type="button" disabled={isRefreshing} onClick={() => void refreshLiveData(true)}><Paperclip aria-hidden />{isRefreshing ? "Syncing…" : "Refresh data"}</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
+    <header className="platform-utility"><div className="central-brand">Rafiqi <span>Central</span></div><ModeSelect value={workspace} onChange={openWorkspace} options={financeAllowed ? [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }, { value: "finance", label: "Finance" }] : [{ value: "self-drive", label: "Self Drive" }, { value: "self-learn", label: "Self Learn" }]} /><div className="controls platform-controls"><div className="freshness"><span>DATA UPDATED</span><strong><i /> {currentLiveOpsData?.meta?.updatedAt || "No data"}</strong></div><button className="view"><small>PERIOD</small><strong>{meta.view}</strong><ChevronDown aria-hidden /></button><details className="date period-picker"><summary aria-label="Reporting period"><CalendarDays aria-hidden /><strong>{periodFilter}</strong><ChevronDown aria-hidden /></summary><div className="period-menu" role="listbox" aria-label="Reporting period options">{availablePeriods.map((period) => <button type="button" role="option" aria-selected={periodFilter === period} className={periodFilter === period ? "selected" : ""} onClick={(event) => { setPeriodFilter(period); event.currentTarget.closest("details")?.removeAttribute("open") }} key={period}>{period}</button>)}</div></details><button className="upload" type="button" disabled={isRefreshing} onClick={() => void refreshLiveData(true)}><Paperclip aria-hidden />{isRefreshing ? "Syncing…" : "Refresh data"}</button><ThemeToggle /><button className="upload" onClick={signOut}><LogOut aria-hidden />Sign out</button></div></header>
     <nav id="dashboard-navigation" className="platform-domain-nav" aria-label={`${workspace} navigation`}><div className="platform-domain-tabs">{workspaceTabs.map((item) => <button key={item} className={`${active === item ? "active" : ""}${item === "Despatch" ? " despatch-nav" : ""}`} aria-current={active === item ? "page" : undefined} onClick={() => navigate({ screen: item })}><span>{item === "Member Feedback" ? "Member NPS" : item === "Definitions" ? "Learning history" : dashboardDisplayLabel(item)}</span></button>)}</div></nav>
     <section className="platform-heading"><h1>{sectionTitle}</h1><p className="subtitle">{meta.title === sectionTitle ? meta.subtitle : `${meta.title} ${meta.subtitle}`}</p></section>
     <Filters className="platform-filters" value={filters} options={filterOptions} onChange={(key, nextValue) => setFilters((current) => key === "theatre" ? { theatre: nextValue, location: "", studio: "", person: "" } : key === "location" ? { ...current, location: nextValue, studio: "", person: "" } : key === "studio" ? { ...current, studio: nextValue, person: "" } : { ...current, person: nextValue })} />

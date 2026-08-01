@@ -56,6 +56,13 @@ test("live Sheet data polls automatically and supports a forced manual source sy
   assert.match(source, /window\.clearInterval/)
 })
 
+test("reporting period is a real All-or-month filter", () => {
+  assert.match(source, /const \[periodFilter, setPeriodFilter\] = useState\("All"\)/)
+  assert.match(source, /periodOptions\(/)
+  assert.match(source, /periodFilter === "All" \|\| isInDashboardMonth/)
+  assert.match(source, /aria-label="Reporting period"/)
+})
+
 test("a transient Sheet sync failure retains the last dashboard snapshot instead of crashing the client", () => {
   assert.match(source, /retaining the last dashboard snapshot/)
   assert.match(source, /console\.warn/)
