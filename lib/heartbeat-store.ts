@@ -1,12 +1,13 @@
 import { appendHeartbeatAcknowledgment, buildHeartbeatSnapshot, type HeartbeatAuditEntry } from "@/lib/heartbeat-control"
 import { createIllustrativeHeartbeatSources, heartbeatRules } from "@/lib/heartbeat-data"
 
-// Fixed source timestamps let server-calculated staleness grow on every poll.
-// This local prototype store resets when the Next.js process restarts.
-const sources = createIllustrativeHeartbeatSources(new Date().toISOString())
 let acknowledgments: HeartbeatAuditEntry[] = []
 
 export function readHeartbeatSnapshot(computedAt = new Date().toISOString()) {
+  // The illustrative fixture must describe the same state in long-running local
+  // development and short-lived serverless instances. Re-anchor its relative
+  // timestamps for every snapshot instead of tying results to process uptime.
+  const sources = createIllustrativeHeartbeatSources(computedAt)
   const snapshot = buildHeartbeatSnapshot(sources, heartbeatRules, computedAt)
   return {
     ...snapshot,
