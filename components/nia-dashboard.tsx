@@ -44,7 +44,7 @@ import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engage
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
-import { aggregateLoopHealth, buildDespatchQueue } from "@/lib/operating-loop/runtime-contracts"
+import { aggregateLoopHealth, buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
 const DASHBOARD_PERIOD = "Jul 2026"
 
@@ -183,7 +183,7 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
   </div></nav>
 }
 
-export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, allocationData }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview: MemberEngagementPreview; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown }) {
+export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [] }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview: MemberEngagementPreview; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[] }) {
   const [active, setActive] = useState<DashboardTab>("Despatch")
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [lens, setLens] = useState<OperatingLens>("operate")
@@ -220,15 +220,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     { domain: "Nia Growth" as const, health: niaGrowthPreview.loopHealth },
     ...(cashControlPreview ? [{ domain: "Cash & Control" as const, health: cashControlPreview.loopHealth }] : []),
   ]), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview.loopHealth, memberSavingsPreview.loopHealth, newAddsPreview.loopHealth, niaGrowthPreview.loopHealth, niaMarginsPreview.loopHealth])
-  const platformDespatchQueue = useMemo(() => buildDespatchQueue([
-    ...(enterpriseDemandPreview?.despatchEscalations ?? []),
-    ...newAddsPreview.despatchEscalations,
-    ...memberEngagementPreview.despatchEscalations,
-    ...memberSavingsPreview.despatchEscalations,
-    ...niaMarginsPreview.despatchEscalations,
-    ...niaGrowthPreview.despatchEscalations,
-    ...(cashControlPreview?.despatchEscalations ?? []),
-  ], Number.MAX_SAFE_INTEGER), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview.despatchEscalations, memberSavingsPreview.despatchEscalations, newAddsPreview.despatchEscalations, niaGrowthPreview.despatchEscalations, niaMarginsPreview.despatchEscalations])
+  const platformDespatchQueue = useMemo(() => buildDespatchQueue(liveDespatchEscalations, Number.MAX_SAFE_INTEGER), [liveDespatchEscalations])
   useEffect(() => {
     const storedLens = readStoredOperatingLens()
     if (storedLens === null) return
@@ -405,7 +397,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {active === "People" && <PeopleScreen commitments={commitments} />}
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
-      {active === "Despatch" && <DespatchScreen commitments={commitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} loopHealth={platformLoopHealth} onValidateAction={validateExecutionAction} />}
+      {active === "Despatch" && <DespatchScreen commitments={liveDespatchCommitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} onValidateAction={validateExecutionAction} />}
       {active === "Economics" && <TableScreen tab={active} allocationFocus={allocationFocus} />}
       </LensProvider>}
       </div>

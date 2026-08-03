@@ -184,6 +184,18 @@ export async function syncEssentialsBotData() {
   const deliveryByOrder = new Map(deliveries.rows.map((r) => [norm(cell(r, deliveries.headers, "order_id")), r]));
   const itemByOrder = new Map<string, unknown[][]>();
   items.rows.forEach((r) => { const key = norm(cell(r, items.headers, "order_id")); if (key) itemByOrder.set(key, [...(itemByOrder.get(key) || []), r]); });
+  const eligibleByStudio = new Map<string, Set<string>>();
+  const registerEligible = (row: unknown[], headers: string[], kind: string) => {
+    const studio = String(cell(row, headers, "studio_id", "studio", "studio_code") || "").trim();
+    const member = String(cell(row, headers, "id", "customer_id", "guest_id", "mobile", "phone") || "").trim();
+    if (!studio || !member) return;
+    const key = norm(studio);
+    const members = eligibleByStudio.get(key) || new Set<string>();
+    members.add(`${kind}:${norm(member)}`);
+    eligibleByStudio.set(key, members);
+  };
+  customers.rows.forEach((row) => registerEligible(row, customers.headers, "customer"));
+  guests.rows.forEach((row) => registerEligible(row, guests.headers, "guest"));
   type Group = { studio: string; theatre: string; captured: string; members: Set<string>; placed: number; fulfilled: number; billed: number; collected: number; cogs: number; fulfilment: number; savings: number; unresolved: number };
   const groups = new Map<string, Group>();
   const activationGroups = new Map<string, Record<string, unknown>>();
@@ -241,9 +253,12 @@ export async function syncEssentialsBotData() {
     .reduce((sum, group) => sum + group.placed, 0);
   const hourly = [...groups.entries()].filter(([, group]) => group.studio !== "UNRESOLVED").map(([key, g]) => ({
     "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`, "theatre id": g.theatre, "studio id": g.studio,
+    "eligible members": eligibleByStudio.get(norm(g.studio))?.size || g.members.size,
     "buying members": g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
     "essentials billed inr": g.billed, "essentials collected inr": g.collected, "product cogs inr": g.cogs,
     "direct fulfilment cost inr": g.fulfilment, "member savings inr": g.savings, "nia margin inr": g.billed - g.cogs - g.fulfilment,
+    "attach pct": (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) > 0
+      ? g.members.size / (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) : "",
     "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured,
   }));
   const quarantined = [...groups.entries()].filter(([, group]) => group.studio === "UNRESOLVED").map(([key, g]) => ({

@@ -16,6 +16,7 @@ import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildAllocationData } from "@/lib/allocation-data-live"
 import { syncAllSources } from "@/lib/sourceSync"
+import { buildLiveDespatchEscalations } from "@/lib/live-mappers/despatch"
 import {
   buildLiveMarginInputs,
   buildLiveMemberEngagementHeadlineMeasures,
@@ -53,11 +54,17 @@ export default async function Page() {
     // rate-limited, so navigation stays safe while cold serverless instances
     // still converge without relying on a paid high-frequency cron.
     await syncAllSources({ force: false })
+  } catch (error) {
+    // A quota-limited write refresh must not block the read-only dashboard.
+    // Avoid console.error here because Next.js dev treats it as an overlay.
+    console.warn("Source refresh deferred; rendering the latest available Sheet snapshot.", error instanceof Error ? error.message : error)
+  }
+  try {
     ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(), buildAllocationData()])
   } catch (error) {
     // The governed fixtures keep the demo usable while a Sheet connector is
     // unavailable; a failed refresh must never turn a missing value into zero.
-    console.error("Live dashboard snapshot unavailable; using governed fixture fallback.", error)
+    console.warn("Live dashboard snapshot unavailable; using governed fixture fallback.", error instanceof Error ? error.message : error)
   }
   const liveSelfDriveData = liveOpsData ? buildLiveSelfDriveSnapshot(liveOpsData) : null
   const liveMarginInputs = liveSelfDriveData ? buildLiveMarginInputs(liveSelfDriveData) : []
@@ -93,7 +100,8 @@ export default async function Page() {
     ? Object.freeze({ ...niaGrowthFixture, summary: liveGrowth.summary, measures: liveGrowth.measures })
     : niaGrowthFixture
   const cashControlPreview = financeAllowed ? buildCashControlPreview() : null
+  const liveDespatchEscalations = liveOpsData ? buildLiveDespatchEscalations({ actionLog: liveOpsData.actionLog, incidentLog: liveOpsData.incidentLog, people: liveOpsData.people }) : []
   const learningQueue = buildPlatformLearningQueue({ enterpriseDemand: enterpriseDemandPreview, newAdds: newAddsPreview, memberEngagement: memberEngagementPreview, memberSavings: memberSavingsPreview, niaMargins: niaMarginsPreview, niaGrowth: niaGrowthPreview, cashControl: cashControlPreview })
   const controlledAutonomyPreview = buildControlledAutonomyPreview(learningQueue)
-  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} />
+  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Activity, BellRing, Check, Clock3, Pause, Play, RefreshCw, ShieldCheck } from "lucide-react"
 import { HEARTBEAT_POLL_INTERVAL_SECONDS, type EvaluatedHeartbeat, type HeartbeatSnapshot } from "@/lib/heartbeat-control"
-import { heartbeatRules, initialHeartbeatSnapshot } from "@/lib/heartbeat-data"
+import { heartbeatRules } from "@/lib/heartbeat-data"
 import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildDespatchValidationQueue, type ExecutionAction } from "@/lib/execution-control"
 import type { LoopHealth } from "@/lib/operating-loop/loop-health"
@@ -110,7 +110,12 @@ function SignalIdentity({ stream }: { stream: EvaluatedHeartbeat }) {
 }
 
 export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; onValidateAction: (actionId: string) => void }) {
-  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>(initialHeartbeatSnapshot)
+  const heartbeatConnected = false
+  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>({
+    computed_at: new Date(0).toISOString(), poll_interval_seconds: HEARTBEAT_POLL_INTERVAL_SECONDS,
+    persistence: "illustrative-local-server", streams: [], alerts: [], action_log: [],
+    summary: { active_streams: 0, signals_current: 0, active_breaches: 0, escalated: 0, outside_active_shift: 0 },
+  })
   const [paused, setPaused] = useState(false)
   const [polling, setPolling] = useState(false)
   const [acknowledgingId, setAcknowledgingId] = useState("")
@@ -134,17 +139,18 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   }, [])
 
   useEffect(() => {
+    if (!heartbeatConnected) return
     void poll()
-  }, [poll])
+  }, [heartbeatConnected, poll])
 
   useEffect(() => {
-    if (paused) return
+    if (!heartbeatConnected || paused) return
     const timer = window.setInterval(() => void poll(), HEARTBEAT_POLL_INTERVAL_SECONDS * 1000)
     return () => window.clearInterval(timer)
-  }, [paused, poll])
+  }, [heartbeatConnected, paused, poll])
 
   const acknowledgedIds = useMemo(() => new Set(snapshot.action_log.filter((entry) => entry.action_type === "alert_acknowledged").map((entry) => entry.heartbeat_id)), [snapshot.action_log])
-  const openAlerts = snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id))
+  const openAlerts = heartbeatConnected ? snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id)) : []
   const highestAlert = openAlerts[0]
   const actionLog = snapshot.action_log
   const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, EXECUTION_REPORT_AS_OF), [commitments])
@@ -195,7 +201,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   return <DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
     { title: "What needs doing next", summary: `${escalationTotal + openAlerts.length + validationQueue.length} active actions ordered by urgency` },
     ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
-    { title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` },
+    ...(heartbeatConnected ? [{ title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` }] : []),
   ]}>
     <section className="heartbeat-section despatch-escalation-section" aria-labelledby="despatch-escalation-title">
       <header><div><p className="heartbeat-kicker">NEXT ACTIONS</p><h2 id="despatch-escalation-title">What needs doing next</h2></div><p>{escalationTotal + openAlerts.length + validationQueue.length} active · ordered by urgency</p></header>
@@ -278,7 +284,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
 
     {loopHealth ? <LoopHealthStrip health={loopHealth} /> : null}
 
-    <details className="system-monitoring-details">
+    {heartbeatConnected ? <details className="system-monitoring-details">
       <summary>Who has gone quiet</summary>
       <div className="system-monitoring-body">
     <section className="heartbeat-status-band" aria-label="Live check-in status">
@@ -343,6 +349,6 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </section>
     </div>
       </div>
-    </details>
+    </details> : null}
   </DashboardSectionAccordion>
 }

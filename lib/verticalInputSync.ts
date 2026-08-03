@@ -28,13 +28,12 @@ function credentials() {
   return googleServiceAccountCredentials();
 }
 
-async function replaceOwned(target: string, keyHeader: string, prefix: string, records: Record<string, unknown>[]) {
+async function replaceOwned(target: string, keyHeader: string, prefix: string, records: Record<string, unknown>[], currentRows?: unknown[][]) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
-  const current = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${target}!A:AZ` });
-  const rows = (current.data.values || []) as unknown[][];
+  const rows = currentRows || (await sheets.spreadsheets.values.get({ spreadsheetId, range: `${target}!A:AZ` }).then((current) => (current.data.values || []) as unknown[][]));
   const headers = (rows[0] || []).map(String);
   const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
   if (keyIndex < 0) throw new Error(`${target} is missing ${keyHeader}`);
@@ -62,7 +61,9 @@ async function replaceAllRows(target: string, records: Record<string, unknown>[]
 export async function syncVerticalInputs() {
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
-  const baseTabs = ["TEAM_OCCUPANCY", "TEAM_ESSENTIALS_SUMMARY"];
+  // Essentials is bot-owned. Keeping the manual summary out of this connector
+  // prevents a later refresh from replacing bot orders, margin and inventory.
+  const baseTabs = ["TEAM_OCCUPANCY", "TEAM_REQ_SP_SUPPLY"];
   const reportBases = ["Studios", "Fono Funnel", "Essentials", "Flow", "CM Actions"];
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(sheetId,title,index,hidden)" });
   const available = (metadata.data.sheets || []).map((sheet) => sheet.properties!).filter((properties) => properties.title);
@@ -75,7 +76,7 @@ export async function syncVerticalInputs() {
       const cells = row.map(norm);
       return cells.filter(Boolean).length >= 4 && cells.some((cell) => ["date", "theatre", "studio code", "client", "action", "s no."].includes(cell));
     });
-    return [tab, { headers: (rows[Math.max(0, headerIndex)] || []).map(String), rows: rows.slice(Math.max(0, headerIndex) + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())) }];
+    return [tab, { headers: (rows[Math.max(0, headerIndex)] || []).map(String), rows: rows.slice(Math.max(0, headerIndex) + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())), rawRows: rows, headerIndex: Math.max(0, headerIndex) }];
   }));
   const imported = (base: string) => {
     const title = importedTitles.find((candidate) => candidate === base || candidate.startsWith(`${base} (`));
@@ -84,7 +85,43 @@ export async function syncVerticalInputs() {
 
   const teamOccupancy = tables.get("TEAM_OCCUPANCY");
   const studioReport = imported("Studios");
-  const occupancySource = teamOccupancy?.rows.length ? teamOccupancy : studioReport;
+  // The imported Studios report is the occupancy source of truth. Mirror it into
+  // TEAM_OCCUPANCY so the operator never has to enter the same studio metrics twice.
+  // Activation Ready Nests is the only field preserved from the user-input tab,
+  // because that operational readiness value is not present in the report.
+  let occupancySource = studioReport?.rows.length ? studioReport : teamOccupancy;
+  if (studioReport?.rows.length && teamOccupancy?.headers.length) {
+    const existingByStudio = new Map(teamOccupancy.rows.map((row) => [norm(value(row, teamOccupancy.headers, "Studio Code")), row]));
+    const reportDate = studioReport.rawRows?.[1]?.[1] || "";
+    const mirroredRows = studioReport.rows
+      .filter((row) => {
+        const studio = value(row, studioReport.headers, "Studio Code");
+        const status = value(row, studioReport.headers, "Status");
+        return Boolean(String(studio).trim()) && norm(studio) !== "studio code" && norm(studio) !== "total" && norm(status) === "active";
+      })
+      .map((row) => {
+        const studio = value(row, studioReport.headers, "Studio Code");
+        const existing = existingByStudio.get(norm(studio));
+        return teamOccupancy.headers.map((header) => {
+          const sourceIndex = studioReport.headers.findIndex((candidate) => norm(candidate) === norm(header));
+          if (sourceIndex >= 0) return row[sourceIndex] ?? "";
+          if (norm(header) === "dashboard record id") return id("OPS-OCC", [studio]);
+          if (norm(header) === "as of at" || norm(header) === "source updated at") return reportDate ? timestamp(reportDate) : "";
+          if (norm(header) === "location id") return studio;
+          if (norm(header) === "supply model") return "EXISTING";
+          if (norm(header) === "activation ready nests") return existing ? value(existing, teamOccupancy.headers, "Activation Ready Nests") : "";
+          return "";
+        });
+      });
+    await sheets.spreadsheets.values.clear({ spreadsheetId: SOURCE_ID, range: "TEAM_OCCUPANCY!A2:AZ" });
+    if (mirroredRows.length) await sheets.spreadsheets.values.update({
+      spreadsheetId: SOURCE_ID,
+      range: "TEAM_OCCUPANCY!A2",
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: mirroredRows },
+    });
+    occupancySource = { ...teamOccupancy, rows: mirroredRows };
+  }
   if (!occupancySource?.rows.length) throw new Error("TEAM_OCCUPANCY is required as the authoritative occupancy source");
   const livingPrefix = "OPS-RPT-OCC";
   const living = occupancySource.rows.filter((row) => norm(value(row, occupancySource.headers, "Studio Code")) !== "studio code").map((row) => {
@@ -92,7 +129,42 @@ export async function syncVerticalInputs() {
     const at = timestamp(value(row, occupancySource.headers, "as_of_at", "source_updated_at", "Date", "updated_at"));
     const contracted = number(value(row, occupancySource.headers, "Contracted Nest"));
     const occupied = number(value(row, occupancySource.headers, "Occupied Nest"));
-    return { "living hourly id": id(livingPrefix, [studio, at.slice(0, 13)]), "theatre id": value(row, occupancySource.headers, "Theatre", "theatre_id"), "studio id": studio, "supply model": "EXISTING", "contracted nests": contracted, "activation ready nests": "", "occupied nests": occupied, "living billed inr": number(value(row, occupancySource.headers, "Determined Revenue", "living_billed_inr")), "living collected inr": number(value(row, occupancySource.headers, "Living Collected INR", "living_collected_inr")), "collection leakage inr": number(value(row, occupancySource.headers, "Collection Leakage INR", "collection_leakage_inr")), "occupancy ratio": contracted ? occupied / contracted : 0, "source submission id": id(`${livingPrefix}-SRC`, [studio, at]), "updated at": at };
+    return { "living hourly id": id(livingPrefix, [studio, at.slice(0, 13)]), "theatre id": value(row, occupancySource.headers, "Theatre", "theatre_id"), "studio id": studio, "supply model": "EXISTING", "contracted nests": contracted, "activation ready nests": number(value(row, occupancySource.headers, "Activation Ready Nests")), "occupied nests": occupied, "living billed inr": number(value(row, occupancySource.headers, "Determined Revenue", "living_billed_inr")), "living collected inr": number(value(row, occupancySource.headers, "Living Collected INR", "living_collected_inr")), "collection leakage inr": number(value(row, occupancySource.headers, "Collection Leakage INR", "collection_leakage_inr")), "occupancy ratio": contracted ? occupied / contracted : 0, "source submission id": id(`${livingPrefix}-SRC`, [studio, at]), "updated at": at };
+  });
+
+  const spSupplySource = tables.get("TEAM_REQ_SP_SUPPLY");
+  const spSupply = (spSupplySource?.rows || []).filter((row) => {
+    const site = value(row, spSupplySource!.headers, "sp_supply_id", "site_name", "location_id");
+    return Boolean(String(site).trim()) && norm(site) !== "sp supply id";
+  }).map((row) => {
+    const sourceId = value(row, spSupplySource!.headers, "sp_supply_id") || id("OPS-SP-SUPPLY", [
+      value(row, spSupplySource!.headers, "location_id", "site_name"),
+      value(row, spSupplySource!.headers, "as_of_at", "updated_at"),
+    ]);
+    const studioId = String(value(row, spSupplySource!.headers, "location_id") || sourceId);
+    const at = timestamp(value(row, spSupplySource!.headers, "as_of_at", "updated_at"));
+    const contracted = number(value(row, spSupplySource!.headers, "contracted_nests"));
+    const ready = number(value(row, spSupplySource!.headers, "activation_ready_nests"));
+    const occupied = number(value(row, spSupplySource!.headers, "occupied_nests"));
+    const theatreId = value(row, spSupplySource!.headers, "theatre_id");
+    return {
+      hourly: {
+        "living hourly id": `OPS-SP-SUPPLY-${String(sourceId).replace(/[^A-Za-z0-9-]/g, "-")}`,
+        "theatre id": theatreId, "studio id": studioId, "supply model": "SP",
+        "contracted nests": contracted, "activation ready nests": ready, "occupied nests": occupied,
+        "occupancy ratio": contracted > 0 ? occupied / contracted : 0,
+        "source submission id": String(sourceId), "updated at": at,
+      },
+      studio: {
+        "studio id": `OPS-SP-${studioId}`, "theatre id": theatreId,
+        "studio name": value(row, spSupplySource!.headers, "site_name") || studioId,
+        "operating model": "Shram Park", "supply model": "SP",
+        "contract status": value(row, spSupplySource!.headers, "contract_coverage_status"),
+        "readiness status": ready >= contracted && contracted > 0 ? "Ready" : "In progress",
+        "contracted nests": contracted, "activation ready nests": ready, "occupied nests": occupied,
+        "owner actor id": value(row, spSupplySource!.headers, "owner_actor_id"), "updated at": at,
+      },
+    };
   });
 
   const demandRecords: Record<string, unknown>[] = [];
@@ -123,10 +195,9 @@ export async function syncVerticalInputs() {
     });
   }
 
-  const summary = tables.get("TEAM_ESSENTIALS_SUMMARY")!;
-  const essentialsReport = imported("Essentials");
-  if (!summary?.rows.length) throw new Error("TEAM_ESSENTIALS_SUMMARY is required as the authoritative Member Savings source");
-  const essentialsSource = summary;
+  /* Essentials rows are produced exclusively by syncEssentialsBotData(). */
+  const essentialsSource = { headers: [] as string[], rows: [] as unknown[][] };
+  const essentialsReport = { rows: [] as unknown[][] };
   const hourly = essentialsSource.rows.filter((row) => norm(value(row, essentialsSource.headers, "Studio Code", "Studio Name")) !== "studio code").map((row) => {
     const studio = value(row, essentialsSource.headers, "Studio Code", "Studio Name");
     const at = new Date().toISOString();
@@ -186,13 +257,17 @@ export async function syncVerticalInputs() {
     return { "action id": id("OPS-RPT-CM", [objective, proposedAt]), "incident id": "", "operating objective": objective, "expected metric": "CM impact (₹)", "baseline value": realized, "target value": planned, "expected financial impact inr": Math.max(0, planned - realized), "confidence": "Reported", "owner actor id": "", "due at": timestamp(value(row, cmActions!.headers, "Target Close")), "required evidence": "Business Performance Report — CM Actions source row", "approval tier": "Human", "state": value(row, cmActions!.headers, "Status") || "Open", "proposed at": proposedAt, "notes": value(row, cmActions!.headers, "Notes") };
   });
 
+  const targets = ["Living_Hourly", "Studio_Master", "Enterprise_Demand", "Work_Hourly", "Action_Log"];
+  const targetResponse = await sheets.spreadsheets.values.batchGet({ spreadsheetId: process.env.GOOGLE_SHEET_ID, ranges: targets.map((target) => `${target}!A:AZ`) });
+  const targetRows = new Map(targets.map((target, index) => [target, (targetResponse.data.valueRanges?.[index]?.values || []) as unknown[][]]));
+  const allLiving = [...living, ...spSupply.map((row) => row.hourly)];
   const report = {
-    essentials: await replaceAllRows("Essentials_Hourly", authoritativeEssentials),
-    living: await replaceOwned("Living_Hourly", "living hourly id", "OPS-", living),
-    demand: await replaceOwned("Enterprise_Demand", "demand id", "OPS-", demandRecords),
-    work: await replaceOwned("Work_Hourly", "work hourly id", "OPS-RPT-WORK", work),
-    actions: await replaceOwned("Action_Log", "action id", "OPS-RPT-CM", reportActions),
-    inventory: await replaceOwned("Essentials_Inventory", "sku", "OPS-INV", []),
+    living: await replaceOwned("Living_Hourly", "living hourly id", "OPS-", allLiving, targetRows.get("Living_Hourly")),
+    spSupplyLiving: spSupply.length,
+    spSupplyStudios: await replaceOwned("Studio_Master", "studio id", "OPS-SP-", spSupply.map((row) => row.studio), targetRows.get("Studio_Master")),
+    demand: await replaceOwned("Enterprise_Demand", "demand id", "OPS-", demandRecords, targetRows.get("Enterprise_Demand")),
+    work: await replaceOwned("Work_Hourly", "work hourly id", "OPS-RPT-WORK", work, targetRows.get("Work_Hourly")),
+    actions: await replaceOwned("Action_Log", "action id", "OPS-RPT-CM", reportActions, targetRows.get("Action_Log")),
   };
   // Keep only the newest Business Performance Report batch visible and clearly marked.
   // Older imported copies are deleted so daily imports do not accumulate duplicate tabs.
@@ -200,24 +275,11 @@ export async function syncVerticalInputs() {
     reportBases.some((base) => properties.title === base || properties.title?.startsWith(`${base} (`)),
   );
   if (importedTabs.length) {
-    const currentImports = importedTabs.filter((properties) => importedTitles.includes(properties.title!));
     const staleImports = importedTabs.filter((properties) => !importedTitles.includes(properties.title!));
-    await sheets.spreadsheets.batchUpdate({
+    if (staleImports.length) await sheets.spreadsheets.batchUpdate({
       spreadsheetId: SOURCE_ID,
       requestBody: {
-        requests: [
-          ...currentImports.map((properties) => ({
-            updateSheetProperties: {
-              properties: {
-                sheetId: properties.sheetId,
-                hidden: false,
-                tabColor: { red: 0.95, green: 0.72, blue: 0.12 },
-              },
-              fields: "hidden,tabColor",
-            },
-          })),
-          ...staleImports.map((properties) => ({ deleteSheet: { sheetId: properties.sheetId! } })),
-        ],
+        requests: staleImports.map((properties) => ({ deleteSheet: { sheetId: properties.sheetId! } })),
       },
     });
   }

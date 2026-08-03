@@ -33,5 +33,5 @@ test("Despatch groups every exception by owner and leads with owner, gap and act
   assert.match(html, />Why it matters</)
   assert.match(html, />What Nia already did</)
   assert.match(html, />What happens next</)
-  assert.match(html, /<details class="system-monitoring-details"><summary>Who has gone quiet<\/summary>/)
+  assert.doesNotMatch(html, /Who has gone quiet|Vikram Singh|Illustrative control data/)
 })

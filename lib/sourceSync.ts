@@ -7,7 +7,9 @@ import { clearSheetCache } from "@/lib/googleSheets";
 
 let activeSync: Promise<SourceSyncReport> | null = null;
 let lastSuccessfulSync: SourceSyncReport | null = null;
-const SOURCE_SYNC_COOLDOWN_MS = 120_000;
+let lastFailureAt = 0;
+let lastFailure: unknown = null;
+const SOURCE_SYNC_COOLDOWN_MS = 300_000;
 
 export type SourceSyncReport = {
   report: Awaited<ReturnType<typeof syncTeamInputs>>;
@@ -42,8 +44,12 @@ export function syncAllSources(options: { force?: boolean } = {}) {
   if (!options.force && lastSuccessfulSync && Date.now() - Date.parse(lastSuccessfulSync.syncedAt) < SOURCE_SYNC_COOLDOWN_MS) {
     return Promise.resolve(lastSuccessfulSync);
   }
+  if (!options.force && lastFailureAt && Date.now() - lastFailureAt < SOURCE_SYNC_COOLDOWN_MS) {
+    return lastSuccessfulSync ? Promise.resolve(lastSuccessfulSync) : Promise.reject(lastFailure);
+  }
   activeSync = runSourceSync()
-    .then((report) => { lastSuccessfulSync = report; return report; })
+    .then((report) => { lastSuccessfulSync = report; lastFailureAt = 0; lastFailure = null; return report; })
+    .catch((error) => { lastFailureAt = Date.now(); lastFailure = error; throw error; })
     .finally(() => { activeSync = null; });
   return activeSync;
 }
