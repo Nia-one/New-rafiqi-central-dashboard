@@ -194,6 +194,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [syncing, setSyncing] = useState(false)
   const [commitments, setCommitments] = useState<ExecutionAction[]>(() => [...executionActions, ...memberFeedbackActions])
   // Keep the page shell stable while the Overview mode changes. The mode bar
   // and the report body already explain the active operating view.
@@ -308,14 +309,28 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   }
 
   async function validateExecutionAction(actionId: string) {
-    await fetch("/api/action-log", {
+    const response = await fetch("/api/action-log", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ queue_item_id: actionId, action_type: "verify", note: "Verified from Despatch" }),
-    }).catch(() => undefined)
+    })
+    if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Action could not be recorded")
     setCommitments((current) => current.map((action) => action.id === actionId
       ? validateActionProof(action, "despatch-validation-team", new Date().toISOString(), `log-${action.id}-despatch-${Date.now()}`)
       : action))
+  }
+
+  async function refreshLiveData() {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const response = await fetch("/api/ops-data", { method: "POST", cache: "no-store" })
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Source sync failed")
+      window.location.reload()
+    } catch (error) {
+      setSyncing(false)
+      window.alert(error instanceof Error ? error.message : "Source sync failed")
+    }
   }
 
   function openFeedbackExecution() {
@@ -347,7 +362,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
         <button type="button" className={filtersOpen ? "utility-button active" : "utility-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><SlidersHorizontal aria-hidden /><span>Filters</span></button>
         <button type="button" className="utility-icon" title="Synthetic shadow preview" aria-label="Synthetic shadow preview"><ShieldCheck aria-hidden /></button>
         <button type="button" className="utility-button period"><CalendarDays aria-hidden /><span>{DASHBOARD_PERIOD}</span></button>
-        <button type="button" className="utility-icon" title="Refresh data" aria-label="Refresh data" onClick={() => window.location.reload()}><RefreshCw aria-hidden /></button>
+        <button type="button" className="utility-icon" title="Sync all source sheets" aria-label="Sync all source sheets" disabled={syncing} onClick={refreshLiveData}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /></button>
         <button type="button" className="utility-primary" onClick={() => navigateFromRail("self-drive", "Despatch")}><Truck aria-hidden /><span>Open Despatch</span></button>
       </div>
       </>}
@@ -384,7 +399,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {active === "Finance control" && financeExpansionPreview && <FinanceExpansionWorkspace preview={financeExpansionPreview} />}
       {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
       {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
-      {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} />}
+      {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} />}
       {active === "People" && <PeopleScreen commitments={commitments} />}

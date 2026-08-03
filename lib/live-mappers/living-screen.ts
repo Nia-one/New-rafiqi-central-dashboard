@@ -61,7 +61,7 @@ export function buildLivingScreenData(ops: any) {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
     const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
-    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied))]
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied)), person(value(row, "owner actor id"))]
   })
   const demandRows = demand.map((row) => [value(row, "plant name") || value(row, "enterprise name"), String(n(row["headcount required"])), value(row, "theatre id"), displayDate(value(row, "activation required at")), person(value(row, "owner actor id")), displayDate(value(row, "opened at")), value(row, "status") || "Open"])
   const supplyRows = studios.filter((row) => value(row, "supply model").toUpperCase() === "SP").map((row) => [value(row, "studio name") || value(row, "studio id"), metricText("jco") || "Unassigned", metricText("relationship_manager") || "Unassigned", value(row, "studio name") || value(row, "studio id"), `${metricNumber("distance_km")} km`, `${metricNumber("response_hours")}h`, value(row, "contract status") || value(row, "readiness status") || "No data"])
