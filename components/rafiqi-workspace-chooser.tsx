@@ -26,7 +26,7 @@ const workspaces = [
     description: "Turn demand, supply, locations, and open issues into a clear mandate for the people doing the work today.",
     icon: ClipboardCheck,
     accent: "var(--ink)",
-    tags: ["Operations Mandate", "Shram Park Scout Route Plan", "Tasks"],
+    tags: ["Operations Mandate", "Śram Park Scout Route Plan", "Tasks"],
   },
 ]
 
@@ -39,7 +39,7 @@ export function RafiqiWorkspaceChooser({ onSelect }: WorkspaceChooserProps) {
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <ShieldCheck className="h-5 w-5" aria-hidden />
             </span>
-            Rafiqi Central
+            RafiQi Central
           </div>
           <p className="mb-4 text-xs font-bold tracking-[0.2em] text-[var(--interactive-blue-deep)] uppercase">Choose your operating view</p>
           <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">One login. Two ways to move the business forward.</h1>
@@ -48,7 +48,7 @@ export function RafiqiWorkspaceChooser({ onSelect }: WorkspaceChooserProps) {
           </p>
         </header>
 
-        <section className="mt-14 grid gap-5 lg:grid-cols-2" aria-label="Rafiqi workspaces">
+        <section className="mt-14 grid gap-5 lg:grid-cols-2" aria-label="RafiQi Central workspaces">
           {workspaces.map(({ id, eyebrow, title, description, icon: Icon, accent, tags }) => (
             <button
               key={id}
@@ -81,7 +81,7 @@ export function RafiqiWorkspaceChooser({ onSelect }: WorkspaceChooserProps) {
         </section>
 
         <footer className="mt-14 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border)] pt-5 text-sm text-[var(--muted)]">
-          <span>Rafiqi Central</span>
+          <span>RafiQi Central</span>
           <span>Restricted operating data</span>
         </footer>
       </div>

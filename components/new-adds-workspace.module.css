@@ -207,28 +207,6 @@
 .shadowControls button { background: var(--ink); color: var(--surface); cursor: pointer; }
 .shadowControls small { color: var(--muted); font-size: 8px; text-align: center; }
 
-.vacancyGroups { display: grid; gap: 14px; padding-top: 16px; }
-.vacancyGroup { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
-.vacancyGroup > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 15px; border-bottom: 1px solid var(--border); background: var(--surface-subtle); }
-.vacancyGroup > header strong, .vacancyGroup > header span { display: block; }
-.vacancyGroup > header strong { color: var(--ink); font-size: 13px; }
-.vacancyGroup > header span { margin-top: 3px; color: var(--muted); font-size: 9px; }
-.vacancyGroup > header > b { color: var(--status-bad); font-size: 18px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.vacancyGroup > header > b small { color: var(--muted); font-size: 9px; font-weight: var(--weight-medium); }
-.vacancyTable { max-height: 330px; overflow: auto; }
-.vacancyTable table { width: 100%; border-collapse: collapse; }
-.vacancyTable th, .vacancyTable td { padding: 10px 14px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; }
-.vacancyTable th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--muted); font-size: 8px; letter-spacing: .04em; text-transform: uppercase; }
-.vacancyTable th:first-child, .vacancyTable td:first-child { text-align: left; }
-.vacancyTable td { color: var(--ink-soft); font-size: 11px; }
-.vacancyTable td:first-child strong, .vacancyTable td:first-child span { display: block; }
-.vacancyTable td:first-child strong { color: var(--ink); font-size: 11px; }
-.vacancyTable td:first-child span { margin-top: 3px; color: var(--muted); font-size: 8px; }
-.vacancyTable td:last-child b { display: inline-flex; min-width: 32px; justify-content: center; padding: 4px 8px; border-radius: 999px; background: var(--status-bad-soft); color: var(--status-bad); }
-.vacancyTable tbody tr:last-child td { border-bottom: 0; }
-.vacancyNote { margin: 0; padding: 11px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); color: var(--ink-soft); font-size: 10px; line-height: 1.5; }
-.vacancyNote strong { color: var(--ink); }
-
 .exceptionList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 12px; }
 .exceptionList article { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px 10px; align-items: center; padding: 11px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-subtle); }
 .exceptionList svg { grid-row: 1 / 3; width: 15px; color: var(--muted); }
@@ -268,21 +246,23 @@
   .loopHealthStrip article { border-right: 0; border-bottom: 1px solid var(--border); }
   .loopHealthStrip article:last-child { border-bottom: 0; }
   .workspace { gap: 10px; padding: 12px; }
-  .questionBand { padding: 18px; }
+  .questionBand { align-items: flex-start; flex-direction: column; padding: 18px; }
+  .questionMain, .questionGauge { width: 100%; }
+  .questionGauge { justify-content: space-between; gap: 12px; }
   .questionBand h2 { font-size: 21px; }
   .summaryFlow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summaryItem, .summaryItem:nth-child(3) { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
   .summaryItem:nth-child(even) { border-right: 0; }
   .summaryItem:nth-last-child(-n+2) { border-bottom: 0; }
   .summaryItem > svg { display: none; }
+  .summaryItem > strong { overflow: visible; text-overflow: clip; white-space: normal; }
   .measures { grid-template-columns: 1fr; }
   .measures article, .measures article:nth-child(2) { border-right: 0; border-bottom: 1px solid var(--border); }
   .measures article:last-child { border-bottom: 0; }
   .sectionHeader { align-items: flex-start; flex-direction: column; gap: 8px; }
   .sectionHeader p { white-space: normal; }
-  .vacancyGroup > header { align-items: flex-start; }
-  .vacancyTable { max-height: 420px; }
-  .vacancyTable th, .vacancyTable td { padding: 9px 10px; }
+  .theatreCards { grid-template-columns: 1fr; gap: 10px; }
+  .theatreCards > article { padding: 14px; }
   .theatreRows > article { grid-template-columns: 1fr 58px; gap: 10px; }
   .barCell { grid-column: 1 / -1; grid-row: 2; }
   .daysToFill { grid-column: 2; grid-row: 1; }

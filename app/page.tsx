@@ -1,9 +1,9 @@
-﻿import { LegacyNiaDashboard } from "@/components/legacy-nia-dashboard"
+import { LegacyNiaDashboard } from "@/components/legacy-nia-dashboard"
 import { financeExpansionControlEnabled, selfDrivePlatformEnabled } from "@/lib/operating-loop/feature-flags"
 import { buildEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import { buildFinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
 import { buildControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
-import { buildNiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
+import { buildNiaMarginsPreview, NIA_MARGINS_SYNTHETIC_INPUTS } from "@/lib/operating-loop/nia-margins-loop"
 import { buildNewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import { buildMemberEngagementPreview } from "@/lib/operating-loop/member-engagement-loop"
 import { buildMemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
@@ -15,7 +15,19 @@ import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessi
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildAllocationData } from "@/lib/allocation-data-live"
-import { buildLiveMarginInputs, buildLiveSelfDriveSnapshot } from "@/lib/live-mappers/self-drive"
+import {
+  buildLiveMarginInputs,
+  buildLiveMemberEngagementHeadlineMeasures,
+  buildLiveMemberEngagementLoopHealth,
+  buildLiveMemberSavingsHealth,
+  buildLiveMemberSavingsTasks,
+  buildLiveNewAddsFillStatus,
+  buildLiveNewAddsFillTasks,
+  buildLiveNewAddsProof,
+  buildLiveNewAddsTheatreProgress,
+  buildLiveNiaGrowthProjection,
+  buildLiveSelfDriveSnapshot,
+} from "@/lib/live-mappers/self-drive"
 
 export const dynamic = "force-dynamic"
 
@@ -32,25 +44,50 @@ export default async function Page() {
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const enterpriseDemandPreview = buildEnterpriseDemandLoopPreview()
   const financeExpansionPreview = financeAllowed ? buildFinanceExpansionPreview() : null
-  const liveOpsData = { ...await buildOpsData(), fetchedAt: new Date().toISOString() }
-  const liveSelfDriveData = buildLiveSelfDriveSnapshot(liveOpsData)
-  const niaMarginsPreview = buildNiaMarginsPreview(buildLiveMarginInputs(liveSelfDriveData), liveSelfDriveData.asOf, [])
-  const newAddsPreview = buildNewAddsPreview()
-  const memberEngagementPreview = buildMemberEngagementPreview()
-  const memberSavingsPreview = buildMemberSavingsPreview()
-  const niaGrowthPreview = buildNiaGrowthPreview()
+  let liveOpsData: Awaited<ReturnType<typeof buildOpsData>> | null = null
+  let allocationData: Awaited<ReturnType<typeof buildAllocationData>> | null = null
+  try {
+    ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(), buildAllocationData()])
+  } catch (error) {
+    // The governed fixtures keep the demo usable while a Sheet connector is
+    // unavailable; a failed refresh must never turn a missing value into zero.
+    console.error("Live dashboard snapshot unavailable; using governed fixture fallback.", error)
+  }
+  const liveSelfDriveData = liveOpsData ? buildLiveSelfDriveSnapshot(liveOpsData) : null
+  const liveMarginInputs = liveSelfDriveData ? buildLiveMarginInputs(liveSelfDriveData) : []
+  const niaMarginsPreview = liveSelfDriveData && liveMarginInputs.length > 0
+    ? buildNiaMarginsPreview(liveMarginInputs, liveSelfDriveData.asOf, [])
+    : buildNiaMarginsPreview(NIA_MARGINS_SYNTHETIC_INPUTS)
+  const newAddsFixture = buildNewAddsPreview()
+  const memberEngagementFixture = buildMemberEngagementPreview()
+  const memberSavingsFixture = buildMemberSavingsPreview()
+  const niaGrowthFixture = buildNiaGrowthPreview()
+  const liveNewAddsStatus = liveSelfDriveData ? buildLiveNewAddsFillStatus(liveSelfDriveData) : null
+  const liveNewAddsProof = liveSelfDriveData ? buildLiveNewAddsProof(liveSelfDriveData) : null
+  const newAddsPreview = liveSelfDriveData && liveNewAddsStatus?.hasData && liveNewAddsProof
+    ? Object.freeze({
+      ...newAddsFixture,
+      taskSummary: Object.freeze({ target: liveNewAddsStatus.target, current: liveNewAddsStatus.verified, gap: liveNewAddsStatus.gap, owner: liveNewAddsStatus.owner, progressPercent: liveNewAddsStatus.progressPercent, verifiedResult: `${liveNewAddsStatus.verified}/${liveNewAddsStatus.target} billing-live` }),
+      measures: liveNewAddsProof.measures,
+      theatres: buildLiveNewAddsTheatreProgress(liveSelfDriveData),
+      actions: buildLiveNewAddsFillTasks(liveSelfDriveData),
+      loopHealth: liveNewAddsProof.loopHealth,
+    })
+    : newAddsFixture
+  const liveEngagement = liveSelfDriveData ? buildLiveMemberEngagementHeadlineMeasures(liveSelfDriveData) : null
+  const memberEngagementPreview = liveSelfDriveData && liveEngagement?.hasData
+    ? Object.freeze({ ...memberEngagementFixture, measures: liveEngagement.measures, retentionCurves: liveEngagement.retentionCurves, loopHealth: buildLiveMemberEngagementLoopHealth(liveSelfDriveData) })
+    : memberEngagementFixture
+  const liveSavingsTasks = liveSelfDriveData ? buildLiveMemberSavingsTasks(liveSelfDriveData) : []
+  const memberSavingsPreview = liveSelfDriveData && liveSavingsTasks.length > 0
+    ? Object.freeze({ ...memberSavingsFixture, tasks: liveSavingsTasks, loopHealth: buildLiveMemberSavingsHealth(liveSelfDriveData) })
+    : memberSavingsFixture
+  const liveGrowth = liveSelfDriveData ? buildLiveNiaGrowthProjection(liveSelfDriveData) : null
+  const niaGrowthPreview = liveSelfDriveData && liveGrowth && liveSelfDriveData.enterpriseDemand.length > 0
+    ? Object.freeze({ ...niaGrowthFixture, summary: liveGrowth.summary, measures: liveGrowth.measures })
+    : niaGrowthFixture
   const cashControlPreview = financeAllowed ? buildCashControlPreview() : null
   const learningQueue = buildPlatformLearningQueue({ enterpriseDemand: enterpriseDemandPreview, newAdds: newAddsPreview, memberEngagement: memberEngagementPreview, memberSavings: memberSavingsPreview, niaMargins: niaMarginsPreview, niaGrowth: niaGrowthPreview, cashControl: cashControlPreview })
   const controlledAutonomyPreview = buildControlledAutonomyPreview(learningQueue)
-  const allocationData = await buildAllocationData()
-
-  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed}
-liveOpsData={liveOpsData}
-liveSelfDriveData={liveSelfDriveData}
-allocationData={allocationData}
-/>
+  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} />
 }
-
-
-
-

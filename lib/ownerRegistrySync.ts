@@ -81,7 +81,11 @@ async function cascadeNiaGrowthOwners(sheets: SheetsClient, spreadsheetId: strin
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: ["Action_Log!A:AZ", "Approval_Log!A:AZ", "Evidence_Log!A:AZ", "Learning_History!A:AZ"] });
   const [actions, approvals, evidence, learning] = (response.data.valueRanges || []).map((range) => ((range.values || []) as unknown[][]).map((row) => [...row]));
   const actionHeaders = (actions[0] || []).map(normal), actionIdIndex = actionHeaders.indexOf("action id"), actionOwnerIndex = actionHeaders.indexOf("owner actor id");
-  const owners = new Map(actions.slice(1).filter((row) => /^OPS-NIA-GROWTH-/.test(String(row[actionIdIndex] || ""))).map((row) => [String(row[actionIdIndex]), String(row[actionOwnerIndex] || "")]).filter(([, owner]) => owner));
+  const ownerEntries = actions.slice(1)
+    .filter((row) => /^OPS-NIA-GROWTH-/.test(String(row[actionIdIndex] || "")))
+    .map((row) => [String(row[actionIdIndex]), String(row[actionOwnerIndex] || "")] as const)
+    .filter(([, owner]) => Boolean(owner));
+  const owners = new Map<string, string>(ownerEntries);
   let updated = 0;
   const update = (rows: unknown[][], keyHeader: string, ownerHeader: string, ownerForRow: (row: unknown[], headers: string[]) => string) => {
     const headers = (rows[0] || []).map(normal), ownerIndex = headers.indexOf(normal(ownerHeader));

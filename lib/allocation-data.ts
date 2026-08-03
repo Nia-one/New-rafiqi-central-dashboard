@@ -14,7 +14,7 @@ function analysis(whys: RootCauseAnalysis["whys"], rootCause: string, recommende
  * CM Trajectory or operating spine.
  */
 
-/** Shram Park broker/property options, used to demonstrate the 2km + 24h eligibility rule. */
+/** Śram Park broker/property options, used to demonstrate the 2km + 24h eligibility rule. */
 export type SupplyOption = {
   id: string
   theatre: string
@@ -67,7 +67,7 @@ export const mismatchInputs: MismatchInput[] = [
   },
   {
     id: "m-sram-shortfall-sriperumbudur",
-    domain: "Shram Park",
+    domain: "Śram Park",
     mismatchType: "shortfall",
     theatre: "Coromandel (Tamil Nadu)",
     where: "Sriperumbudur 02",
@@ -84,11 +84,11 @@ export const mismatchInputs: MismatchInput[] = [
     recoverableShare: 0.5,
     confidence: "Medium",
     sourceUpdatedAt: "13:20 IST",
-    sourceLabel: "Shram Park sourcing board (illustrative)",
+    sourceLabel: "Śram Park sourcing board (illustrative)",
     accountableOwner: "Supply JCO",
     actionStatus: "Detected",
     actionTemplateId: "sram-shortfall",
-    laneTarget: { screen: "Living", subsection: "Supply" },
+    laneTarget: { screen: "Living", subsection: "supply" },
     evidence: ["Nearest option 1.8km but responded at 27h", "Breaches 24h sourcing SLA", "0 eligible Nests within 2km"],
     rootCauseAnalysis: analysis(
       ["Named demand for 282 Nests has no eligible supply.", "The nearest option is inside 2km but responded after 27 hours.", "A 27-hour response breaches the 24-hour sourcing SLA.", "The breached response window makes the option ineligible, leaving zero eligible Nests.", "Evidence gap: the sourcing board does not state why the response exceeded 24 hours."],
@@ -233,7 +233,7 @@ export const mismatchInputs: MismatchInput[] = [
   },
   {
     id: "m-sram-resolved-hosur",
-    domain: "Shram Park",
+    domain: "Śram Park",
     mismatchType: "shortfall",
     theatre: "Wellington (Karnataka)",
     where: "Hosur 01",
@@ -250,11 +250,11 @@ export const mismatchInputs: MismatchInput[] = [
     recoverableShare: 0.6,
     confidence: "High",
     sourceUpdatedAt: "13:05 IST",
-    sourceLabel: "Shram Park sourcing board (illustrative)",
+    sourceLabel: "Śram Park sourcing board (illustrative)",
     accountableOwner: "Supply JCO",
     actionStatus: "Resolved",
     actionTemplateId: "sram-shortfall",
-    laneTarget: { screen: "Living", subsection: "Supply" },
+    laneTarget: { screen: "Living", subsection: "supply" },
     evidence: ["Option 1.4km within 2km", "Responded in 9h within SLA", "150 Nests matched and confirmed"],
     rootCauseAnalysis: analysis(
       ["The named demand required 150 Nests.", "An option was available 1.4km away.", "The option responded in nine hours, inside the 24-hour SLA.", "All 150 Nests were matched and confirmed.", "No unresolved root cause remains in the current evidence; retain this chain as a positive control."],

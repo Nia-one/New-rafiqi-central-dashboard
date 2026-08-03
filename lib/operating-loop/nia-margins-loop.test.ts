@@ -2,14 +2,6 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { buildMarginDespatchEscalation, buildNiaMarginsPreview, createMarginAction, diagnoseMarginStudio, NIA_MARGINS_SYNTHETIC_INPUTS, NIA_MARGIN_TARGETS, submitMarginProof, verifyMarginAction } from "@/lib/operating-loop/nia-margins-loop"
 
-test("an empty live Studio feed returns a safe no-data preview", () => {
-  const preview = buildNiaMarginsPreview([], "2026-07-29T12:00:00+05:30", [])
-  assert.equal(preview.answer, "Full-use CM2 cannot be calculated until a governed Studio input is recorded.")
-  assert.equal(preview.diagnoses.length, 0)
-  assert.equal(preview.actions.length, 0)
-  assert.equal(preview.loopHealth.verification.claimed, 0)
-})
-
 test("Nia Margins keeps billed CM2 separate from collection leakage", () => {
   const preview = buildNiaMarginsPreview(NIA_MARGINS_SYNTHETIC_INPUTS)
   assert.equal(preview.collectionLeakageIncludedInCm2, false)

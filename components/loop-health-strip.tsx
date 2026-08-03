@@ -63,7 +63,7 @@ function VerificationChart({ health }: { health: LoopHealth }) {
   </div>
 }
 
-export function LoopHealthStrip({ health }: { health: LoopHealth }) {
+export function LoopHealthStrip({ health, id }: { health: LoopHealth; id?: string }) {
   const StateIcon = health.state === "Cannot confirm" ? AlertTriangle : health.state === "Confirmed" ? CheckCircle2 : Clock3
   const needsAttention = health.state !== "Confirmed" || health.quarantinedRecords > 0 || health.verification.awaiting > 0 || health.verification.reopened > 0
   const staleFeeds = health.feeds.filter((feed) => feed.stale).length
@@ -73,7 +73,7 @@ export function LoopHealthStrip({ health }: { health: LoopHealth }) {
     breachedClocks === 0 ? "No overdue clocks" : `${breachedClocks} overdue clock${breachedClocks === 1 ? "" : "s"}`,
     `${health.verification.verified} of ${health.verification.claimed} outcomes confirmed`,
   ].join(" · ")
-  return <section className={`loop-health-strip is-${health.state.toLowerCase().replaceAll(" ", "-")}`} aria-label="How reliable is data" data-overview-answer-allowed={health.overviewAnswerAllowed}>
+  return <section className={`loop-health-strip is-${health.state.toLowerCase().replaceAll(" ", "-")}`} id={id} aria-label="How reliable is data" data-overview-answer-allowed={health.overviewAnswerAllowed}>
     <header><StateIcon aria-hidden /><strong>How reliable is data</strong><span>{health.state}</span><small>{confidenceSummary}</small></header>
     <details open={needsAttention || undefined}><summary>{needsAttention ? "Check issues" : "View details"}</summary><div className="loop-health-details">
       <div className="loop-health-callout"><Database aria-hidden /><div><strong>Data freshness</strong><FreshnessMeters health={health} /></div></div>

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import test from "node:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { buildLiveFailedRecoveryCount, buildLiveSignOffGovernance, buildLiveSignOffLoopHealth, buildLiveSignOffUrgency, ControlledAutonomyWorkspace } from "@/components/controlled-autonomy-workspace"
+import { ControlledAutonomyWorkspace } from "@/components/controlled-autonomy-workspace"
 import { buildControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
 
 const componentSource = readFileSync(new URL("./controlled-autonomy-workspace.tsx", import.meta.url), "utf8")
@@ -68,13 +68,19 @@ test("human authority names all permanent human decision categories", () => {
 })
 
 test("one global H1 supplies the title while trust status precedes the Self-Drive columns", () => {
-  assert.equal((dashboardSource.match(/<h1/g) ?? []).length, 1)
+  // Exactly one H1 renders in every state: the visible page heading when the
+  // Decision Room is closed, and a single visually-hidden H1 when it is open.
+  // The two literals are mutually exclusive on decisionRoomOpen.
+  assert.equal((dashboardSource.match(/<h1/g) ?? []).length, 2)
+  assert.match(dashboardSource, /\{decisionRoomOpen \? null : <section className="platform-heading"><div><h1>/)
+  assert.match(dashboardSource, /\{decisionRoomOpen \? <h1 className="sr-only">Decision Room<\/h1> : null\}/)
   assert.doesNotMatch(componentSource, /<h1/)
   assert.match(dashboardSource, /"Your Sign-Off": \{ title: "Your Sign-Off", subtitle: "Only material changes and unresolved exceptions wait here for a human decision\."/)
   const html = renderWorkspace()
   assert.match(html, /^<div class="dashboard-accordion autonomy-workspace self-drive-workspace"[^>]+>/)
   assert.ok(html.indexOf("Loop health") < html.indexOf("Decisions by urgency"))
-  assert.match(html, /aria-expanded="true"/)
+  assert.doesNotMatch(html, /aria-expanded=/)
+  assert.equal((html.match(/data-dashboard-section-index=/g) ?? []).length, 4)
   assert.doesNotMatch(html.slice(0, html.indexOf("Full background record")), /Phase 5|Synthetic fixture|Kill switch|controlled autonomy status/)
 })
 
@@ -109,95 +115,4 @@ test("approval controls are local-only and retain append-only synthetic audit su
   assert.match(html, /Your recent decisions log/)
   assert.match(html, /No local shadow decision recorded/)
   assert.doesNotMatch(html, /Approve contract|Move money|Send message|Terminate person/)
-})
-
-test("live Sign-Off Loop health uses Approval_Log decisions and linked Action_Log deadlines", () => {
-  const preview = buildControlledAutonomyPreview()
-  const liveData = { asOf: "2026-07-28T06:00:00.000Z", approvals: [
-    { "approval id": "APR-1", "linked action id": "ACT-1", "decision type": "Finance", decision: "Approved", "decided at": "2026-07-28T05:00:00.000Z" },
-    { "approval id": "APR-2", "linked action id": "ACT-2", "decision type": "Commercial", decision: "Pending", "updated at": "2026-07-28T04:00:00.000Z" },
-  ], actions: [
-    { "action id": "ACT-1", "operating objective": "Approved decision", "due at": "2026-07-28T05:00:00.000Z" },
-    { "action id": "ACT-2", "operating objective": "Pending decision", "due at": "2026-07-28T05:30:00.000Z", "proposed at": "2026-07-28T04:00:00.000Z" },
-  ], evidence: [] }
-  const health = buildLiveSignOffLoopHealth(liveData, preview.loopHealth)
-  assert.equal(health.verification.claimed, 2)
-  assert.equal(health.verification.verified, 1)
-  assert.equal(health.verification.awaiting, 1)
-  assert.equal(health.clocks.length, 1)
-  assert.equal(health.clocks[0]?.breached, true)
-  const html = renderToStaticMarkup(createElement(ControlledAutonomyWorkspace, { preview, liveData }))
-  assert.match(html, /1\/2 verified/)
-  assert.match(html, /1 of 2/)
-  assert.match(html, /Pending decision/)
-})
-
-test("live Decision status counts failed recoveries from rejected Evidence_Log rows", () => {
-  const preview = buildControlledAutonomyPreview()
-  const liveData = {
-    approvals: [{ "approval id": "APR-1", "linked action id": "ACT-1", decision: "Pending" }],
-    actions: [
-      { "action id": "ACT-1", "operating objective": "Approve governed change" },
-      { "action id": "RECOVERY-1", "operating objective": "Correct rejected recovery", state: "Reopened" },
-    ],
-    evidence: [
-      { "evidence id": "E-1", "linked id": "RECOVERY-1", "verification status": "Rejected" },
-      { "evidence id": "E-2", "verification status": "Pending" },
-    ],
-  }
-  assert.equal(buildLiveFailedRecoveryCount(liveData, 99), 1)
-  const html = renderToStaticMarkup(createElement(ControlledAutonomyWorkspace, { preview, liveData }))
-  assert.match(html, /1 material decision/)
-  assert.match(html, /1<\/strong> routine action is failing recovery/)
-})
-
-test("live Decisions by urgency replaces every routine fixture group with Sheet log records", () => {
-  const preview = buildControlledAutonomyPreview()
-  const liveData = {
-    actions: [
-      { "action id": "FAILED-1", "operating objective": "Correct rejected recovery", state: "Reopened", "owner actor id": "P-1" },
-      { "action id": "WORK-1", "operating objective": "Continue recorded recovery", state: "In progress", "owner actor id": "P-1" },
-      { "action id": "DONE-1", "operating objective": "Verified Sheet recovery", state: "Verified", "owner actor id": "P-1", "verification result": "Recovered" },
-    ],
-    evidence: [
-      { "evidence id": "E-FAIL", "linked id": "FAILED-1", "verification status": "Rejected" },
-      { "evidence id": "E-DONE", "linked id": "DONE-1", "verification status": "Verified" },
-    ],
-    people: [{ "actor id": "P-1", "display name": "Sheet Owner" }],
-    approvals: [],
-  }
-  const groups = buildLiveSignOffUrgency(liveData)
-  assert.deepEqual(groups.fixNow.map((row) => row.actionId), ["FAILED-1"])
-  assert.deepEqual(groups.recovering.map((row) => row.actionId), ["WORK-1"])
-  assert.deepEqual(groups.verified.map((row) => row.actionId), ["DONE-1"])
-  const html = renderToStaticMarkup(createElement(ControlledAutonomyWorkspace, { preview, liveData }))
-  assert.match(html, /Correct rejected recovery/)
-  assert.match(html, /Continue recorded recovery/)
-  assert.match(html, /Verified Sheet recovery/)
-  const urgencyHtml = html.slice(html.indexOf('<section class="action-board"'), html.indexOf('<details class="self-drive-audit-details"'))
-  assert.doesNotMatch(urgencyHtml, /Resolve missing activation proof|Recover a cross-pillar interruption|Restore stock availability/)
-})
-
-test("live Governance and background is derived only from governed Sheet logs", () => {
-  const preview = buildControlledAutonomyPreview()
-  const liveData = {
-    asOf: "2026-07-28T06:00:00.000Z",
-    actionLog: [{ "action id": "LIVE-ACT-1", "operating objective": "Live governed recovery", state: "Verified", "owner actor id": "ACT-LIVE" }],
-    evidenceLog: [{ "evidence id": "LIVE-EV-1", "linked id": "LIVE-ACT-1", "verification status": "Verified" }],
-    approvalLog: [{ "approval id": "LIVE-APR-1", title: "Live financial decision", decision: "Approved", owner: "Sheet Approver", "decided at": "2026-07-28T05:00:00.000Z" }],
-    people: [{ "actor id": "ACT-LIVE", "display name": "Live Owner" }],
-    policyRegistry: [{ "policy id": "POL-AUTONOMY-MODE", name: "Operating mode", value: "Shadow only", version: "2", "approved by": "Sheet Governor" }],
-    learningHistory: [{ "learning id": "LEARN-1", domain: "Finance", disposition: "Human override", notes: "Live recorded feedback" }],
-  }
-  const governance = buildLiveSignOffGovernance(liveData)
-  assert.equal(governance.decisions.length, 1)
-  assert.equal(governance.routines.length, 1)
-  assert.equal(governance.feedback.length, 1)
-  assert.equal(governance.policies.length, 1)
-  const html = renderToStaticMarkup(createElement(ControlledAutonomyWorkspace, { preview, liveData }))
-  assert.match(html, /Live governed recovery/)
-  assert.match(html, /Live financial decision/)
-  assert.match(html, /Live recorded feedback/)
-  assert.match(html, /Connected Google Sheet/)
-  assert.doesNotMatch(html, /synthetic routes|fixture paths|Restore stock availability|Studio EAE/)
 })

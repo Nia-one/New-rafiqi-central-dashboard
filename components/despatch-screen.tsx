@@ -34,100 +34,9 @@ const auditLabels = {
 }
 
 type DespatchOwnerItem =
-  | { kind: "live-action"; id: string; owner: string; tone: OperationalTone; record: LiveDespatchAction }
   | { kind: "escalation"; id: string; owner: string; tone: OperationalTone; record: DespatchEscalationRecord }
   | { kind: "heartbeat"; id: string; owner: string; tone: OperationalTone; record: EvaluatedHeartbeat }
   | { kind: "verification"; id: string; owner: string; tone: OperationalTone; record: ReturnType<typeof buildDespatchValidationQueue>[number] }
-
-type SheetRow = Record<string, unknown>
-type LiveHeartbeatStream = Readonly<{ id: string; name: string; role: string; theatre: string; studio: string; shift: string; lastAt: string; nextDueAt: string; updatedAt: string; active: boolean; overdueMinutes: number; status: "Current" | "Overdue" | "Escalated" | "Not evaluated" }>
-type LiveDespatchAction = Readonly<{ id: string; owner: string; objective: string; metric: string; baseline: string; target: string; dueAt: string; requiredEvidence: string; state: string; nextAction: string; source: string; context: string; rootCause: string; evidenceStatus: string; approvalStatus: string }>
-const sheetText = (row: SheetRow, key: string) => String(row[key] ?? "").trim()
-const humanActor = (actorId: string) => actorId
-  ? actorId.replace(/^ACT-/i, "").split(/[-_]/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(" ")
-  : "Owner not recorded"
-
-export function buildLiveDespatchActions(liveData?: { actions?: readonly SheetRow[]; incidents?: readonly SheetRow[]; people?: readonly SheetRow[]; evidence?: readonly SheetRow[]; approvals?: readonly SheetRow[] }): LiveDespatchAction[] {
-  if (!liveData) return []
-  const terminal = new Set(["verified", "closed", "resolved", "completed", "dismissed", "rejected"])
-  const incidents = new Map((liveData.incidents ?? []).map((row) => [sheetText(row, "incident id"), row]))
-  const people = new Map((liveData.people ?? []).map((row) => [sheetText(row, "actor id"), row]))
-  const evidence = new Map((liveData.evidence ?? []).map((row) => [sheetText(row, "linked id"), row]))
-  const approvals = new Map((liveData.approvals ?? []).map((row) => [sheetText(row, "linked action id"), row]))
-  return (liveData.actions ?? []).filter((row) => !terminal.has(sheetText(row, "state").toLowerCase())).map((row) => {
-    const incident = incidents.get(sheetText(row, "incident id"))
-    const actionId = sheetText(row, "action id")
-    const actor = people.get(sheetText(row, "owner actor id"))
-    const proof = evidence.get(actionId)
-    const approval = approvals.get(actionId)
-    const state = sheetText(row, "state") || "Open"
-    const requiredEvidence = sheetText(row, "required evidence") || "Required evidence not recorded in Action_Log"
-    const recordedNext = sheetText(row, "next action")
-    const calculatedNext = state.toLowerCase() === "proof submitted"
-      ? `Independently verify ${requiredEvidence}`
-      : state.toLowerCase() === "proposed" && approval
-        ? `Record authorised ${sheetText(approval, "decision type")} decision in Approval_Log`
-        : state.toLowerCase() === "reopened"
-          ? `Correct and resubmit ${requiredEvidence}`
-          : `Complete action and submit ${requiredEvidence}`
-    return {
-      id: actionId,
-      owner: actor ? sheetText(actor, "display name") : humanActor(sheetText(row, "owner actor id")),
-      objective: sheetText(row, "operating objective") || "Operating objective not recorded in Action_Log",
-      metric: sheetText(row, "expected metric"), baseline: sheetText(row, "baseline value"), target: sheetText(row, "target value"),
-      dueAt: sheetText(row, "due at"), requiredEvidence, state, nextAction: recordedNext || calculatedNext,
-      source: ["Action_Log", incident && "Incident_Log", approval && "Approval_Log", proof && "Evidence_Log"].filter(Boolean).join(" + "),
-      context: incident ? sheetText(incident, "short description") : approval ? sheetText(approval, "business reason") : requiredEvidence,
-      rootCause: sheetText(row, "reopen reason") || (incident ? sheetText(incident, "severity reason") : ""),
-      evidenceStatus: proof ? sheetText(proof, "verification status") : "No linked Evidence_Log record",
-      approvalStatus: approval ? sheetText(approval, "decision") : "No linked Approval_Log record",
-    }
-  }).sort((left, right) => {
-    const reopened = Number(right.state.toLowerCase() === "reopened") - Number(left.state.toLowerCase() === "reopened")
-    if (reopened) return reopened
-    const leftDue = Date.parse(left.dueAt), rightDue = Date.parse(right.dueAt)
-    return (Number.isFinite(leftDue) ? leftDue : Number.MAX_SAFE_INTEGER) - (Number.isFinite(rightDue) ? rightDue : Number.MAX_SAFE_INTEGER)
-  })
-}
-
-export function buildLiveHeartbeatProjection(liveData?: { asOf?: string; people?: readonly SheetRow[]; theatres?: readonly SheetRow[]; studios?: readonly SheetRow[]; policies?: readonly SheetRow[] }) {
-  const asOf = liveData?.asOf && Number.isFinite(Date.parse(liveData.asOf)) ? liveData.asOf : new Date().toISOString()
-  const theatreNames = new Map((liveData?.theatres ?? []).map((row) => [sheetText(row, "theatre id"), sheetText(row, "theatre name")]))
-  const studioNames = new Map((liveData?.studios ?? []).map((row) => [sheetText(row, "studio id"), sheetText(row, "studio name")]))
-  const escalationPolicy = (liveData?.policies ?? []).find((row) => /heartbeat.*escalation/i.test(`${sheetText(row, "policy id")} ${sheetText(row, "name")}`))
-  const recordedEscalationText = sheetText(escalationPolicy ?? {}, "value")
-  const recordedEscalation = Number(recordedEscalationText)
-  const escalationMinutes = recordedEscalationText && Number.isFinite(recordedEscalation) && recordedEscalation >= 0 ? recordedEscalation : null
-  const streams: LiveHeartbeatStream[] = (liveData?.people ?? []).filter((row) => sheetText(row, "actor id")).map((row) => {
-    const shift = sheetText(row, "active shift") || "Not recorded"
-    const shiftStart = Date.parse(sheetText(row, "shift start at")), shiftEnd = Date.parse(sheetText(row, "shift end at")), now = Date.parse(asOf)
-    const activeLabel = !/(off|rest|break|leave)/i.test(shift)
-    const activeWindow = Number.isFinite(shiftStart) && Number.isFinite(shiftEnd) ? now >= shiftStart && now <= shiftEnd : activeLabel
-    const active = activeLabel && activeWindow
-    const nextDueAt = sheetText(row, "next heartbeat due at")
-    const due = Date.parse(nextDueAt)
-    const overdueMinutes = active && Number.isFinite(due) ? Math.max(0, Math.floor((now - due) / 60_000)) : 0
-    const status: LiveHeartbeatStream["status"] = !active ? "Not evaluated" : escalationMinutes !== null && overdueMinutes > escalationMinutes ? "Escalated" : overdueMinutes > 0 ? "Overdue" : "Current"
-    return { id: sheetText(row, "actor id"), name: sheetText(row, "display name") || sheetText(row, "actor id"), role: sheetText(row, "role") || "Role not recorded", theatre: theatreNames.get(sheetText(row, "theatre id")) || sheetText(row, "theatre id") || "Theatre not recorded", studio: studioNames.get(sheetText(row, "studio id")) || sheetText(row, "studio id") || "Studio not recorded", shift, lastAt: sheetText(row, "last heartbeat at"), nextDueAt, updatedAt: sheetText(row, "updated at"), active, overdueMinutes, status }
-  }).sort((left, right) => ({ Escalated: 4, Overdue: 3, Current: 2, "Not evaluated": 1 }[right.status] - ({ Escalated: 4, Overdue: 3, Current: 2, "Not evaluated": 1 }[left.status])))
-  return { asOf, escalationMinutes, streams, active: streams.filter((stream) => stream.active), alerts: streams.filter((stream) => stream.status === "Overdue" || stream.status === "Escalated") }
-}
-
-function LiveHeartbeatPanel({ liveData }: { liveData: { asOf?: string; people?: readonly SheetRow[]; theatres?: readonly SheetRow[]; studios?: readonly SheetRow[]; policies?: readonly SheetRow[] } }) {
-  const projection = useMemo(() => buildLiveHeartbeatProjection(liveData), [liveData])
-  const current = projection.active.filter((stream) => stream.status === "Current").length
-  const escalated = projection.alerts.filter((stream) => stream.status === "Escalated").length
-  const highest = projection.alerts[0]
-  return <details className="system-monitoring-details">
-    <summary>Who has gone quiet</summary><div className="system-monitoring-body">
-      <section className="heartbeat-status-band" aria-label="Live Sheet check-in status"><div><Activity aria-hidden /><p><strong>Connected Google Sheet · read-only</strong><span>People roster evaluated as of {formatDateTime(projection.asOf)}</span></p></div></section>
-      {highest ? <section className="heartbeat-priority" aria-live="assertive"><div className="heartbeat-priority-icon"><BellRing aria-hidden /></div><div><p className="heartbeat-kicker">HIGHEST-PRIORITY RECORDED HEARTBEAT GAP</p><strong>{highest.name}</strong><p className="heartbeat-fact">{highest.overdueMinutes} minutes past the recorded next heartbeat due time.</p></div></section> : <section className="heartbeat-clear"><ShieldCheck aria-hidden /><div><strong>No active-shift heartbeat breach is recorded.</strong><span>People outside their recorded shift window are not evaluated.</span></div></section>}
-      <section className="heartbeat-metrics" data-kpi-group aria-label="Who has gone quiet"><article><span>ACTIVE STREAMS</span><strong>{projection.active.length}</strong><p>Inside recorded shift windows</p></article><article><span>SIGNALS CURRENT</span><strong>{current}</strong><p>Before recorded next due time</p></article><article><span>ACTIVE BREACHES</span><strong>{projection.alerts.length}</strong><p>Past recorded next due time</p></article><article><span>ESCALATED</span><strong>{escalated}</strong><p>Past governed escalation window</p></article><article><span>NOT EVALUATED</span><strong>{projection.streams.length - projection.active.length}</strong><p>Outside recorded shift window</p></article></section>
-      <section className="heartbeat-section"><header><div><p className="heartbeat-kicker">ACTIVE ALERTS</p><h2>Silence that needs a check now</h2></div><p>{projection.alerts.length} live Sheet alert{projection.alerts.length === 1 ? "" : "s"}</p></header>{projection.alerts.length ? <div className="heartbeat-alert-list">{projection.alerts.map((stream, index) => <article key={stream.id}><div className="heartbeat-alert-rank">{String(index + 1).padStart(2, "0")}</div><div className="heartbeat-alert-main"><strong>{stream.name}</strong><p>{stream.role} · {stream.theatre} · {stream.studio}</p><p>{stream.overdueMinutes} min overdue · next heartbeat was due {formatDateTime(stream.nextDueAt)}</p></div><div className="heartbeat-alert-state"><span>{stream.status}</span><small>People</small></div></article>)}</div> : <p className="illustrative-note">No active alert row is derived from the current People Sheet.</p>}</section>
-      <section className="heartbeat-section"><header><div><p className="heartbeat-kicker">ALL MONITORED STREAMS</p><h2>Recorded people heartbeat status</h2></div><p>{projection.streams.length} People row{projection.streams.length === 1 ? "" : "s"}</p></header><OperationalCardStack label="Live People heartbeat streams">{projection.streams.map((stream) => <OperationalCard key={stream.id} title={stream.name} domain={`${stream.role} · ${stream.theatre} · ${stream.studio}`} status={stream.status} fields={[{ label: "Shift", value: stream.shift }, { label: "Last signal", value: formatDateTime(stream.lastAt || null) }, { label: "Next due", value: formatDateTime(stream.nextDueAt || null) }, { label: "Source updated", value: formatDateTime(stream.updatedAt || null) }]} action={stream.active ? "Follow the recorded heartbeat control" : "No action outside recorded shift"} showProgress={false} />)}</OperationalCardStack></section>
-      <div className="heartbeat-lower-grid"><section className="heartbeat-section heartbeat-rules"><header><div><p className="heartbeat-kicker">GOVERNED RULE</p><h2>What counts as a heartbeat</h2></div></header><p>Next heartbeat due time comes from People. {projection.escalationMinutes === null ? "An escalation threshold is not recorded in Policy_Registry, so no escalation is inferred." : `Escalation occurs ${projection.escalationMinutes} minutes after that recorded deadline.`}</p></section><section className="heartbeat-section heartbeat-audit"><header><div><p className="heartbeat-kicker">GOVERNED AUDIT</p><h2>Alert and acknowledgment log</h2></div></header><p>No local acknowledgment is written. Acknowledgments appear only when a governed Sheet log is connected.</p></section></div>
-    </div></details>
-}
 
 function formatTime(timestamp: string) {
   return new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(timestamp)) + " IST"
@@ -200,7 +109,7 @@ function SignalIdentity({ stream }: { stream: EvaluatedHeartbeat }) {
   return <div className="heartbeat-identity"><strong>{stream.name}</strong><span>{stream.role} · {stream.theatre} · {stream.location}</span></div>
 }
 
-export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, onValidateAction, liveData }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; onValidateAction: (actionId: string) => void; liveData?: { asOf?: string; actions?: readonly SheetRow[]; incidents?: readonly SheetRow[]; people?: readonly SheetRow[]; evidence?: readonly SheetRow[]; approvals?: readonly SheetRow[]; theatres?: readonly SheetRow[]; studios?: readonly SheetRow[]; policies?: readonly SheetRow[] } }) {
+export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; onValidateAction: (actionId: string) => void }) {
   const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>(initialHeartbeatSnapshot)
   const [paused, setPaused] = useState(false)
   const [polling, setPolling] = useState(false)
@@ -225,24 +134,21 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   }, [])
 
   useEffect(() => {
-    if (liveData) return
     void poll()
-  }, [liveData, poll])
+  }, [poll])
 
   useEffect(() => {
-    if (liveData || paused) return
+    if (paused) return
     const timer = window.setInterval(() => void poll(), HEARTBEAT_POLL_INTERVAL_SECONDS * 1000)
     return () => window.clearInterval(timer)
-  }, [liveData, paused, poll])
+  }, [paused, poll])
 
   const acknowledgedIds = useMemo(() => new Set(snapshot.action_log.filter((entry) => entry.action_type === "alert_acknowledged").map((entry) => entry.heartbeat_id)), [snapshot.action_log])
   const openAlerts = snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id))
   const highestAlert = openAlerts[0]
   const actionLog = snapshot.action_log
   const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, EXECUTION_REPORT_AS_OF), [commitments])
-  const liveActions = useMemo(() => buildLiveDespatchActions(liveData), [liveData])
-  const liveHeartbeat = useMemo(() => buildLiveHeartbeatProjection(liveData), [liveData])
-  const ownerItems: readonly DespatchOwnerItem[] = liveData ? liveActions.map((record): DespatchOwnerItem => ({ kind: "live-action", id: record.id, owner: record.owner, tone: record.state.toLowerCase() === "reopened" ? "critical" : Date.parse(record.dueAt) < Date.now() ? "breach" : "attention", record })) : [
+  const ownerItems: readonly DespatchOwnerItem[] = [
     ...escalations.map((record): DespatchOwnerItem => ({ kind: "escalation", id: record.escalationId, owner: record.ownerRole, tone: record.severity === "Critical" ? "critical" : record.severity === "Breach" ? "breach" : "attention", record })),
     ...openAlerts.map((record): DespatchOwnerItem => ({ kind: "heartbeat", id: record.id, owner: record.role, tone: record.status === "escalated" ? "critical" : "breach", record })),
     ...validationQueue.map((record): DespatchOwnerItem => ({ kind: "verification", id: record.id, owner: record.owner, tone: "attention", record })),
@@ -287,12 +193,12 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   }
 
   return <DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
-    { title: "What needs doing next", summary: `${ownerItems.length} live Sheet actions ordered by urgency` },
+    { title: "What needs doing next", summary: `${escalationTotal + openAlerts.length + validationQueue.length} active actions ordered by urgency` },
     ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
-    { title: "Who has gone quiet", summary: liveData ? `${liveHeartbeat.alerts.length} live Sheet breaches · ${liveHeartbeat.alerts.filter((stream) => stream.status === "Escalated").length} escalated` : `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` },
+    { title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` },
   ]}>
     <section className="heartbeat-section despatch-escalation-section" aria-labelledby="despatch-escalation-title">
-      <header><div><p className="heartbeat-kicker">NEXT ACTIONS</p><h2 id="despatch-escalation-title">What needs doing next</h2></div><p>{ownerItems.length} live Sheet action{ownerItems.length === 1 ? "" : "s"} · ordered by urgency</p></header>
+      <header><div><p className="heartbeat-kicker">NEXT ACTIONS</p><h2 id="despatch-escalation-title">What needs doing next</h2></div><p>{escalationTotal + openAlerts.length + validationQueue.length} active · ordered by urgency</p></header>
       {ownerClusters.length > 0 ? <div className={`despatch-verdict is-${ownerClusters[0].tone}`} data-tone={ownerClusters[0].tone} role="status">
         <b className="despatch-verdict-pill">{ownerClusters[0].tone === "critical" ? "Act now" : ownerClusters[0].tone === "breach" ? "Breach open" : "Needs attention"}</b>
         <span><strong>{ownerClusters[0].owner}</strong> owns the most urgent action of {ownerClusters.length} owner{ownerClusters.length === 1 ? "" : "s"} waiting.</span>
@@ -302,21 +208,6 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
         {ownerClusters.map((cluster) => <section className={`despatch-owner-cluster is-${cluster.tone}`} data-tone={cluster.tone} data-count={cluster.items.length} key={cluster.owner}>
           <header><div><strong>{cluster.owner}</strong><span>{cluster.items.length} action{cluster.items.length === 1 ? "" : "s"}</span></div><i aria-hidden /></header>
           <OperationalCardStack label={`${cluster.owner} actions`}>{cluster.items.map((item) => {
-            if (item.kind === "live-action") {
-              const action = item.record
-              const baseline = Number(action.baseline), target = Number(action.target)
-              const hasScale = Number.isFinite(baseline) && Number.isFinite(target) && Math.max(Math.abs(baseline), Math.abs(target)) > 0
-              const scale = Math.max(Math.abs(baseline), Math.abs(target), 1)
-              return <OperationalCard key={item.id} title={action.objective} subtitle={action.context} status={action.state} tone={item.tone} domain={action.source}
-                fields={[{ label: "Owner", value: action.owner }, { label: "Due", value: <time dateTime={action.dueAt}>{formatDateTime(action.dueAt || null)}</time> }]}
-                progress={action.state.toLowerCase() === "proof submitted" ? "evidence" : "working"}
-                optic={hasScale ? { label: `${action.metric}: ${action.baseline} → ${action.target}`, percent: Math.abs(baseline) / scale * 100, markerPercent: Math.abs(target) / scale * 100 } : undefined}
-                action={action.nextAction} cause={action.rootCause || undefined} description={<p>{action.source} · {action.id}</p>} story={[
-                  { label: "Why it matters", value: action.metric ? `${action.metric}: recorded baseline ${action.baseline || "not recorded"}; recorded target ${action.target || "not recorded"}.` : action.context },
-                  { label: "What Nia already did", value: `Action_Log state: ${action.state}. Evidence_Log: ${action.evidenceStatus}. Approval_Log: ${action.approvalStatus}.` },
-                  { label: "What happens next", value: action.nextAction },
-                ]} />
-            }
             if (item.kind === "escalation") {
               const escalation = item.record
               return <OperationalCard
@@ -387,7 +278,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
 
     {loopHealth ? <LoopHealthStrip health={loopHealth} /> : null}
 
-    {liveData ? <LiveHeartbeatPanel liveData={liveData} /> : <details className="system-monitoring-details">
+    <details className="system-monitoring-details">
       <summary>Who has gone quiet</summary>
       <div className="system-monitoring-body">
     <section className="heartbeat-status-band" aria-label="Live check-in status">
@@ -452,6 +343,6 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </section>
     </div>
       </div>
-    </details>}
+    </details>
   </DashboardSectionAccordion>
 }

@@ -22,7 +22,7 @@ export function DemandMapWorkspace({ onClose }: { onClose: () => void }) {
     setMessage("Synthetic fixture CSV prepared locally. No external system was contacted.")
   }
 
-  return <section className="scout-map" aria-label="Synthetic Shram Park scout map">
+  return <section className="scout-map" aria-label="Synthetic Śram Park scout map">
     <header className="scout-map-header">
       <div>
         <button type="button" onClick={onClose} className="scout-back"><ArrowLeft aria-hidden />Route plan</button>

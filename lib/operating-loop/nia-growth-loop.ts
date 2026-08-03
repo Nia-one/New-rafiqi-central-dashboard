@@ -2,7 +2,7 @@ import type { LoopHealth } from "@/lib/operating-loop/loop-health"
 import { createDespatchEscalation, projectLoopHealth, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
 export const NIA_GROWTH_AT = "2026-07-17T15:30:00+05:30"
-export const NIA_GROWTH_QUESTION = "Where should Nia add capacity next, through FONO or Shram Park, without creating unapproved capital risk?"
+export const NIA_GROWTH_QUESTION = "Where should Nia add capacity next, through FONO or Śram Park, without creating unapproved capital risk?"
 
 export const NIA_GROWTH_POLICY_REGISTRY = Object.freeze([
   Object.freeze({ policyId: "POL-GROWTH-SUPPLY-MODEL", name: "Mandatory supply-model context", value: "FONO | SP", unit: "enum", version: 1, status: "Active", approver: "Sachin", source: "Locked Nia Growth scope" }),

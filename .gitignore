@@ -8,11 +8,11 @@ node_modules
 .next/
 .env*.local
 .DS_Store
-.env.local
-service-account.json
-.vercel
-.env*
 *.log
+*.tsbuildinfo
+.vercel/
+service-account.json
+migration-backups/
 tmp/
+artifacts/
 outputs/
-~$*

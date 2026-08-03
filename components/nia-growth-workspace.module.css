@@ -76,7 +76,7 @@
 .laneMetrics dd { margin: 5px 0 0; font-size: 14px; font-weight: var(--weight-semibold); }
 .laneMetrics small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.35; }
 .stageRail { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-top: 18px; }
-.stageRail > div { position: relative; min-width: 0; padding: 13px 8px 0 0; border-top: 2px solid #d9dee6; }
+.stageRail > div { position: relative; min-width: 0; padding: 13px 8px 0 0; border-top: 2px solid var(--border); }
 .stageRail > div > i { position: absolute; top: -6px; left: 0; width: 10px; height: 10px; border: 2px solid var(--surface); border-radius: 50%; background: var(--muted); box-shadow: 0 0 0 1px var(--muted); }
 .stageRail > div[data-stage-state="Complete"] { border-color: var(--teal); }
 .stageRail > div[data-stage-state="Complete"] > i { background: var(--teal); box-shadow: 0 0 0 1px var(--teal); }
@@ -163,6 +163,6 @@
   .lane > header { grid-template-columns: auto 1fr; }
   .lane > header > b { grid-column: 2; }
   .stageRail { grid-template-columns: 1fr; gap: 10px; }
-  .stageRail > div { padding-top: 9px; padding-left: 14px; border-top: 0; border-left: 2px solid #d9dee6; }
+  .stageRail > div { padding-top: 9px; padding-left: 14px; border-top: 0; border-left: 2px solid var(--border); }
   .stageRail > div > i { top: 10px; left: -6px; }
 }

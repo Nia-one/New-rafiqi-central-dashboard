@@ -34,19 +34,6 @@ export type MemberFeedbackItem = {
   npsResponseId: string | null
 }
 
-export function mapSheetFeedbackItem(row: Record<string, unknown>): MemberFeedbackItem {
-  const pillar = String(row.pillar)
-  const risk = String(row["exit risk"])
-  return {
-    id: String(row.id || ""), actionId: String(row["action id"] || ""), memberToken: String(row["member token"] || ""),
-    pillar: (["Living", "Work", "Essentials", "General"].includes(pillar) ? pillar : "General") as FeedbackPillar,
-    category: String(row.category || "General Member feedback"), theatre: String(row.theatre || ""), studio: String(row.studio || ""),
-    summary: String(row.summary || ""), capturedAt: String(row["captured at"] || ""), source: String(row.source) === "Chatbot" ? "Chatbot" : "Monthly NPS",
-    exitRisk: (["Immediate attention", "Watch closely", "Monitor"].includes(risk) ? risk : "Monitor") as ExitRisk,
-    rawConversationRef: "", npsResponseId: row["nps response id"] ? String(row["nps response id"]) : null,
-  }
-}
-
 export type NpsResponse = {
   id: string
   memberToken: string

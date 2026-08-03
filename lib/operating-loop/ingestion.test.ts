@@ -32,9 +32,9 @@ function input(rows: SheetImportInput["rows"]): SheetImportInput {
   return { batchId: "BATCH-001", sourceId: "SRC-DEMAND", sourceName: "Synthetic branch fixture", googleSheetId: "SHEET-TEST", importedAt, synthetic: true, rows }
 }
 
-test("the workbook manifest preserves all 16 governed intake tabs and 333 fields", () => {
+test("the workbook manifest preserves all 16 governed intake tabs and 328 fields", () => {
   assert.equal(OPERATING_INTAKE_TABS.length, 16)
-  assert.equal(Object.values(WORKBOOK_FIELD_COUNTS).reduce((sum, count) => sum + count, 0), 333)
+  assert.equal(Object.values(WORKBOOK_FIELD_COUNTS).reduce((sum, count) => sum + count, 0), 328)
   assert.equal(PHASE_ONE_TAB_CONTRACTS.find((contract) => contract.tab === "Studio_Master")?.fields.length, 22)
   assert.equal(PHASE_ONE_TAB_CONTRACTS.find((contract) => contract.tab === "Enterprise_Demand")?.fields.length, 22)
   assert.ok(METRIC_REGISTRY.some((metric) => metric.metricId === "MET-ACTIVATIONS-VERIFIED"))

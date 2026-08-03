@@ -1,4 +1,4 @@
-# Rafiqi Central design system
+# RafiQi Central design system
 
 Status: locked product-wide contract
 Scope: Self Drive, Self Learn, Finance, legacy views and shared controls
@@ -9,7 +9,7 @@ Self Drive follows the mandatory action-first contract in [`CLAUDE.md`](../CLAUD
 
 ## One system
 
-Every page uses the same global dark tokens and component primitives. A route may change layout to fit its job, but it may not redefine the product palette, typography, control chrome or status mapping. The demand map remains part of the same dark system.
+Every page uses the same mixed-shell tokens and component primitives: one near-black navigation rail with a white/soft-grey operating canvas. A route may change layout to fit its job, but it may not redefine the product palette, typography, control chrome or status mapping. There is no route-specific theme fork.
 
 ## Tokens
 
@@ -17,13 +17,13 @@ The source of truth is `app/globals.css`.
 
 | Token | Value | Use |
 |---|---|---|
-| `--ink` | `#F5F5F7` | Primary text |
-| `--muted` | `#A1A1AA` | Secondary text |
-| `--faint` | `#7C8190` | Tertiary and placeholder text |
-| `--border` | `#2B313D` | Hairlines and dividers |
-| `--surface` | `#11141B` | Cards and panels |
-| `--bg` / `--canvas` | `#080A0F` | Application background |
-| `--accent` | Apple blue / indigo | Interaction, selected state and focus only |
+| `--ink` | `#17191B` | Primary text and selected states |
+| `--muted` | `#6E7378` | Secondary text |
+| `--faint` | `#90959A` | Tertiary and placeholder text |
+| `--border` | `#E1E3E5` | Hairlines and dividers |
+| `--surface` | `#FFFFFF` | Working surfaces |
+| `--bg` / `--canvas` | `#F7F7F8` | Application background |
+| `--accent` | neutral near-black | Interaction, selected state and focus only |
 
 Feature styles must consume these tokens. They must not redeclare `--ink`, `--muted`, `--surface`, `--bg`, `--accent` or the font stack.
 
@@ -37,10 +37,10 @@ Feature styles must consume these tokens. They must not redeclare `--ink`, `--mu
 
 ## Interaction
 
-- Blue is reserved for links, selected states, focus and interactive controls.
+- Blue is not part of the product palette. Selected and focus states use black/grey; colour is reserved for genuine status and exceptions.
 - Focus is a soft, two-pixel `--focus-ring`; never native browser chrome.
 - Native `select` controls are prohibited. Use `components/token-select.tsx`.
-- Static cards and data displays use near-black surfaces, white ink and neutral grey. Blue and indigo remain functional, not decorative.
+- Static displays use white surfaces, dark ink and neutral grey. The global rail is the only persistent dark surface.
 
 ## Semantic tone
 

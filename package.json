@@ -7,7 +7,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "sync:member-feedback": "tsx scripts/sync-member-feedback.ts",
     "test": "tsx --test lib/*.test.ts lib/operating-loop/*.test.ts components/*.test.ts"
   },
   "dependencies": {
@@ -15,9 +14,6 @@
     "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dotenv": "^17.4.2",
-    "google-auth-library": "^10.9.0",
-    "googleapis": "^173.0.0",
     "leaflet": "1.9.4",
     "lucide-react": "^1.16.0",
     "next": "16.2.6",

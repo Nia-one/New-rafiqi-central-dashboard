@@ -61,7 +61,7 @@ test("a newly diagnosed entity uses the engine action template and scoring contr
   assert.notEqual(scoreComponents(generated), NO_DATA)
 })
 
-test("Shram Park supply qualifies only within 2km and the 24h SLA by the required date", () => {
+test("Śram Park supply qualifies only within 2km and the 24h SLA by the required date", () => {
   const byId = Object.fromEntries(supplyOptions.map((option) => [option.id, isEligibleSupply(option)]))
   assert.equal(byId["opt-hosur"], true)
   assert.equal(byId["opt-chakan"], false) // 2.6km > 2km

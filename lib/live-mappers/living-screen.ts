@@ -2,7 +2,7 @@ import type { DemandProximityNode, FunnelStage } from "@/lib/operating-data"
 
 type Row = Record<string, any>
 const n = (value: unknown) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0 }
-const value = (row: Row, key: string) => String(row?.[key] ?? "").trim()
+const value = (row: Row | undefined, key: string) => String(row?.[key] ?? "").trim()
 const percent = (numerator: number, denominator: number) => denominator > 0 ? Math.round(numerator / denominator * 100) : 0
 const displayDate = (input: string) => {
   const date = new Date(input)

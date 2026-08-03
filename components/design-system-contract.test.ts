@@ -17,9 +17,11 @@ function filesBelow(directory: string): string[] {
 }
 
 test("the product-wide token contract is present at the global source", () => {
-  for (const token of ["color-scheme: dark", "--ink: #F5F2EB", "--muted: #8C8574", "--faint: #6F6858", "--border: #2F2B23", "--surface: #1B1915", "--bg: #12110E"]) assert.match(globals, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"))
+  for (const token of ["color-scheme: light", "--ink: #17191B", "--muted: #6E7378", "--faint: #90959A", "--border: #E1E3E5", "--surface: #FFFFFF", "--bg: #F7F7F8"]) assert.match(globals, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"))
   assert.match(globals, /--tracking-heading:\s*-\.012em/)
   assert.match(globals, /--weight-heading:\s*600/)
+  assert.match(globals, /\.central-rail[^}]+background:\s*#0(?:9090a|b0b0c)/)
+  assert.match(globals, /--nia-blue:\s*#303438/i, "legacy token alias must resolve to neutral charcoal, not blue")
 })
 
 test("all application selects use the shared token selector", () => {

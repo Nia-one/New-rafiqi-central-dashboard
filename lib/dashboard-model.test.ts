@@ -7,12 +7,13 @@ const bannedTerms = ["resident", "tenant", "PG", "hostel", "bed", "rent"]
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8")
 const dashboardShell = readFileSync(new URL("../components/nia-dashboard.tsx", import.meta.url), "utf8")
+const sidebarShell = readFileSync(new URL("../components/central-sidebar.tsx", import.meta.url), "utf8")
 const flywheelOverview = readFileSync(new URL("../components/overview/flywheel-overview.tsx", import.meta.url), "utf8")
 const todayMtdFunnel = readFileSync(new URL("../components/today-mtd-funnel.tsx", import.meta.url), "utf8")
 const nextConfig = readFileSync(new URL("../next.config.mjs", import.meta.url), "utf8")
 const approvedTokens = {
-  canvas: "#12110E", bg: "#12110E", surface: "#1B1915",
-  ink: "#F5F2EB", muted: "#8C8574", faint: "#6F6858", border: "#2F2B23",
+  canvas: "#F7F7F8", bg: "#F7F7F8", surface: "#FFFFFF",
+  ink: "#17191B", muted: "#6E7378", faint: "#90959A", border: "#E1E3E5",
 }
 
 test("visual system uses the approved font stack and semantic tokens", () => {
@@ -36,7 +37,7 @@ test("visual system uses semantic tones and reserves blue for interaction", () =
 test("top navigation uses exact business-model order without former screens", () => {
   assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
   assert.equal(DASHBOARD_TABS.at(-1), "Despatch")
-  for (const former of ["Shram Park", "FONO", "Demand"]) assert.equal((DASHBOARD_TABS as readonly string[]).includes(former), false)
+  for (const former of ["Śram Park", "FONO", "Demand"]) assert.equal((DASHBOARD_TABS as readonly string[]).includes(former), false)
 })
 
 test("release-off navigation preserves the exact legacy tabs and landing route", () => {
@@ -58,14 +59,26 @@ test("Self Drive preserves internal routes while presenting Member Adds", () => 
   assert.equal(workspaceLandingTab("finance"), "Finance control")
 })
 
-test("platform shell uses a top workspace switch with no permanent rail", () => {
+test("platform shell uses the compact permanent rail and utility bar", () => {
   assert.match(dashboardShell, /className="platform-utility"/)
-  assert.match(dashboardShell, /<ModeSelect/)
-  assert.match(css, /\.mode-select-trigger/)
-  assert.match(dashboardShell, /Self Drive/)
-  assert.match(dashboardShell, /Self Learn/)
-  assert.doesNotMatch(dashboardShell, /<aside className="central-rail"/)
-  assert.doesNotMatch(css, /grid-template-columns:\s*216px/)
+  assert.match(dashboardShell, /<CentralSidebar/)
+  assert.match(css, /\.central-rail/)
+  assert.match(sidebarShell, /Self Drive/)
+  assert.match(dashboardShell, /Search actions, studios or members/)
+  assert.match(dashboardShell, /Open Despatch/)
+  assert.match(css, /grid-template-columns:\s*248px\s+minmax\(0,\s*1fr\)/)
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.central-rail/)
+})
+
+test("every product page receives the compact context header, operating strip, and static work surface", () => {
+  assert.match(dashboardShell, /const PAGE_CONTEXT_ITEMS: Record<DashboardTab/)
+  assert.match(dashboardShell, /active !== "Enterprise Demand" \? <PageContextHeader active=\{active\}/)
+  assert.doesNotMatch(dashboardShell, /PageContextRail|page-context-rail/)
+  assert.match(dashboardShell, /className=\{`central-main x-page-shell/)
+  assert.match(dashboardShell, /<ContextStrip label=\{`\$\{sectionTitle\} context`\}/)
+  assert.doesNotMatch(dashboardShell, /className="x-page-details"/)
+  assert.match(css, /\.platform-workspace\.x-page-workspace/)
+  assert.match(css, /\.x-page-body \.dashboard-accordion-item/)
 })
 
 test("post-login starts directly in Self Drive instead of the obsolete chooser", () => {
@@ -81,9 +94,10 @@ test("local previews allow both supported development hosts", () => {
   assert.match(nextConfig, /allowedDevOrigins:\s*\["127\.0\.0\.1",\s*"localhost"\]/)
 })
 
-test("product naming uses Rafiqi Central consistently", () => {
+test("product naming uses RafiQi Central consistently", () => {
   const productCopy = `${layout}\n${dashboardShell}`
-  assert.match(productCopy, /Rafiqi Central/)
+  assert.match(productCopy, /RafiQi Central/)
+  assert.doesNotMatch(productCopy, /Rafiqi Central/)
   assert.doesNotMatch(productCopy, /\bNIA\b/)
   assert.doesNotMatch(productCopy, /Operating System/i)
 })
@@ -105,7 +119,7 @@ test("Today and MTD use tapered funnel segments rather than progress bars", () =
 })
 
 test("Living exposes all required subsections and Overview routes", () => {
-  assert.deepEqual(LIVING_SECTIONS, ["FONO", "Shram Park demand", "Shram Park supply", "Reconciliation"])
+  assert.deepEqual(LIVING_SECTIONS, ["FONO", "Śram Park demand", "Śram Park supply", "Reconciliation"])
   assert.deepEqual(OVERVIEW_ROUTES.contracted, { screen: "Living", subsection: "demand" })
   assert.deepEqual(OVERVIEW_ROUTES.capacity, { screen: "Living", subsection: "supply" })
   assert.deepEqual(OVERVIEW_ROUTES.active, { screen: "Living", subsection: "fono" })

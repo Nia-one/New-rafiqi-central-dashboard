@@ -15,7 +15,7 @@ test("Living, Essentials and People diagnostics match Overview action and owner 
   const queue = buildRankedQueue()
   const cases = [
     ["FONO Demand", "Members activated", "m-fono-idle-chakan"],
-    ["Shram Park Supply", "Viable inside 2km", "m-sram-shortfall-sriperumbudur"],
+    ["Śram Park Supply", "Viable inside 2km", "m-sram-shortfall-sriperumbudur"],
     ["Essentials Supply", "Studio filled", "m-ess-stockout-hosur"],
   ] as const
 

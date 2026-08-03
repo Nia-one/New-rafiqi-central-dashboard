@@ -28,17 +28,8 @@ test("workspace ends with an explicit owner-and-done-when ask before the footer"
   assert.match(componentSource, /<dt>Done when<\/dt>/)
 })
 
-test("the decision-required sentence follows live sign-offs, gap and Theatre scope", () => {
-  assert.match(componentSource, /const theatreRecoveryScope = theatresBehind\.length/)
-  assert.match(componentSource, /const decisionActions =/)
-  assert.match(componentSource, /openSignOff > 0/)
-  assert.match(componentSource, /gap > 0/)
-  assert.match(componentSource, /\{decisionHeadline\}/)
-  assert.doesNotMatch(componentSource, /the two Theatres below target/)
-})
-
-test("the first viewport renders contracted occupancy fields in order", () => {
-  const order = ["Contracted", "Occupied", "Vacant", "Owner", "Progress", "Source result"]
+test("the first viewport renders Target to verified result in the locked order", () => {
+  const order = ["Target", "Current", "Gap", "Owner", "Progress", "Verified result"]
   let cursor = componentSource.indexOf("const items")
   for (const label of order) {
     const next = componentSource.indexOf(`\"${label}\"`, cursor)
@@ -55,13 +46,13 @@ test("the workspace renders exactly four measure cards from the typed projection
   for (const label of ["Verified fills", "Adds by source", "Actual CAC & payback", "Arrival to billing live"]) assert.ok(preview.measures.some((row) => row.label === label))
 })
 
-test("the primary visual explains contracted occupancy, vacancy and fill time by Theatre", () => {
-  for (const marker of ["Empty spots by location", "vacant Nest", "Occupied Nests", "Contracted Nests", "Vacancy gap", "Vacant Nests", "Average fill time", "targetLine"]) assert.match(componentSource, new RegExp(marker))
+test("the primary visual explains today's Member target, remaining vacancy and fill time by Theatre", () => {
+  for (const marker of ["Empty spots by location", "needs", "more Member", "Members billing", "Still needed", "Vacant Nests", "Average fill time", "targetLine"]) assert.match(componentSource, new RegExp(marker))
   for (const theatre of ["Oragadam", "Sriperumbudur", "Hosur"]) assert.ok(buildNewAddsPreview().theatres.some((row) => row.theatre === theatre))
 })
 
-test("the component remains contracted FONO-SP-only and does not create a second report or shared shell", () => {
-  assert.match(componentSource, /data-source-scope=\"FONO Funnel and Shram Park\"/)
+test("the component remains FONO-only and does not create a second report or shared shell", () => {
+  assert.match(componentSource, /data-supply-model=\"FONO\"/)
   assert.doesNotMatch(componentSource, /nia-dashboard|dashboard-model|OPERATIONS_TABS|Rafiqi Inside|Self Learn|LoopHealth|loop-health/)
   assert.doesNotMatch(componentSource, /supplyModel:\s*\"SP\"|data-supply-model=\"SP\"/)
 })
@@ -73,44 +64,6 @@ test("shadow recovery is functional and no live side-effect path exists", () => 
   assert.match(componentSource, /setAudit\(\(current\) => \[\.\.\.current, Object\.freeze/)
   assert.match(componentSource, /No message or Production write/)
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|use server|server action|navigator\.geolocation/)
-})
-
-test("live vacancy list is read-only and sourced from Fono Funnel and Shram Park", () => {
-  assert.match(componentSource, /buildLiveNewAddsVacancyGroups/)
-  assert.match(componentSource, /Fono Funnel \+ Shram Park · read-only/)
-  for (const column of ["Contracted", "Occupied", "Occupancy", "Pending to fill"]) assert.match(componentSource, new RegExp(column))
-})
-
-test("Member Adds sign-off combines auto-derived Studio vacancies with the live Approval_Log queue", () => {
-  assert.match(componentSource, /const derivedRecoverySignOffs = liveData/)
-  assert.match(componentSource, /AUTO-FILL-/)
-  assert.match(componentSource, /Auto-derived from Studios/)
-  assert.match(componentSource, /Approval_Log.*Not required to generate/)
-  assert.match(componentSource, /const signOffCountLabel = openSignOff === 0/)
-  assert.match(componentSource, /openSignOff === 1 \? " is" : "s are"/)
-  assert.match(componentSource, /liveSignOffs\[0\]\?\.title \|\| derivedRecoverySignOffs\[0\]\?\.title/)
-  assert.match(componentSource, /liveSignOffs\[0\]\?\.owner \|\| derivedRecoverySignOffs\[0\]\?\.owner/)
-  assert.match(componentSource, /\{signOffCountLabel\}/)
-  assert.match(componentSource, /\{signOffImplication\}/)
-})
-
-test("Proof and controls governance is live from Policy_Registry and Approval_Log", () => {
-  assert.match(componentSource, /liveData\?\.policies\.filter/)
-  assert.match(componentSource, /POL-NEW-ADDS-/)
-  assert.match(componentSource, /liveControlPolicies/)
-  assert.match(componentSource, /liveSafetyPolicies/)
-  assert.match(componentSource, /liveApprovals\.map/)
-  assert.match(componentSource, /Governed cost rules and approvals/)
-  assert.match(componentSource, /active Member Adds capability boundaries are registered in Policy_Registry/)
-})
-
-test("Source and confidence uses live freshness, validation and complete Sheet lineage", () => {
-  assert.match(componentSource, /sourceConfidenceSummary/)
-  assert.match(componentSource, /liveProof\?\.loopHealth\.feeds\.filter/)
-  assert.match(componentSource, /quarantineCount: liveProof\?\.loopHealth\.quarantinedRecords/)
-  for (const source of ["Fono Funnel", "TEAM_SHRAMPARK_DEMAND", "Enterprise_Demand", "Action_Log", "Evidence_Log", "Approval_Log", "People_Roster"]) {
-    assert.match(componentSource, new RegExp(source))
-  }
 })
 
 test("domain styles are scoped, calm, responsive and contain no pure-black hero or gradient", () => {
@@ -138,7 +91,7 @@ test("the visible R-0 strip and Despatch rows use the shared domain projection",
 })
 
 test("Member Adds is the visible label while internal New Adds contracts stay intact", () => {
-  for (const label of ["Today's target vs actual", "Member Adds source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
+  for (const label of ["Today's target vs actual", "Synthetic Member Adds source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
   assert.match(componentSource, /resolveNewAddsShadowOutcome/)
   assert.match(componentSource, /OperationalCardStack/)
   assert.doesNotMatch(componentSource, /aria-label="New Adds/)

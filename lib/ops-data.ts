@@ -1,11 +1,9 @@
-﻿import source from "@/data/ops-data.json"
-
+import source from "@/data/ops-data.json"
 import { ACTION_LOG_BLOCK_START, ACTION_LOG_REFERENCE_AT, actorStalenessHours, closuresBetween, seedActionLog, type ActionLogEntry } from "@/lib/action-log"
 
-export type Lane = "Shram Park" | "FONO" | "Demand" | "Essentials" | "Economics"
+export type Lane = "Śram Park" | "FONO" | "Demand" | "Essentials" | "Economics"
 export type SpineMetric = (typeof source.spine)[number]
 export type Constraint = (typeof source.constraints)[number]
-
 
 export const opsData = source
 export const APPROVED_SPINE_LABELS = ["Demand contracted", "Capacity live", "Members active", "Attach", "ARPU", "CM"] as const
@@ -33,7 +31,7 @@ export function formatBlockChange(change: { value: number; unit: string }) {
 }
 
 export function metricVariance(metric: SpineMetric) { return metric.actual - metric.plan }
-export function metricPace(metric: SpineMetric) { return metric.plan > 0 ? Math.round((metric.actual / metric.plan) * 100) : 0 }
+export function metricPace(metric: SpineMetric) { return Math.round((metric.actual / metric.plan) * 100) }
 export function rankedConstraints() { return [...opsData.constraints].sort((a, b) => b.impact - a.impact) }
 export function largestLeak() { return rankedConstraints()[0] }
 
@@ -105,5 +103,3 @@ export function assertOperatingModel() {
 }
 
 assertOperatingModel()
-
-

@@ -11,7 +11,7 @@ const brief = readFileSync(new URL("../docs/operating-data/SRAM_PARK_SCOUT_ROUTE
 test("the audited scout route remains available in code but no longer fragments Self Drive navigation", () => {
   assert.equal(OPERATIONS_TABS.filter((tab) => /Scout Route Plan/.test(tab)).length, 0)
   assert.equal(OPERATIONS_TABS.some((tab) => /Scouter.s Journey/.test(tab)), false)
-  assert.equal((dashboard.match(/Shram Park Scout Route Plan/g) ?? []).length, 0)
+  assert.equal((dashboard.match(/Śram Park Scout Route Plan/g) ?? []).length, 0)
   assert.doesNotMatch(screen, /15 km|15km|2 km and 5 km bands|Ready for field planning/)
   assert.equal(existsSync(new URL("../components/demand-leaflet-map.tsx", import.meta.url)), false)
   assert.equal(existsSync(new URL("./demand-map-data.ts", import.meta.url)), false)

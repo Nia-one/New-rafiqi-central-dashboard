@@ -85,6 +85,5 @@ test("operating states map to a consistent five-stage path", () => {
   assert.equal(actionStageFromStatus("Assigned"), "assigned")
   assert.equal(actionStageFromStatus("Retry scheduled"), "working")
   assert.equal(actionStageFromStatus("Evidence pending"), "evidence")
-  assert.equal(actionStageFromStatus("Awaiting verification"), "evidence")
   assert.equal(actionStageFromStatus("Verified"), "verified")
 })

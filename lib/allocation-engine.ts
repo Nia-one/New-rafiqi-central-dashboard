@@ -28,7 +28,7 @@ export const SCORE_CONFIG = {
   attention: { Unassigned: 1.15, Blocked: 1.1, Assigned: 1, "In progress": 0.75 } as Record<AttentionBucket, number>,
 } as const
 
-/** Shram Park eligibility: within 2km, inside the 24h sourcing SLA, and produced by the required date. */
+/** Śram Park eligibility: within 2km, inside the 24h sourcing SLA, and produced by the required date. */
 export const SHRAM_PARK_MAX_KM = 2
 export const SHRAM_PARK_SLA_HOURS = 24
 /** Essentials classification thresholds in days of cover. */
@@ -53,16 +53,9 @@ export function essentialsMatchKey(key: JoinKey) {
   return [key.theatreId, key.studioId ?? "no-studio", key.skuId ?? "no-sku", key.dateBucket ?? "no-date"].join(" | ")
 }
 export function matchKeyFor(domain: AllocationDomain, key: JoinKey) {
-  switch (domain) {
-    case "FONO":
-      return fonoMatchKey(key)
-
-    case "Essentials":
-      return essentialsMatchKey(key)
-
-    default:
-      return shramParkMatchKey(key)
-  }
+  if (domain === "Śram Park") return shramParkMatchKey(key)
+  if (domain === "FONO") return fonoMatchKey(key)
+  return essentialsMatchKey(key)
 }
 
 export type ActionLogContext = {
@@ -79,9 +72,9 @@ type StageMismatchOptions = ActionLogContext & {
  * If a newly diagnosed entity has no stored row yet, a fully specified fallback is
  * materialised through the same action-template contract as every other mismatch.
  */
-export function getMismatchForStage(domain: AllocationDomain, joinKey: JoinKey, options: StageMismatchOptions = {}, liveInputs: MismatchInput[] = mismatchInputs): Mismatch | undefined {
+export function getMismatchForStage(domain: AllocationDomain, joinKey: JoinKey, options: StageMismatchOptions = {}): Mismatch | undefined {
   const canonicalKey = matchKeyFor(domain, joinKey)
-  const stored = liveInputs.find((input) => input.domain === domain && matchKeyFor(input.domain, input.joinKey) === canonicalKey)
+  const stored = mismatchInputs.find((input) => input.domain === domain && matchKeyFor(input.domain, input.joinKey) === canonicalKey)
   const source = stored ?? options.fallbackInput
   if (!source) return undefined
 
@@ -105,7 +98,7 @@ export function isEligibleSupply(option: SupplyOption) {
   )
 }
 
-/** Index eligible options by their Shram Park match key for repeated lookups. */
+/** Index eligible options by their Śram Park match key for repeated lookups. */
 export function eligibleSupplyByKey(options: SupplyOption[] = supplyOptions) {
   const map = new Map<string, SupplyOption[]>()
   for (const option of options) {
@@ -211,10 +204,7 @@ export function buildNextAction(input: MismatchInput): { nextAction: string; act
 /* ------------------------------------------------------------------ */
 
 export function toMismatch(input: MismatchInput): Mismatch {
-  const suppliedAction = input.nextAction?.trim()
-  const action = suppliedAction
-    ? { nextAction: suppliedAction, actionBlocked: false }
-    : buildNextAction(input)
+  const action = buildNextAction(input)
   return {
     ...input,
     attentionBucket: action.actionBlocked ? "Blocked" : attentionBucketFor(input.actionStatus) ?? "Assigned",
@@ -225,12 +215,12 @@ export function toMismatch(input: MismatchInput): Mismatch {
 }
 
 export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
-  if (!isUnresolved(mismatch.actionStatus) || isNoData(mismatch.forwardCmAtRisk24h) || mismatch.scoringInputsAvailable === false) return NO_DATA
+  if (!isUnresolved(mismatch.actionStatus) || isNoData(mismatch.forwardCmAtRisk24h)) return NO_DATA
   const forwardCmAtRisk24h = mismatch.forwardCmAtRisk24h
   const urgency = urgencyMultiplier(mismatch.ageHours, mismatch.thresholdHours)
   const confidence = SCORE_CONFIG.confidence[mismatch.confidence]
   const attention = SCORE_CONFIG.attention[mismatch.attentionBucket]
-  const rawPriority = Number.isFinite(forwardCmAtRisk24h) && Number.isFinite(urgency) && Number.isFinite(mismatch.recoverableShare) && Number.isFinite(confidence) && Number.isFinite(attention) ? forwardCmAtRisk24h * urgency * mismatch.recoverableShare * confidence * attention : 0
+  const rawPriority = forwardCmAtRisk24h * urgency * mismatch.recoverableShare * confidence * attention
   return {
     forwardCmAtRisk24h,
     urgencyMultiplier: urgency,
@@ -242,24 +232,10 @@ export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
 }
 
 /** Open queue. Closed and Dismissed rows are excluded from scoring. */
-export function buildRankedQueue(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): RankedMismatch[] {
-  const unresolved = liveInputs
-    .map((input) => {
-      const existing = getMismatchForStage(input.domain, input.joinKey, { ...context, fallbackInput: input }, liveInputs)
-
-      if (existing) return existing
-
-      return {
-        ...input,
-        actionStatus: input.actionStatus ?? "Detected",
-        attentionBucket: "Assigned",
-        recoverableShare: input.recoverableShare ?? 1,
-        confidence: input.confidence ?? "Medium",
-        forwardCmAtRisk24h: input.forwardCmAtRisk24h ?? 0,
-        nextAction: input.nextAction || buildNextAction(input).nextAction,
-        actionBlocked: false,
-      } as Mismatch
-    })
+export function buildRankedQueue(context: ActionLogContext = {}): RankedMismatch[] {
+  const unresolved = mismatchInputs
+    .map((input) => getMismatchForStage(input.domain, input.joinKey, context))
+    .filter((mismatch): mismatch is Mismatch => mismatch !== undefined)
     .filter((mismatch) => isUnresolved(mismatch.actionStatus))
 
   const components = new Map<string, Measured<ScoreComponents>>()
@@ -295,15 +271,14 @@ export type DailyActionGrid = Record<ActionGridCategory, Record<(typeof THEATRES
  * Preserves the audited queue order while grouping open actions for the daily
  * Theatre × category matrix. A null cell means the feed is not instrumented.
  */
-export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): DailyActionGrid {
+export function buildDailyActionGrid(context: ActionLogContext = {}): DailyActionGrid {
   const grid = Object.fromEntries(ACTION_GRID_CATEGORIES.map((category) => [
     category,
-    Object.fromEntries(THEATRES.map((theatre) => [theatre, []])),
-  ])) as unknown as DailyActionGrid
-  grid.Work["Rajputana (NCR)"] = null
+    Object.fromEntries(THEATRES.map((theatre) => [theatre, category === "Work" ? null : []])),
+  ])) as DailyActionGrid
 
-  for (const mismatch of buildRankedQueue(context, liveInputs)) {
-    const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : mismatch.domain === "Work" ? "Work" : "Living"
+  for (const mismatch of buildRankedQueue(context)) {
+    const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : "Living"
     const theatre = THEATRES.find((name) => name === mismatch.theatre)
     if (!theatre) continue
     const actions = grid[category][theatre]
@@ -313,55 +288,11 @@ export function buildDailyActionGrid(context: ActionLogContext = {}, liveInputs:
   return grid
 }
 
-export function topUnresolved(context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): RankedMismatch | undefined {
-  return buildRankedQueue(context, liveInputs)[0]
+export function topUnresolved(context: ActionLogContext = {}): RankedMismatch | undefined {
+  return buildRankedQueue(context)[0]
 }
 
-export function mismatchById(id: string, context: ActionLogContext = {}, liveInputs: MismatchInput[] = mismatchInputs): Mismatch | undefined {
-  const input = liveInputs.find((item) => item.id === id)
-  return input ? getMismatchForStage(input.domain, input.joinKey, context, liveInputs) : undefined
+export function mismatchById(id: string, context: ActionLogContext = {}): Mismatch | undefined {
+  const input = mismatchInputs.find((item) => item.id === id)
+  return input ? getMismatchForStage(input.domain, input.joinKey, context) : undefined
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

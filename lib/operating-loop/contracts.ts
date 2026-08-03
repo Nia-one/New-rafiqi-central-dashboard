@@ -33,7 +33,7 @@ export const WORKBOOK_FIELD_COUNTS: Record<OperatingIntakeTab, number> = {
   Approval_Log: 15,
   Living_Hourly: 26,
   Work_Hourly: 21,
-  Essentials_Hourly: 31,
+  Essentials_Hourly: 26,
   Finance_Daily: 31,
   Member_Activation: 17,
 }
@@ -305,11 +305,11 @@ export const POLICY_REGISTRY: readonly PolicyDefinition[] = [
   { policyId: "POL-AUTONOMY-KILL-SWITCH", name: "Automatic execution kill switch", value: "Engaged", unit: "state", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Phase 5 shadow-mode default", version: 1 },
   { policyId: "POL-AUTONOMY-PEOPLE-ESCALATION", name: "Exception-only people escalation sequence", value: "Verified recurrence only: Coach / Counsel → Performance review → Exit review", unit: "stage sequence", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Phase 5 product correction", version: 1 },
   { policyId: "POL-AUTONOMY-EMPLOYMENT-DECISION", name: "Employment decision control", value: "Named HR/management approval plus legal/process checks", unit: "approval rule", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Phase 5 product correction", version: 1 },
-  { policyId: "POL-SP-SCOUT-TRIGGER-STAGE", name: "Shram Park scout activation stage", value: "Negotiation", unit: "funnel stage", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Shram Park Scout Route Plan locked product decision", version: 1 },
-  { policyId: "POL-SP-SCOUT-RING-1-MAX", name: "Shram Park Ring 1 maximum", value: 2, unit: "km inclusive", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Shram Park Scout Route Plan locked product decision", version: 1 },
-  { policyId: "POL-SP-SCOUT-RING-2-MAX", name: "Shram Park Ring 2 maximum", value: 5, unit: "km inclusive", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Shram Park Scout Route Plan locked product decision", version: 1 },
-  { policyId: "POL-SP-SCOUT-WEDGES", name: "Required wedges per scout ring", value: 8, unit: "wedges/ring", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Shram Park Scout Route Plan source brief", version: 1 },
-  { policyId: "POL-SP-SCOUT-SHARED-CATCHMENT-GATES", name: "Minimum SP gates for shared-catchment review", value: 2, unit: "verified SP gates", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Shram Park Scout Route Plan locked product decision", version: 1 },
+  { policyId: "POL-SP-SCOUT-TRIGGER-STAGE", name: "Śram Park scout activation stage", value: "Negotiation", unit: "funnel stage", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Śram Park Scout Route Plan locked product decision", version: 1 },
+  { policyId: "POL-SP-SCOUT-RING-1-MAX", name: "Śram Park Ring 1 maximum", value: 2, unit: "km inclusive", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Śram Park Scout Route Plan locked product decision", version: 1 },
+  { policyId: "POL-SP-SCOUT-RING-2-MAX", name: "Śram Park Ring 2 maximum", value: 5, unit: "km inclusive", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Śram Park Scout Route Plan locked product decision", version: 1 },
+  { policyId: "POL-SP-SCOUT-WEDGES", name: "Required wedges per scout ring", value: 8, unit: "wedges/ring", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Śram Park Scout Route Plan source brief", version: 1 },
+  { policyId: "POL-SP-SCOUT-SHARED-CATCHMENT-GATES", name: "Minimum SP gates for shared-catchment review", value: 2, unit: "verified SP gates", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Śram Park Scout Route Plan locked product decision", version: 1 },
   { policyId: "POL-SP-SCOUT-WEDGE-MINUTES", name: "Synthetic half-day wedge duration", value: 210, unit: "minutes", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Provisional shadow calibration; not approved for live routing", version: 1 },
   { policyId: "POL-SP-SCOUT-TARGET-RENT", name: "Synthetic target rent per Nest", value: 2500, unit: "INR/Nest/month", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Provisional synthetic fixture; calibrate before any live use", version: 1 },
   { policyId: "POL-SP-SCOUT-TARGET-CAPACITY", name: "Synthetic target candidate capacity", value: 250, unit: "Nests", effectiveFrom: "2026-07-17", approvedBy: "Sachin", status: "Active", source: "Provisional synthetic fixture; calibrate before any live use", version: 1 },
@@ -439,77 +439,5 @@ export type CanonicalActivation = {
   verifiedBy: string | null
   verificationStatus: string
   sourceSubmissionId: string
-  lineage: SourceLineage
-}
-
-
-export type CanonicalAction = {
-  actionId: string
-  incidentId: string
-  operatingObjective: string
-  expectedMetric: string
-  baselineValue: string
-  targetValue: string
-  expectedFinancialImpactInr: number
-  confidence: string
-  ownerActorId: string
-  dueAt: string
-  requiredEvidence: string
-  approvalTier: string
-  state: string
-  proposedAt: string
-  approvedAt: string | null
-  approvedBy: string | null
-  assignedAt: string | null
-  inProgressAt: string | null
-  proofSubmittedAt: string | null
-  proofEvidenceId: string | null
-  verifiedAt: string | null
-  verifiedBy: string | null
-  verificationResult: string | null
-  closedAt: string | null
-  reopenedAt: string | null
-  reopenReason: string | null
-  escalatedAt: string | null
-  sourceSubmissionId: string
-  updatedAt: string
-  lineage: SourceLineage
-}
-
-export type CanonicalEvidence = {
-  evidenceId: string
-  linkedType: string
-  linkedId: string
-  evidenceType: string
-  protectedUrl: string
-  uploadedByActorId: string
-  uploadedAt: string
-  description: string
-  geoLat: number | null
-  geoLng: number | null
-  verificationStatus: string
-  rejectedReason: string | null
-  retentionClass: string
-  sourceSubmissionId: string
-  updatedAt: string
-  lineage: SourceLineage
-}
-
-export type CanonicalApproval = {
-  approvalId: string
-  linkedActionId: string
-  decisionType: string
-  amountInr: number
-  currentTerms: string
-  proposedTerms: string
-  businessReason: string
-  expectedResult: string
-  approverRole: string
-  approverActorId: string | null
-  decision: string
-  decisionReason: string
-  decidedAt: string
-  sourceSubmissionId: string
-  updatedAt: string
   lineage: SourceLineage
 }

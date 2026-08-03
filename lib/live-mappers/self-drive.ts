@@ -346,8 +346,7 @@ function fillTaskState(value: string): FillTask["state"] {
   if (state === "reopened") return "Reopened"
   if (["in progress", "proof submitted", "evidence pending"].includes(state)) return "Evidence pending"
   if (state.includes("retry")) return "Retry scheduled"
-  if (state === "detected") return "Detected"
-  if (state === "proposed") return "Proposed"
+  if (state === "detected" || state === "proposed") return "Assigned"
   return "Assigned"
 }
 

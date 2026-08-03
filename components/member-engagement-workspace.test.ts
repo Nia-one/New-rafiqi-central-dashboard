@@ -28,8 +28,7 @@ test("first viewport presents target through verified result in locked order", (
 
 test("task band carries a recoverable-risk verdict pill", () => {
   assert.match(componentSource, /verdictPill/)
-  assert.match(componentSource, /Recovery target/)
-  assert.match(componentSource, /preview\.summary\.gap/)
+  assert.match(componentSource, /Below 65% floor · \{preview\.summary\.gap\} to recover/)
 })
 
 test("every headline exhibit closes with a so-what implication", () => {
@@ -42,7 +41,7 @@ test("workspace ends with an explicit owner-and-date ask before the source foote
   const footerIndex = componentSource.indexOf("styles.sourceNote")
   assert.ok(askIndex >= 0 && askIndex < footerIndex, "closing ask must precede the footer")
   assert.match(componentSource, /Decision required/)
-  assert.match(componentSource, /accountability sits with \$\{liveCommand\.owner\}/)
+  assert.match(componentSource, /accountability sits with \{preview\.summary\.owner\}/)
   assert.match(componentSource, /<dt>Owner<\/dt>/)
   assert.match(componentSource, /<dt>By<\/dt>/)
 })
@@ -53,9 +52,9 @@ test("workspace renders exactly the four fixture measures", () => {
   for (const label of ["M6 retention", "Monthly churn", "Verified exit reasons", "At-risk recovery"]) assert.ok(preview.measures.some((measure) => measure.label === label))
 })
 
-test("retention curve is the primary visual with named cohorts and a governed Sheet floor", () => {
+test("retention curve is the primary visual with named cohorts and visible 65 percent floor", () => {
   assert.match(componentSource, /RetentionCurve/)
-  assert.match(componentSource, /\{floor\}% M6 floor/)
+  assert.match(componentSource, /65% M6 floor/)
   assert.match(componentSource, /preview\.retentionCurves\.map/)
   assert.match(componentSource, /Independent billing outcomes/)
 })
@@ -76,11 +75,12 @@ test("protected labels are shown and sensitive identity is absent", () => {
   assert.match(componentSource, /protected role-gated references only/)
 })
 
-test("Members needing action is read-only and driven by the joined Sheet logs", () => {
-  assert.match(componentSource, /buildLiveMemberEngagementActions/)
-  assert.match(componentSource, /Google Sheet · live read-only/)
-  assert.match(componentSource, /status advances from Action_Log and Evidence_Log/)
-  assert.doesNotMatch(componentSource, /Record locally|TokenSelect|recoverMemberEngagementTask/)
+test("shadow interaction is local and has no live side-effect path", () => {
+  assert.match(componentSource, /recoverMemberEngagementTask/)
+  assert.doesNotMatch(componentSource, /outcomeRoute|state:\s*outcome ===/)
+  assert.match(componentSource, /setTasks\(\(current\) => current\.map/)
+  assert.match(componentSource, /setAudit\(\(current\) => \[\.\.\.current, Object\.freeze/)
+  assert.match(componentSource, /No contact or Production write/)
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.geolocation|use server|server action/)
   assert.equal(preview.blockedCapabilities.liveMemberContact, false)
   assert.equal(preview.blockedCapabilities.liveWeeklyMessage, false)
@@ -91,96 +91,14 @@ test("learning section exposes domain inputs, Low confidence and no auto-adoptio
   assert.equal(preview.learningInputs[0].production_confidence, "Low")
   assert.equal(preview.learningInputs[0].auto_adopt, false)
   assert.deepEqual(preview.learningInputs[0].confounders, ["confounders not ruled out"])
-  assert.doesNotMatch(componentSource, /SharedLearning|MaterialityEngine/)
+  assert.doesNotMatch(componentSource, /SharedLearning|LoopHealth|MaterialityEngine/)
 })
 
-test("the visible R-0 strip and repeat-issue handoff use governed Sheet records", () => {
+test("the visible R-0 strip and Despatch handoff remain domain-scoped", () => {
   for (const label of ["Data freshness", "Clocks running", "Outcome checks"]) assert.match(componentSource, new RegExp(label))
   assert.match(componentSource, /preview\.loopHealth/)
-  assert.match(componentSource, /buildLiveMemberEngagementRepeatIssues/)
-  assert.match(componentSource, /verified evidence automatically removes resolved issues/)
+  assert.match(componentSource, /preview\.despatchEscalations/)
   assert.ok(preview.despatchEscalations.length > 0)
-})
-
-test("Data freshness switches from the fixture to three live Sheet feeds", () => {
-  assert.match(componentSource, /buildLiveMemberEngagementFreshness/)
-  assert.match(componentSource, /Google Sheet sources current/)
-  assert.match(componentSource, /connected feeds/)
-  assert.match(componentSource, /protected-input rows quarantined/)
-})
-
-test("Retention command replaces the synthetic fixture with the Sheet recovery command", () => {
-  assert.match(componentSource, /buildLiveMemberEngagementCommand/)
-  assert.match(componentSource, /Google Sheet/)
-  assert.match(componentSource, /live read-only/)
-  assert.match(componentSource, /liveCommand!\.recoveryGap/)
-  assert.match(componentSource, /liveCommand!\.openSignals/)
-  assert.match(componentSource, /liveCommand!\.baselineRecovered/)
-  assert.match(componentSource, /liveCommand!\.targetRecovered/)
-})
-
-test("Decision required uses the live command, governed floor and Sheet deadline", () => {
-  assert.match(componentSource, /liveCommand!\.recoveryGap/)
-  assert.match(componentSource, /liveCommand!\.owner/)
-  assert.match(componentSource, /liveCommand!\.dueAt/)
-  assert.match(componentSource, /liveHeadlineMeasures!\.retentionFloor/)
-  assert.match(componentSource, /liveHeadlineMeasures\.cohortSummary/)
-})
-
-test("Source and confidence replaces the fixture with joined Sheet provenance", () => {
-  assert.match(componentSource, /liveBackground!\.source\.count/)
-  assert.match(componentSource, /liveBackground!\.source\.names/)
-  assert.match(componentSource, /liveBackground!\.source\.asOf/)
-  assert.match(componentSource, /liveBackground!\.source\.confidence/)
-  assert.match(componentSource, /liveBackground!\.source\.adoption/)
-})
-
-test("Loop health uses live feeds, recovery clocks and evidence outcomes", () => {
-  assert.match(componentSource, /buildLiveMemberEngagementLoopHealth/)
-  assert.match(componentSource, /loopHealth: isLive \? liveLoopHealth!/)
-  assert.match(componentSource, /preview\.loopHealth/)
-})
-
-test("Members saved vs goal uses one consistent Member Engagement source", () => {
-  assert.match(componentSource, /liveCommand!\.targetRecovered.*recovered Members/)
-  assert.match(componentSource, /liveCommand!\.baselineRecovered.*recovered Members/)
-  assert.match(componentSource, /liveCommand!\.baselineRecovered \/ liveCommand!\.targetRecovered/)
-  assert.match(componentSource, /liveLoopHealth!\.verification\.verified.*independently verified recoveries/)
-})
-
-test("Headline measures replace all four synthetic observations with Sheet values", () => {
-  assert.match(componentSource, /buildLiveMemberEngagementHeadlineMeasures/)
-  assert.match(componentSource, /measures: isLive \? liveHeadlineMeasures!\.measures/)
-  assert.match(componentSource, /liveHeadlineMeasures\?\.implication/)
-  assert.match(componentSource, /liveHeadlineMeasures\?\.retentionImplicationSummary/)
-})
-
-test("Cohorts and recovery replace chart, recovery totals and sentences with Sheet values", () => {
-  assert.match(componentSource, /retentionCurves: isLive \? liveHeadlineMeasures!\.retentionCurves/)
-  assert.match(componentSource, /floor=\{isLive \? liveHeadlineMeasures!\.retentionFloor/)
-  assert.match(componentSource, /liveHeadlineMeasures\?\.cohortSummary/)
-  assert.match(componentSource, /liveHeadlineMeasures\.recovery\.verified/)
-  assert.match(componentSource, /liveHeadlineMeasures\.recovery\.total/)
-  assert.match(componentSource, /liveHeadlineMeasures!\.recovery\.interventions/)
-  assert.match(componentSource, /liveHeadlineMeasures!\.recovery\.awaiting/)
-  assert.match(componentSource, /liveHeadlineMeasures!\.recovery\.reopened/)
-  assert.match(componentSource, /liveHeadlineMeasures\?\.recovery\.closureRule/)
-  assert.match(componentSource, /Google Sheet cohort observations/)
-})
-
-test("live mode never substitutes preview observations when a Sheet field is missing", () => {
-  assert.match(componentSource, /const isLive = Boolean\(liveData\)/)
-  assert.match(componentSource, /No Member-impacting recovery command is recorded/)
-  assert.match(componentSource, /No Member Engagement source rows recorded/)
-  assert.match(componentSource, /No Member Engagement Sheet sources recorded/)
-  assert.match(componentSource, /No Sheet cohort observations recorded/)
-  assert.match(componentSource, /liveHeadlineMeasures!\.recovery\.total \? Math\.round/)
-})
-
-test("Recovery implication summary and body are calculated from the same Sheet recovery totals", () => {
-  assert.match(componentSource, /title: "Recovery implication"/)
-  assert.match(componentSource, /liveHeadlineMeasures\.recovery\.total - liveHeadlineMeasures\.recovery\.verified/)
-  assert.match(componentSource, /at-risk Members remain against the recorded recovery target/)
 })
 
 test("scoped styles provide desktop, tablet and mobile layouts without black hero or gradients", () => {

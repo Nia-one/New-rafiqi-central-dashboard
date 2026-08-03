@@ -25,13 +25,13 @@ export function LoginScreen({ previewCredentials }: { previewCredentials?: { ema
     }
 
     const result = response ? await response.json().catch(() => null) as { error?: string } | null : null
-    setError(result?.error ?? "Rafiqi Central could not be reached. Try again.")
+    setError(result?.error ?? "RafiQi Central could not be reached. Try again.")
     setSubmitting(false)
   }
 
   return <main className="login-shell">
-    <section className="login-story" aria-label="Rafiqi Central introduction">
-      <div className="login-wordmark"><img src="/rafiqi-mark-white.png" alt="Nia" /><a href="https://www.nia.one" target="_blank" rel="noreferrer">www.nia.one</a></div>
+    <section className="login-story" aria-label="RafiQi Central introduction">
+      <div className="login-wordmark"><img src="/rafiqi-mark-white.png" alt="Nia" /><strong>RafiQi Central</strong><a href="https://www.nia.one" target="_blank" rel="noreferrer">www.nia.one</a></div>
       <div className="login-story-copy login-story-panel">
         <h1>Nia Self Drive</h1>
         <p>Where human migration meets RafiQi intelligence to keep the manufacturing lines running.</p>

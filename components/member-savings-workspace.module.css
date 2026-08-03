@@ -64,8 +64,6 @@
 .panel > header, .workPanel > header, .exceptions > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
 .panel header strong, .workPanel header strong, .exceptions header strong { display: block; margin-top: 4px; font-size: 17px; letter-spacing: -.015em; }
 .panel header p, .workPanel header p, .exceptions header p { margin: 1px 0 0; color: var(--muted); font-size: 11px; text-align: right; }
-.exceptions > :global(.operational-card-stack) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.emptyState { grid-column: 1 / -1; margin: 0; padding: 22px; color: var(--muted); font-size: 13px; text-align: center; }
 
 .matrix { padding: 18px 20px 20px; }
 .matrixLegend { display: flex; align-items: center; gap: 18px; margin-bottom: 13px; color: var(--muted); font-size: 10px; }
@@ -148,10 +146,6 @@
   .flow > div:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
   .measures { grid-template-columns: repeat(2, 1fr); }
   .primaryGrid { grid-template-columns: 1fr; }
-}
-
-@media (max-width: 860px) {
-  .exceptions > :global(.operational-card-stack) { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 700px) {

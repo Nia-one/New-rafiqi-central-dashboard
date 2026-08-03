@@ -36,6 +36,15 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "migration-backups",
+    "tmp",
+    "scripts",
+    "**/*.backup.ts",
+    "**/*.backup.tsx",
+    "**/*.backup*.ts",
+    "**/*.backup*.tsx",
+    "**/*-backup.ts",
+    "**/*-backup.tsx"
   ]
 }

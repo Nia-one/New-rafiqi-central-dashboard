@@ -10,7 +10,10 @@ export type DashboardWorkspace = "self-drive" | "self-learn" | "finance"
 export const POST_LOGIN_DASHBOARD_STATE = Object.freeze({ workspace: "self-drive" as const, active: "Cash & Control" as const })
 
 export function dashboardDisplayLabel(label: string) {
-  return label.replaceAll("New Adds", "Member Adds")
+  return label
+    .replaceAll("New Adds", "Member Adds")
+    .replaceAll("Member Feedback", "Member NPS")
+    .replaceAll("Definitions", "Learning History")
 }
 
 export function workspaceLandingTab(workspace: DashboardWorkspace): DashboardTab {
@@ -20,7 +23,7 @@ export type LivingSection = "fono" | "demand" | "supply" | "reconciliation"
 export type DashboardRoute = { screen: DashboardTab; subsection?: LivingSection }
 
 export const THEATRES = ["Rajputana (NCR)", "Deccan (Pune)", "Wellington (Karnataka)", "Coromandel (Tamil Nadu)"] as const
-export const LIVING_SECTIONS = ["FONO", "Shram Park demand", "Shram Park supply", "Reconciliation"] as const
+export const LIVING_SECTIONS = ["FONO", "Śram Park demand", "Śram Park supply", "Reconciliation"] as const
 export const FONO_FUNNEL_STAGES = ["Studios visited", "Agreed", "Contracted", "KYC", "Live"] as const
 export const SHRAM_PARK_FUNNEL_STAGES = ["Need named", "Terms agreed", "Contracted", "Live"] as const
 export const RECONCILIATION_LABELS = ["Live demand", "Live capacity", "Occupied Nests"] as const
@@ -38,7 +41,7 @@ export const OVERVIEW_ROUTES: Record<string, DashboardRoute> = {
   arpu: { screen: "Economics" },
   cm: { screen: "Economics" },
   Demand: { screen: "Living", subsection: "demand" },
-  "Shram Park": { screen: "Living", subsection: "supply" },
+  "Śram Park": { screen: "Living", subsection: "supply" },
   FONO: { screen: "Living", subsection: "fono" },
   Essentials: { screen: "Essentials" },
   Economics: { screen: "Economics" },

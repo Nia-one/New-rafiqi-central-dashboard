@@ -126,7 +126,7 @@ export type FillTask = {
   ownerRole: string
   dueAt: string
   expectedOutcome: string
-  state: "Detected" | "Proposed" | "Assigned" | "Retry scheduled" | "Evidence pending" | "Reopened" | "Verified"
+  state: "Assigned" | "Retry scheduled" | "Evidence pending" | "Reopened" | "Verified"
   nextAction: string
   attempts: number
   whatsapp: {
@@ -243,7 +243,6 @@ export type TheatreFillProjection = {
   verifiedBillingLiveFills: number
   dailyTarget: number
   daysToFill: number
-  averageFillTimeLabel?: string
 }
 
 export type NewAddsMeasureChart =
@@ -254,7 +253,7 @@ export type NewAddsMeasureChart =
 export type NewAddsPreview = {
   mode: "Shadow only"
   fixtureLabel: "Synthetic fixture"
-  question: string
+  question: typeof NEW_ADDS_QUESTION
   headline: string
   source: { name: string; asOf: string; lastRefreshAt: string; freshness: FreshnessStatus; synthetic: true }
   taskSummary: { target: number; current: number; gap: number; owner: string; progressPercent: number; verifiedResult: string }

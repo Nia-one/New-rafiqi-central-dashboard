@@ -1,6 +1,5 @@
-﻿import type { MismatchInput } from "@/lib/allocation-types"
-import type { ActionStatus } from "@/lib/allocation-types"
 import { mismatchInputs } from "@/lib/allocation-data"
+import type { ActionStatus } from "@/lib/allocation-types"
 
 export type ActionType = "detect" | "agree" | "assign" | "resolve" | "close" | "verify" | "dismiss" | "reassign" | "note"
 
@@ -48,12 +47,12 @@ function seedActor(owner: string) {
   return "operations-lead"
 }
 
-function buildSeedActionLog(inputs: MismatchInput[] = mismatchInputs) {
+function buildSeedActionLog() {
   const entries: ActionLogEntry[] = []
   let closeIndex = 0
 
-  for (const item of inputs) {
-    // Closed migration rows need enough history for detect â†’ assign â†’ resolve â†’ close.
+  for (const item of mismatchInputs) {
+    // Closed migration rows need enough history for detect → assign → resolve → close.
     const detectedAgeHours = item.actionStatus === "Resolved" ? Math.max(item.ageHours, 4) : item.ageHours
     const detectedAt = isoAtOffset(ACTION_LOG_REFERENCE_AT, -detectedAgeHours)
     entries.push({
@@ -203,6 +202,3 @@ export function appendActionLogEntry(entries: ActionLogEntry[], write: ActionLog
   }
   return [...entries, entry].sort((a, b) => Date.parse(a.executed_at) - Date.parse(b.executed_at) || a.id.localeCompare(b.id))
 }
-
-
-
