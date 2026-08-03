@@ -324,13 +324,16 @@ export async function syncTeamInputs() {
   const financeSourceRows = (financeSourceResponse.data.valueRanges || []).flatMap((range) => sourceObjects((range.values || []) as unknown[][]));
   const report: string[][] = [["synced_at", "source_tab", "target_tab", "inserted", "updated", "skipped", "status"]];
 
-  for (const [source, target] of mappings) {
-    const [sourceResponse, targetResponse] = await Promise.all([
-      sheets.spreadsheets.values.get({ spreadsheetId: sourceSpreadsheetId, range: `${source}!A:AZ` }),
-      sheets.spreadsheets.values.get({ spreadsheetId, range: `${target}!A:AZ` }),
-    ]);
-    const sourceRows = (sourceResponse.data.values || []) as unknown[][];
-    const targetRows = (targetResponse.data.values || []) as unknown[][];
+  // Fetch all mapped tabs in two batch requests. Calling values.get twice per
+  // mapping exhausted the service-account per-minute read quota in production.
+  const [mappedSources, mappedTargets] = await Promise.all([
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: sourceSpreadsheetId, ranges: mappings.map(([source]) => `${source}!A:AZ`) }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: mappings.map(([, target]) => `${target}!A:AZ`) }),
+  ]);
+
+  for (const [mappingIndex, [source, target]] of mappings.entries()) {
+    const sourceRows = (mappedSources.data.valueRanges?.[mappingIndex]?.values || []) as unknown[][];
+    const targetRows = (mappedTargets.data.valueRanges?.[mappingIndex]?.values || []) as unknown[][];
     if (targetRows.length === 0) {
       report.push([new Date().toISOString(), source, target, "0", "0", "0", "missing headers"]);
       continue;
