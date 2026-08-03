@@ -15,6 +15,7 @@ import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessi
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildAllocationData } from "@/lib/allocation-data-live"
+import { syncAllSources } from "@/lib/sourceSync"
 import {
   buildLiveMarginInputs,
   buildLiveMemberEngagementHeadlineMeasures,
@@ -47,6 +48,11 @@ export default async function Page() {
   let liveOpsData: Awaited<ReturnType<typeof buildOpsData>> | null = null
   let allocationData: Awaited<ReturnType<typeof buildAllocationData>> | null = null
   try {
+    // Treat every authenticated page load as an opportunity to ingest new
+    // User Input and bot rows. The synchronizer is single-flight and
+    // rate-limited, so navigation stays safe while cold serverless instances
+    // still converge without relying on a paid high-frequency cron.
+    await syncAllSources({ force: false })
     ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(), buildAllocationData()])
   } catch (error) {
     // The governed fixtures keep the demo usable while a Sheet connector is
