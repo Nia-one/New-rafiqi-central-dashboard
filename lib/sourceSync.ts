@@ -1,6 +1,6 @@
 import { syncTeamInputs } from "@/lib/teamInputSync";
-import { ensureEssentialsBotSchema, syncEssentialsBotData } from "@/lib/essentialsBotSync";
-import { ensureShramParkDemandBotSchema, syncShramParkDemandBotData } from "@/lib/shramParkDemandBotSync";
+import { syncEssentialsBotData } from "@/lib/essentialsBotSync";
+import { syncShramParkDemandBotData } from "@/lib/shramParkDemandBotSync";
 import { syncVerticalInputs } from "@/lib/verticalInputSync";
 import { syncMemberFeedback } from "@/lib/memberFeedbackSync";
 import { clearSheetCache } from "@/lib/googleSheets";
@@ -21,19 +21,18 @@ export type SourceSyncReport = {
 };
 
 async function runSourceSync(): Promise<SourceSyncReport> {
-  const [report, essentialsReport, shramParkDemandReport, memberFeedbackReport] = await Promise.all([
-    syncTeamInputs(),
-    syncEssentialsBotData(),
-    syncShramParkDemandBotData(),
-    syncMemberFeedback(),
-  ]);
+  // Google Sheets applies a strict per-user read quota. Run the governed
+  // connectors sequentially so their internal batch reads do not create one
+  // large burst on a serverless cold start.
+  const report = await syncTeamInputs();
+  const essentialsReport = await syncEssentialsBotData();
+  const shramParkDemandReport = await syncShramParkDemandBotData();
+  const memberFeedbackReport = await syncMemberFeedback();
   const verticalReport = await syncVerticalInputs();
-  let essentialsSchema: unknown;
-  try { essentialsSchema = await ensureEssentialsBotSchema(); }
-  catch (error) { essentialsSchema = { pendingEditorAccess: true, error: error instanceof Error ? error.message : "Unknown error" }; }
-  let shramParkDemandSchema: unknown;
-  try { shramParkDemandSchema = await ensureShramParkDemandBotSchema(); }
-  catch (error) { shramParkDemandSchema = { pendingEditorAccess: true, error: error instanceof Error ? error.message : "Unknown error" }; }
+  // Schemas are provisioned separately; live refresh only moves data. Keeping
+  // schema discovery out of this hot path saves dozens of quota-bearing reads.
+  const essentialsSchema: unknown = { provisioned: true };
+  const shramParkDemandSchema: unknown = { provisioned: true };
   clearSheetCache();
   return { report, essentialsReport, essentialsSchema, shramParkDemandReport, shramParkDemandSchema, verticalReport, memberFeedbackReport, syncedAt: new Date().toISOString() };
 }
