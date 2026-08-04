@@ -10,7 +10,6 @@ import { StudioArpuChart } from "@/components/charts/studio-arpu-chart"
 import { DataTable } from "@/components/data-table"
 import { DashboardSectionAccordion, requestOutlineFocus } from "@/components/dashboard-section-accordion"
 import { CentralSidebar } from "@/components/central-sidebar"
-import { DecisionRoom } from "@/components/decision-room"
 import { LensProvider, persistOperatingLens, readStoredOperatingLens, type OperatingLens } from "@/components/lens"
 import { LivingScreen } from "@/components/living-screen"
 import { EssentialsScreen } from "@/components/essentials-screen"
@@ -44,7 +43,7 @@ import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engage
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
-import { aggregateLoopHealth, buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
+import { buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
 const DASHBOARD_PERIOD = "Jul 2026"
 
@@ -67,11 +66,11 @@ function LiveBackendTables({ title, groups }: { title: string; groups: readonly 
 
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode · synthetic fixture" },
-  "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode · synthetic fixture" },
-  "New Adds": { title: "Fill every FONO vacancy with verified billing-live Members.", subtitle: "Detect vacancies, choose the lowest-cost eligible channel, assign the fill and verify billing.", view: "Shadow mode · synthetic fixture" },
-  "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Shadow mode · synthetic fixture" },
-  "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Shadow mode · synthetic fixture" },
-  "Nia Growth": { title: "Add capacity where demand supports it.", subtitle: "Keep FONO and Śram Park separate and expose capital risk before any commitment.", view: "Shadow mode · synthetic fixture" },
+  "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Live · normalized backend" },
+  "New Adds": { title: "Fill every FONO vacancy with verified billing-live Members.", subtitle: "Detect vacancies, choose the lowest-cost eligible channel, assign the fill and verify billing.", view: "Live · normalized backend" },
+  "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Live · normalized backend" },
+  "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Live · normalized backend" },
+  "Nia Growth": { title: "Add capacity where demand supports it.", subtitle: "Keep FONO and Śram Park separate and expose capital risk before any commitment.", view: "Live · normalized backend" },
   "Your Sign-Off": { title: "Your Sign-Off", subtitle: "Only material changes and unresolved exceptions wait here for a human decision.", view: "Pending decisions" },
   "Finance control": { title: "Control capital before expansion commits it.", subtitle: "Compare Studio economics, enforce cash and opex guardrails, route exceptions, and close War Room cases only after independent verification.", view: "Shadow mode · synthetic Preview" },
   "Nia Margins": { title: "Nia Margins", subtitle: "Protect the margin behind every verified Member outcome.", view: "Shadow preview" },
@@ -81,7 +80,7 @@ const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: 
   Essentials: TABLE_SCREENS.Essentials,
   Economics: TABLE_SCREENS.Economics,
   People: TABLE_SCREENS.People,
-  "Member Feedback": { title: "Fix the signal before a Member exits.", subtitle: "Turn feedback and monthly NPS into named actions, proof and verified closure.", view: "Illustrative · connector pending" },
+  "Member Feedback": { title: "Fix the signal before a Member exits.", subtitle: "Turn feedback and monthly NPS into named actions, proof and verified closure.", view: "Live · normalized backend" },
   Definitions: TABLE_SCREENS.Definitions,
   Despatch: { title: "Catch silence before it becomes delay.", subtitle: "Live heartbeat monitoring for active shifts, people, and categories.", view: "Live · every 45 seconds" },
 }
@@ -200,7 +199,7 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
   </div></nav>
 }
 
-export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [] }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview: MemberEngagementPreview; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[] }) {
+export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, niaMarginsPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [] }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview?: NewAddsPreview; memberEngagementPreview?: MemberEngagementPreview; memberSavingsPreview?: MemberSavingsPreview; niaGrowthPreview?: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[] }) {
   const [active, setActive] = useState<DashboardTab>("Despatch")
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [lens, setLens] = useState<OperatingLens>("operate")
@@ -219,24 +218,15 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     ? { title: "Decision Room", subtitle: "Every decision waiting for you first, then the verified state of every loop.", view: "Decide lens · shadow preview" }
     : screenMeta[active]
   const sectionTitle = decisionRoomOpen ? "Decision Room" : active === "Member Feedback" ? "Member NPS" : active === "Definitions" ? "Learning history" : dashboardDisplayLabel(active)
-  const learningHistory: readonly LearningHistoryEntry[] = (controlledAutonomyPreview?.learningQueue ?? []).map((entry) => ({
-    domain: entry.domain,
-    observed: entry.observed,
-    proposedChange: entry.proposedChange,
-    expectedEffect: entry.expectedEffect,
-    attribution: entry.evaluation.attributionLabel,
-    confidence: entry.evaluation.confidence,
-    disposition: entry.evaluation.requiredDisposition,
+  const learningHistory: readonly LearningHistoryEntry[] = liveRows(liveOpsData, "learningHistory").map((entry) => ({
+    domain: String(entry.domain ?? "Unassigned"),
+    observed: String(entry.observed ?? ""),
+    proposedChange: String(entry["proposed change"] ?? entry.proposedChange ?? ""),
+    expectedEffect: String(entry["expected effect"] ?? entry.expectedEffect ?? ""),
+    attribution: String(entry.attribution ?? "Not recorded"),
+    confidence: String(entry.confidence ?? "Not recorded"),
+    disposition: String(entry.disposition ?? "Human review"),
   }))
-  const platformLoopHealth = useMemo(() => aggregateLoopHealth([
-    ...(enterpriseDemandPreview ? [{ domain: "Enterprise Demand" as const, health: enterpriseDemandPreview.loopHealth }] : []),
-    { domain: "New Adds" as const, health: newAddsPreview.loopHealth },
-    { domain: "Member Engagement" as const, health: memberEngagementPreview.loopHealth },
-    { domain: "Member Savings" as const, health: memberSavingsPreview.loopHealth },
-    { domain: "Nia Margins" as const, health: niaMarginsPreview.loopHealth },
-    { domain: "Nia Growth" as const, health: niaGrowthPreview.loopHealth },
-    ...(cashControlPreview ? [{ domain: "Cash & Control" as const, health: cashControlPreview.loopHealth }] : []),
-  ]), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview.loopHealth, memberSavingsPreview.loopHealth, newAddsPreview.loopHealth, niaGrowthPreview.loopHealth, niaMarginsPreview.loopHealth])
   const platformDespatchQueue = useMemo(() => buildDespatchQueue(liveDespatchEscalations, Number.MAX_SAFE_INTEGER), [liveDespatchEscalations])
   useEffect(() => {
     const storedLens = readStoredOperatingLens()
@@ -357,7 +347,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   }
 
   return <main className="central-shell" data-live-connected={Boolean(liveOpsData)} data-allocation-connected={Boolean(allocationData)}>
-    <CentralSidebar active={active} workspace={workspace} lens={lens} decisionRoomActive={decisionRoomOpen} financeAllowed={financeAllowed} enterpriseAllowed={enterpriseDemandPreview !== null} signOffAllowed={controlledAutonomyPreview !== null} open={railOpen} onClose={() => setRailOpen(false)} onWorkspace={openWorkspace} onNavigate={navigateFromRail} onDecisionRoom={openDecisionRoom} onLens={switchLens} onSignOut={signOut} />
+    <CentralSidebar active={active} workspace={workspace} lens={lens} decisionRoomActive={decisionRoomOpen} financeAllowed={financeAllowed} enterpriseAllowed={enterpriseDemandPreview !== null} signOffAllowed={liveOpsData !== null && liveOpsData !== undefined} open={railOpen} onClose={() => setRailOpen(false)} onWorkspace={openWorkspace} onNavigate={navigateFromRail} onDecisionRoom={openDecisionRoom} onLens={switchLens} onSignOut={signOut} />
     {railOpen ? <button type="button" className="rail-scrim" aria-label="Close navigation" onClick={() => setRailOpen(false)} /> : null}
     <div className={`central-main x-page-shell${active === "Enterprise Demand" ? " enterprise-form-shell" : ""}`}>
     <header className="platform-utility">
@@ -369,7 +359,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       </div>
       <div className="utility-actions">
         <button type="button" className={filtersOpen ? "utility-button active" : "utility-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><SlidersHorizontal aria-hidden /><span>Filters</span></button>
-        <button type="button" className="utility-icon" title="Synthetic shadow preview" aria-label="Synthetic shadow preview"><ShieldCheck aria-hidden /></button>
+        <button type="button" className="utility-icon" title="Governed live snapshot" aria-label="Governed live snapshot"><ShieldCheck aria-hidden /></button>
         <button type="button" className="utility-button period"><CalendarDays aria-hidden /><span>{DASHBOARD_PERIOD}</span></button>
         <button type="button" className="utility-icon" title="Sync all source sheets" aria-label="Sync all source sheets" disabled={syncing} onClick={refreshLiveData}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /></button>
         <button type="button" className="utility-primary" onClick={() => navigateFromRail("self-drive", "Despatch")}><Truck aria-hidden /><span>Open Despatch</span></button>
@@ -385,28 +375,16 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {!decisionRoomOpen && active === "Enterprise Demand" && enterpriseDemandPreview && !OUTLINE_MANAGED_TABS.has(active) ? <EnterpriseContextHeader preview={enterpriseDemandPreview} /> : null}
       {!decisionRoomOpen && active !== "Enterprise Demand" ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: meta.view }]} /> : null}
       <div className="x-page-body">
-      {decisionRoomOpen ? <DecisionRoom
-        enterpriseDemandPreview={enterpriseDemandPreview}
-        cashControlPreview={cashControlPreview}
-        newAddsPreview={newAddsPreview}
-        memberEngagementPreview={memberEngagementPreview}
-        memberSavingsPreview={memberSavingsPreview}
-        niaMarginsPreview={niaMarginsPreview}
-        niaGrowthPreview={niaGrowthPreview}
-        signOffCount={learningHistory.length}
-        period={DASHBOARD_PERIOD}
-        onOpenLoop={(tab) => navigateFromRail("self-drive", tab)}
-        onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")}
-      /> : <LensProvider lens={lens}>
-      {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} onModeChange={setOverviewMode} onNavigate={navigate} />}
+      {decisionRoomOpen && liveOpsData ? <LiveBackendTables title="Decision Room" groups={[{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }, { label: "Independent evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={[]} /> : <LensProvider lens={lens}>
+      {active === "Overview" && (liveOpsData ? <LiveBackendTables title="Overview" groups={[{ label: "Living", rows: liveRows(liveOpsData, "living") }, { label: "Work", rows: liveRows(liveOpsData, "work") }, { label: "Essentials", rows: liveRows(liveOpsData, "essentials") }, { label: "Finance", rows: liveRows(liveOpsData, "finance") }, { label: "Execution", rows: liveRows(liveOpsData, "actionLog") }]} /> : <LiveBackendTables title="Overview" groups={[]} />)}
       {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users.</h2><p>Operating teams can continue through the remaining Self Drive tabs. Financial goals, cash, opex and leakage remain protected.</p></section>)}
       {active === "Enterprise Demand" && enterpriseDemandPreview && <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} />}
-      {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
-      {active === "Member Engagement" && <MemberEngagementWorkspace preview={memberEngagementPreview} />}
-      {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsPreview} />}
-      {active === "Nia Growth" && <NiaGrowthWorkspace preview={niaGrowthPreview} />}
+      {active === "New Adds" && (liveOpsData ? <LiveBackendTables title="Member Adds" groups={[{ label: "Contracted demand and capacity", rows: liveRows(liveOpsData, "enterpriseDemand") }, { label: "Verified Member activation", rows: liveRows(liveOpsData, "memberActivation") }, { label: "Living capacity", rows: liveRows(liveOpsData, "living") }, { label: "Actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/add|fill|activation/)) }]} /> : <LiveBackendTables title="Member Adds" groups={[]} />)}
+      {active === "Member Engagement" && (liveOpsData ? <LiveBackendTables title="Member Engagement" groups={[{ label: "Engagement measures", rows: liveRows(liveOpsData, "memberNpsDashboard") }, { label: "Member signals", rows: liveRows(liveOpsData, "memberNpsFeedback") }, { label: "Survey responses", rows: liveRows(liveOpsData, "memberNpsResponses") }, { label: "Actions and evidence", rows: [...liveRows(liveOpsData, "actionLog"), ...liveRows(liveOpsData, "evidenceLog")] }]} /> : <LiveBackendTables title="Member Engagement" groups={[]} />)}
+      {active === "Member Savings" && (liveOpsData ? <LiveBackendTables title="Member Savings" groups={[{ label: "Essentials outcomes", rows: liveRows(liveOpsData, "essentials") }, { label: "Inventory and pricing", rows: liveRows(liveOpsData, "essentialsInventory") }, { label: "Savings actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/saving|essential|pricing|supplier/)) }, { label: "Independent evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : <LiveBackendTables title="Member Savings" groups={[]} />)}
+      {active === "Nia Growth" && (liveOpsData ? <LiveBackendTables title="Nia Growth" groups={[{ label: "Enterprise demand", rows: liveRows(liveOpsData, "enterpriseDemand") }, { label: "Living capacity", rows: liveRows(liveOpsData, "living") }, { label: "Studio master", rows: liveRows(liveOpsData, "studios") }, { label: "Growth actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/growth|capacity|expansion|readiness/)) }]} /> : <LiveBackendTables title="Nia Growth" groups={[]} />)}
       {active === "Finance control" && financeExpansionPreview && <FinanceExpansionWorkspace preview={financeExpansionPreview} />}
-      {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
+      {active === "Your Sign-Off" && (liveOpsData ? <LiveBackendTables title="Your Sign-Off" groups={[{ label: "Approval log", rows: liveRows(liveOpsData, "approvalLog") }, { label: "Actions requiring approval", rows: liveRows(liveOpsData, "actionLog").filter((row) => String(row["approval required"] ?? row["state"] ?? "").toLowerCase().match(/yes|true|pending approval|approval required/)) }, { label: "Supporting evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : <LiveBackendTables title="Your Sign-Off" groups={[]} />)}
       {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen />}
