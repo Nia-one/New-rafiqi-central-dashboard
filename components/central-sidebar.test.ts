@@ -29,7 +29,9 @@ test("final rail covers every Self Learn component", () => {
   for (const label of ["Overview", "Living", "Work", "Essentials", "Member NPS", "People", "Learning History"]) assert.match(html, new RegExp(label))
 })
 
-test("final rail does not expose a separate Finance workspace", () => {
+test("final rail exposes the authorised Finance workspace", () => {
   const html = render("self-drive")
-  assert.doesNotMatch(html, />Finance<\/span>/)
+  assert.match(html, />Finance<\/span>/)
+  const finance = render("finance")
+  for (const label of ["Finance Control", "Nia Margins", "Cash &amp; Control"]) assert.match(finance, new RegExp(label))
 })

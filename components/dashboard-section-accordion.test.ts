@@ -52,9 +52,10 @@ test("dashboard section layout preserves the declared section order", () => {
   assert.ok(html.indexOf("First") < html.indexOf("Primary status remains visible."))
 })
 
-test("mobile outline collapses into a bounded horizontal scroller", () => {
-  assert.match(css, /@media \(max-width: 980px\)[\s\S]*?\.dashboard-outline-pane \{[^}]*overflow-x:\s*auto/)
-  assert.match(css, /@media \(max-width: 980px\)[\s\S]*?\.dashboard-outline-pane ol \{[^}]*grid-auto-flow:\s*column/)
+test("outline stays a bounded horizontal scroller across desktop and mobile", () => {
+  assert.match(css, /\.dashboard-outline-pane \{[^}]*overflow-x:\s*auto/)
+  assert.match(css, /\.dashboard-outline-pane ol \{[^}]*grid-auto-flow:\s*column/)
+  assert.match(css, /@media \(max-width: 980px\)[\s\S]*?\.dashboard-outline-pane ol \{[^}]*grid-auto-columns:\s*minmax\(190px, 1fr\)/)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.central-rail\.open \{[^}]*translateX\(0\)/)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.platform-utility \.mobile-rail-trigger \{[^}]*display:\s*inline-flex/)
 })

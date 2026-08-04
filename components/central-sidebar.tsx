@@ -54,6 +54,12 @@ const CONTINUITY: readonly NavigationItem[] = [
   { label: "Learning History", tab: "Definitions", icon: BookOpen },
 ]
 
+const FINANCE: readonly NavigationItem[] = [
+  { label: "Finance Control", tab: "Finance control", icon: Landmark },
+  { label: "Nia Margins", tab: "Nia Margins", icon: ChartNoAxesCombined },
+  { label: "Cash & Control", tab: "Cash & Control", icon: WalletCards },
+]
+
 const DESPATCH_ITEM: NavigationItem = { label: "Despatch", tab: "Despatch", icon: Truck }
 
 function RailButton({ item, active, onClick }: { item: NavigationItem; active: DashboardTab | null; onClick: () => void }) {
@@ -69,6 +75,7 @@ export function CentralSidebar({
   workspace,
   lens = "operate",
   decisionRoomActive = false,
+  financeAllowed,
   enterpriseAllowed,
   signOffAllowed,
   open,
@@ -96,7 +103,9 @@ export function CentralSidebar({
 }) {
   const workspaceItems = workspace === "self-drive"
     ? OPERATING_LOOPS.filter((item) => item.tab !== "Enterprise Demand" || enterpriseAllowed)
-    : CONTINUITY
+    : workspace === "self-learn"
+      ? CONTINUITY
+      : FINANCE
 
   return <aside className={`central-rail ${open ? "open" : ""}`} aria-label="RafiQi Central navigation">
     <div className="rail-account">
@@ -114,6 +123,7 @@ export function CentralSidebar({
       <p>Workspaces</p>
       <button type="button" className={workspace === "self-drive" ? "active" : ""} onClick={() => { onWorkspace("self-drive"); onClose() }}><Gauge aria-hidden /><span>Self Drive</span></button>
       <button type="button" className={workspace === "self-learn" ? "active" : ""} onClick={() => { onWorkspace("self-learn"); onClose() }}><BrainCircuit aria-hidden /><span>Self Learn</span></button>
+      {financeAllowed ? <button type="button" className={workspace === "finance" ? "active" : ""} onClick={() => { onWorkspace("finance"); onClose() }}><Landmark aria-hidden /><span>Finance</span></button> : null}
 
       {workspace === "self-drive" && lens === "decide" && onDecisionRoom ? <>
         <p>Decide</p>
@@ -123,7 +133,7 @@ export function CentralSidebar({
         <p>Operate</p>
         <RailButton item={DESPATCH_ITEM} active={active} onClick={() => { onNavigate("self-drive", "Despatch"); onClose() }} />
       </> : null}
-      <p>{workspace === "self-drive" ? (lens === "operate" ? "Governed queues" : "Operating loops") : "Continuity"}</p>
+      <p>{workspace === "self-drive" ? (lens === "operate" ? "Governed queues" : "Operating loops") : workspace === "self-learn" ? "Continuity" : "Finance"}</p>
       {workspaceItems.map((item) => <RailButton key={item.tab} item={item} active={decisionRoomActive ? null : active} onClick={() => { onNavigate(workspace, item.tab); onClose() }} />)}
 
       {workspace === "self-drive" ? <>

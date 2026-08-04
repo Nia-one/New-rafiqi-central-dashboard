@@ -54,8 +54,8 @@ function SummaryVisual({ visual }: { visual: NonNullable<DashboardSectionMeta["v
   </span>
 }
 
-// The section outline is the campaign-manager pattern: a persistent list of
-// named steps on the left, and exactly one focused section card on the canvas.
+// The section outline is a persistent horizontal list of named steps above
+// exactly one focused, full-width section card on the canvas.
 // Every section stays mounted (hidden, not removed) so deep links, tests and
 // static rendering keep the complete document; focus is presentation state.
 export function DashboardSectionAccordion({
