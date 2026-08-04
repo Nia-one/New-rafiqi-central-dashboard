@@ -38,6 +38,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])
+  const nextDueAt = preview.tasks[0]?.dueAt
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -158,7 +159,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time></dd></div>
+        <div><dt>By</dt><dd>{nextDueAt ? <time dateTime={nextDueAt}>{date(nextDueAt)}</time> : "No open task"}</dd></div>
       </dl>
     </section>
 

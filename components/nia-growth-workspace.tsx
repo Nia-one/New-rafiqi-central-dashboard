@@ -43,6 +43,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; supplyModel: "FONO" | "SP"; outcome: ShadowOutcome; route: string; at: string }[]>([])
+  const nextDueAt = preview.tasks[0]?.dueAt
 
   function recordShadowOutcome(task: GrowthTaskPreview) {
     const outcome = selected[task.actionId] ?? "Unresolved"
@@ -142,7 +143,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time></dd></div>
+        <div><dt>By</dt><dd>{nextDueAt ? <time dateTime={nextDueAt}>{date(nextDueAt)}</time> : "No open task"}</dd></div>
       </dl>
     </section>
 
