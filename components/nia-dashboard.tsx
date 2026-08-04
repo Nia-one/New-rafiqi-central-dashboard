@@ -10,6 +10,7 @@ import { StudioArpuChart } from "@/components/charts/studio-arpu-chart"
 import { DataTable } from "@/components/data-table"
 import { DashboardSectionAccordion, requestOutlineFocus } from "@/components/dashboard-section-accordion"
 import { CentralSidebar } from "@/components/central-sidebar"
+import { DecisionRoom } from "@/components/decision-room"
 import { LensProvider, persistOperatingLens, readStoredOperatingLens, type OperatingLens } from "@/components/lens"
 import { LivingScreen } from "@/components/living-screen"
 import { EssentialsScreen } from "@/components/essentials-screen"
@@ -30,10 +31,9 @@ import { CashControlWorkspace } from "@/components/cash-control-workspace"
 import { LearningHistoryWorkspace, type LearningHistoryEntry } from "@/components/learning-history-workspace"
 import { ContextStrip, SegmentedControl } from "@/components/operating-ui"
 import { dashboardDisplayLabel, POST_LOGIN_DASHBOARD_STATE, TABLE_SCREENS, workspaceLandingTab, type DashboardRoute, type DashboardTab, type DashboardWorkspace, type LivingSection } from "@/lib/dashboard-model"
-import { executionActions } from "@/lib/execution-data"
-import { memberFeedbackActions } from "@/lib/member-feedback-data"
 import { validateActionProof, type ExecutionAction } from "@/lib/execution-control"
 import { laneHeadline } from "@/lib/ops-data"
+import type { MemberFeedbackItem, NpsResponse } from "@/lib/member-feedback"
 import type { EnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import type { FinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
 import type { ControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
@@ -43,7 +43,7 @@ import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engage
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
-import { buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
+import { aggregateLoopHealth, buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
 const DASHBOARD_PERIOD = "Jul 2026"
 
@@ -62,6 +62,60 @@ function LiveBackendTables({ title, groups }: { title: string; groups: readonly 
     const columns = [...new Set(group.rows.flatMap((row) => Object.keys(row)))].filter((key) => !key.startsWith("__"))
     return <section className="operating-section" key={group.label}><h2>{group.label}</h2>{group.rows.length ? <DataTable caption={group.label} columns={columns} rows={group.rows.map((row) => columns.map((key) => String(row[key] ?? "")))} /> : <p className="footer-note">No verified records are available in this backend tab.</p>}</section>
   })}</DashboardSectionAccordion>
+}
+
+function liveValue(row: Record<string, unknown>, key: string) {
+  const normalized = key.toLowerCase().replaceAll("_", " ")
+  const match = Object.keys(row).find((candidate) => candidate.toLowerCase().replaceAll("_", " ") === normalized)
+  return match ? row[match] : undefined
+}
+
+function liveNumber(row: Record<string, unknown>, key: string) {
+  const value = liveValue(row, key)
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  const parsed = Number(String(value ?? "").replace(/[₹,%\s,]/g, ""))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function LiveEconomicsScreen({ snapshot }: { snapshot: unknown }) {
+  const finance = liveRows(snapshot, "finance")
+  const living = liveRows(snapshot, "living")
+  const work = liveRows(snapshot, "work")
+  const essentials = liveRows(snapshot, "essentials")
+  const revenue = finance.reduce((sum, row) => sum + liveNumber(row, "revenue inr"), 0)
+  const cm = finance.reduce((sum, row) => sum + liveNumber(row, "cm2 inr"), 0)
+  const occupied = living.reduce((sum, row) => sum + liveNumber(row, "occupied nests"), 0)
+  const arpu = occupied ? Math.round(revenue / occupied) : 0
+  const bridge = [
+    { label: "Living", value: living.reduce((sum, row) => sum + liveNumber(row, "living billed inr"), 0) },
+    { label: "Work", value: work.reduce((sum, row) => sum + liveNumber(row, "work billed inr"), 0) },
+    { label: "Essentials", value: essentials.reduce((sum, row) => sum + liveNumber(row, "essentials billed inr"), 0) },
+    { label: "CM2", value: cm },
+  ]
+  const theatreRows = finance.map((row, index) => {
+    const theatre = String(liveValue(row, "theatre name") ?? liveValue(row, "theatre id") ?? `Theatre ${index + 1}`)
+    const theatreRevenue = liveNumber(row, "revenue inr")
+    const theatreOccupied = living.filter((livingRow) => String(liveValue(livingRow, "theatre id") ?? "") === String(liveValue(row, "theatre id") ?? "")).reduce((sum, livingRow) => sum + liveNumber(livingRow, "occupied nests"), 0)
+    return { theatre, value: theatreOccupied ? Math.round(theatreRevenue / theatreOccupied) : 0 }
+  }).filter((row) => row.value > 0)
+  const average = { label: "Network", value: theatreRows.length ? Math.round(theatreRows.reduce((sum, row) => sum + row.value, 0) / theatreRows.length) : arpu }
+  const columns = [...new Set(finance.flatMap((row) => Object.keys(row)))].filter((key) => !key.startsWith("__"))
+  return <DashboardSectionAccordion ariaLabel="Economics sections" sections={[
+    { title: "Main point", summary: finance.length ? "Recorded economics are shown from governed Finance Daily rows." : "No governed Finance Daily rows available." },
+    { title: "Headline measures", summary: "Revenue, contribution margin and occupied-Nest economics" },
+    { title: "Contribution bridge", summary: "Recorded pillar billing and CM2 evidence" },
+    { title: "Studio economics", summary: `${finance.length} finance records` },
+    { title: "Source", summary: "Finance Daily · Living · Work · Essentials" },
+  ]}>
+    <div className="decision-bar"><div><span>MAIN POINT</span><strong>{finance.length ? `₹${cm.toLocaleString("en-IN")} recorded CM2 across ${finance.length} finance rows.` : "No governed Economics records are available."}</strong></div><p>Missing source values remain blank or zero; no fixture values are used.</p></div>
+    <div className="section-heading"><h2>Headline measures</h2></div>
+    <div className="metric-grid"><article className="metric"><p>Revenue</p><strong>₹{revenue.toLocaleString("en-IN")}</strong><span>Finance Daily</span></article><article className="metric"><p>CM2</p><strong>₹{cm.toLocaleString("en-IN")}</strong><span>Finance Daily</span></article><article className="metric"><p>Occupied Nests</p><strong>{occupied.toLocaleString("en-IN")}</strong><span>Living occupancy</span></article><article className="metric"><p>Revenue / occupied Nest</p><strong>₹{arpu.toLocaleString("en-IN")}</strong><span>Derived from governed rows</span></article></div>
+    <CmBridgeChart rows={bridge} source="Finance Daily · Living · Work · Essentials" />
+    <StudioArpuChart rows={theatreRows} average={average} source="Finance Daily · Living" />
+    <h2>Studio economics</h2>
+    {finance.length ? <DataTable caption="Studio economics" columns={columns} rows={finance.map((row) => columns.map((key) => String(row[key] ?? "")))} /> : <p className="footer-note">No governed Finance Daily records are available.</p>}
+    <p className="footer-note">Finance Daily · Living · Work · Essentials. Missing values are not inferred.</p>
+  </DashboardSectionAccordion>
 }
 
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
@@ -199,7 +253,7 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
   </div></nav>
 }
 
-export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, niaMarginsPreview, cashControlPreview = null, financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [] }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview | null; newAddsPreview?: NewAddsPreview; memberEngagementPreview?: MemberEngagementPreview; memberSavingsPreview?: MemberSavingsPreview; niaGrowthPreview?: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[] }) {
+export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview = null, newAddsPreview = null, memberEngagementPreview = null, memberSavingsPreview = null, niaGrowthPreview = null, cashControlPreview = null, memberFeedbackItems = [], memberNpsResponses = [], financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [] }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview?: NiaMarginsPreview | null; newAddsPreview?: NewAddsPreview | null; memberEngagementPreview?: MemberEngagementPreview | null; memberSavingsPreview?: MemberSavingsPreview | null; niaGrowthPreview?: NiaGrowthPreview | null; cashControlPreview?: CashControlPreview | null; memberFeedbackItems?: readonly MemberFeedbackItem[]; memberNpsResponses?: NpsResponse[]; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[] }) {
   const [active, setActive] = useState<DashboardTab>("Despatch")
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [lens, setLens] = useState<OperatingLens>("operate")
@@ -211,7 +265,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [railOpen, setRailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [syncing, setSyncing] = useState(false)
-  const [commitments, setCommitments] = useState<ExecutionAction[]>(() => [...executionActions, ...memberFeedbackActions])
+  const [commitments, setCommitments] = useState<ExecutionAction[]>(() => [...liveDespatchCommitments])
   // Keep the page shell stable while the Overview mode changes. The mode bar
   // and the report body already explain the active operating view.
   const meta = decisionRoomOpen
@@ -227,6 +281,16 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     confidence: String(entry.confidence ?? "Not recorded"),
     disposition: String(entry.disposition ?? "Human review"),
   }))
+  const loopHealthInputs = [
+    ...(enterpriseDemandPreview ? [{ domain: "Enterprise Demand" as const, health: enterpriseDemandPreview.loopHealth }] : []),
+    ...(newAddsPreview ? [{ domain: "New Adds" as const, health: newAddsPreview.loopHealth }] : []),
+    ...(memberEngagementPreview ? [{ domain: "Member Engagement" as const, health: memberEngagementPreview.loopHealth }] : []),
+    ...(memberSavingsPreview ? [{ domain: "Member Savings" as const, health: memberSavingsPreview.loopHealth }] : []),
+    ...(niaMarginsPreview ? [{ domain: "Nia Margins" as const, health: niaMarginsPreview.loopHealth }] : []),
+    ...(niaGrowthPreview ? [{ domain: "Nia Growth" as const, health: niaGrowthPreview.loopHealth }] : []),
+    ...(cashControlPreview ? [{ domain: "Cash & Control" as const, health: cashControlPreview.loopHealth }] : []),
+  ]
+  const platformLoopHealth = loopHealthInputs.length ? aggregateLoopHealth(loopHealthInputs) : null
   const platformDespatchQueue = useMemo(() => buildDespatchQueue(liveDespatchEscalations, Number.MAX_SAFE_INTEGER), [liveDespatchEscalations])
   useEffect(() => {
     const storedLens = readStoredOperatingLens()
@@ -347,7 +411,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   }
 
   return <main className="central-shell" data-live-connected={Boolean(liveOpsData)} data-allocation-connected={Boolean(allocationData)}>
-    <CentralSidebar active={active} workspace={workspace} lens={lens} decisionRoomActive={decisionRoomOpen} financeAllowed={financeAllowed} enterpriseAllowed={enterpriseDemandPreview !== null} signOffAllowed={liveOpsData !== null && liveOpsData !== undefined} open={railOpen} onClose={() => setRailOpen(false)} onWorkspace={openWorkspace} onNavigate={navigateFromRail} onDecisionRoom={openDecisionRoom} onLens={switchLens} onSignOut={signOut} />
+    <CentralSidebar active={active} workspace={workspace} lens={lens} decisionRoomActive={decisionRoomOpen} financeAllowed={financeAllowed} enterpriseAllowed signOffAllowed open={railOpen} onClose={() => setRailOpen(false)} onWorkspace={openWorkspace} onNavigate={navigateFromRail} onDecisionRoom={openDecisionRoom} onLens={switchLens} onSignOut={signOut} />
     {railOpen ? <button type="button" className="rail-scrim" aria-label="Close navigation" onClick={() => setRailOpen(false)} /> : null}
     <div className={`central-main x-page-shell${active === "Enterprise Demand" ? " enterprise-form-shell" : ""}`}>
     <header className="platform-utility">
@@ -375,25 +439,26 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {!decisionRoomOpen && active === "Enterprise Demand" && enterpriseDemandPreview && !OUTLINE_MANAGED_TABS.has(active) ? <EnterpriseContextHeader preview={enterpriseDemandPreview} /> : null}
       {!decisionRoomOpen && active !== "Enterprise Demand" ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: meta.view }]} /> : null}
       <div className="x-page-body">
-      {decisionRoomOpen && liveOpsData ? <LiveBackendTables title="Decision Room" groups={[{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }, { label: "Independent evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={[]} /> : <LensProvider lens={lens}>
-      {active === "Overview" && (liveOpsData ? <LiveBackendTables title="Overview" groups={[{ label: "Living", rows: liveRows(liveOpsData, "living") }, { label: "Work", rows: liveRows(liveOpsData, "work") }, { label: "Essentials", rows: liveRows(liveOpsData, "essentials") }, { label: "Finance", rows: liveRows(liveOpsData, "finance") }, { label: "Execution", rows: liveRows(liveOpsData, "actionLog") }]} /> : <LiveBackendTables title="Overview" groups={[]} />)}
-      {active === "Cash & Control" && (financeAllowed ? <LiveBackendTables title="Cash & Control" groups={liveOpsData ? [{ label: "Finance daily", rows: liveRows(liveOpsData, "finance") }, { label: "Cash control channels", rows: liveRows(liveOpsData, "cashControlChannels") }, { label: "Approvals", rows: liveRows(liveOpsData, "approvalLog") }, { label: "Finance actions", rows: liveRows(liveOpsData, "actionLog") }] : []} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users.</h2><p>Financial goals, cash, opex and leakage remain protected.</p></section>)}
-      {active === "Enterprise Demand" && enterpriseDemandPreview && <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} />}
-      {active === "New Adds" && (liveOpsData ? <LiveBackendTables title="Member Adds" groups={[{ label: "Contracted demand and capacity", rows: liveRows(liveOpsData, "enterpriseDemand") }, { label: "Verified Member activation", rows: liveRows(liveOpsData, "memberActivation") }, { label: "Living capacity", rows: liveRows(liveOpsData, "living") }, { label: "Actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/add|fill|activation/)) }]} /> : <LiveBackendTables title="Member Adds" groups={[]} />)}
-      {active === "Member Engagement" && (liveOpsData ? <LiveBackendTables title="Member Engagement" groups={[{ label: "Engagement measures", rows: liveRows(liveOpsData, "memberNpsDashboard") }, { label: "Member signals", rows: liveRows(liveOpsData, "memberNpsFeedback") }, { label: "Survey responses", rows: liveRows(liveOpsData, "memberNpsResponses") }, { label: "Actions and evidence", rows: [...liveRows(liveOpsData, "actionLog"), ...liveRows(liveOpsData, "evidenceLog")] }]} /> : <LiveBackendTables title="Member Engagement" groups={[]} />)}
-      {active === "Member Savings" && (liveOpsData ? <LiveBackendTables title="Member Savings" groups={[{ label: "Essentials outcomes", rows: liveRows(liveOpsData, "essentials") }, { label: "Inventory and pricing", rows: liveRows(liveOpsData, "essentialsInventory") }, { label: "Savings actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/saving|essential|pricing|supplier/)) }, { label: "Independent evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : <LiveBackendTables title="Member Savings" groups={[]} />)}
-      {active === "Nia Growth" && (liveOpsData ? <LiveBackendTables title="Nia Growth" groups={[{ label: "Enterprise demand", rows: liveRows(liveOpsData, "enterpriseDemand") }, { label: "Living capacity", rows: liveRows(liveOpsData, "living") }, { label: "Studio master", rows: liveRows(liveOpsData, "studios") }, { label: "Growth actions", rows: liveRows(liveOpsData, "actionLog").filter((row) => `${row["action id"] ?? ""} ${row["operating objective"] ?? ""}`.toLowerCase().match(/growth|capacity|expansion|readiness/)) }]} /> : <LiveBackendTables title="Nia Growth" groups={[]} />)}
-      {active === "Finance control" && (financeAllowed ? <LiveBackendTables title="Finance Control" groups={liveOpsData ? [{ label: "Finance daily", rows: liveRows(liveOpsData, "finance") }, { label: "Studio master", rows: liveRows(liveOpsData, "studios") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals", rows: liveRows(liveOpsData, "approvalLog") }] : []} /> : <section className="restricted-control" aria-label="Restricted Finance Control"><LockKeyhole aria-hidden /><h2>Finance Control is restricted.</h2></section>)}
-      {active === "Your Sign-Off" && (liveOpsData ? <LiveBackendTables title="Your Sign-Off" groups={[{ label: "Approval log", rows: liveRows(liveOpsData, "approvalLog") }, { label: "Actions requiring approval", rows: liveRows(liveOpsData, "actionLog").filter((row) => String(row["approval required"] ?? row["state"] ?? "").toLowerCase().match(/yes|true|pending approval|approval required/)) }, { label: "Supporting evidence", rows: liveRows(liveOpsData, "evidenceLog") }]} /> : <LiveBackendTables title="Your Sign-Off" groups={[]} />)}
+      {decisionRoomOpen && enterpriseDemandPreview && newAddsPreview && memberEngagementPreview && memberSavingsPreview && niaMarginsPreview && niaGrowthPreview ? <DecisionRoom enterpriseDemandPreview={enterpriseDemandPreview} cashControlPreview={cashControlPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaMarginsPreview={niaMarginsPreview} niaGrowthPreview={niaGrowthPreview} signOffCount={learningHistory.length} period={DASHBOARD_PERIOD} onOpenLoop={(tab) => navigateFromRail("self-drive", tab)} onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={liveOpsData ? [{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }] : []} /> : <LensProvider lens={lens}>
+      {active === "Overview" && platformLoopHealth && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} onModeChange={setOverviewMode} onNavigate={navigate} />}
+      {active === "Overview" && !platformLoopHealth && <LiveBackendTables title="Overview" groups={[]} />}
+      {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users with governed finance data.</h2><p>Financial goals, cash, opex and leakage remain protected.</p></section>)}
+      {active === "Enterprise Demand" && (enterpriseDemandPreview ? <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} /> : <LiveBackendTables title="Enterprise Demand" groups={[]} />)}
+      {active === "New Adds" && (newAddsPreview ? <NewAddsWorkspace preview={newAddsPreview} /> : <LiveBackendTables title="Member Adds" groups={[]} />)}
+      {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveBackendTables title="Member Engagement" groups={[]} />)}
+      {active === "Member Savings" && (memberSavingsPreview ? <MemberSavingsWorkspace preview={memberSavingsPreview} /> : <LiveBackendTables title="Member Savings" groups={[]} />)}
+      {active === "Nia Growth" && (niaGrowthPreview ? <NiaGrowthWorkspace preview={niaGrowthPreview} /> : <LiveBackendTables title="Nia Growth" groups={[]} />)}
+      {active === "Finance control" && (financeExpansionPreview ? <FinanceExpansionWorkspace preview={financeExpansionPreview} /> : <section className="restricted-control" aria-label="Restricted Finance Control"><LockKeyhole aria-hidden /><h2>Finance Control requires an authorised role and governed finance data.</h2></section>)}
+      {active === "Your Sign-Off" && (controlledAutonomyPreview ? <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} /> : <LiveBackendTables title="Your Sign-Off" groups={[]} />)}
       {active === "Nia Margins" && (niaMarginsPreview ? <NiaMarginsWorkspace preview={niaMarginsPreview} /> : <LiveBackendTables title="Nia Margins" groups={liveOpsData ? [{ label: "Finance daily", rows: liveRows(liveOpsData, "finance") }, { label: "Living occupancy", rows: liveRows(liveOpsData, "living") }, { label: "Essentials margin inputs", rows: liveRows(liveOpsData, "essentials") }] : []} />)}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "essentialsDashboard"), cohorts: liveRows(liveOpsData, "essentialsCohorts"), inventory: liveRows(liveOpsData, "essentialsInventory") } : null} />}
       {active === "People" && <PeopleScreen commitments={commitments} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "peopleDashboard"), performance: liveRows(liveOpsData, "peoplePerformance"), followThrough: liveRows(liveOpsData, "peopleFollowThrough"), roster: liveRows(liveOpsData, "people") } : null} />}
-      {active === "Member Feedback" && (liveOpsData ? <LiveBackendTables title="Member NPS" groups={[{ label: "NPS dashboard", rows: liveRows(liveOpsData, "memberNpsDashboard") }, { label: "Member feedback", rows: liveRows(liveOpsData, "memberNpsFeedback") }, { label: "NPS responses", rows: liveRows(liveOpsData, "memberNpsResponses") }]} /> : <LiveBackendTables title="Member NPS" groups={[]} />)}
+      {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} items={memberFeedbackItems} responses={memberNpsResponses} sourceAsOf={String((liveOpsData as { fetchedAt?: string } | null)?.fetchedAt ?? "")} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
-      {active === "Despatch" && <DespatchScreen commitments={liveDespatchCommitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} onValidateAction={validateExecutionAction} />}
-      {active === "Economics" && (liveOpsData ? <LiveBackendTables title="Economics" groups={[{ label: "Finance daily", rows: liveRows(liveOpsData, "finance") }, { label: "Studio master", rows: liveRows(liveOpsData, "studios") }]} /> : <LiveBackendTables title="Economics" groups={[]} />)}
+      {active === "Despatch" && <DespatchScreen commitments={liveDespatchCommitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} loopHealth={platformLoopHealth ?? undefined} onValidateAction={validateExecutionAction} />}
+      {active === "Economics" && <LiveEconomicsScreen snapshot={liveOpsData} />}
       </LensProvider>}
       </div>
     </section></div>

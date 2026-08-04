@@ -229,8 +229,8 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
 
   return <div id="despatch-screen"><DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
     { title: "What needs doing next", summary: `${escalationTotal + openAlerts.length + validationQueue.length} active actions ordered by urgency` },
-    ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
-    ...(heartbeatConnected ? [{ title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` }] : []),
+    { title: "Loop health", summary: loopHealth ? `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` : "Cannot confirm · verification source unavailable" },
+    { title: "Who has gone quiet", summary: heartbeatConnected ? `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` : "No governed heartbeat source connected" },
   ]}>
     <section className="heartbeat-section despatch-escalation-section" aria-label="Operate action overview">
       {priority ? <div className="despatch-priority-line" role="status"><span>Start here</span><strong>{priority.owner}</strong><p>{ownerItemSummary(priority).action}</p><small>{ownerItemSummary(priority).issue}</small></div> : null}

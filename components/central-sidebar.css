@@ -1,31 +1,149 @@
-/* Final UI navigation rail. Structure comes from spacing and weight while
-   persistent controls stay neutral and accessible. */
-.central-shell { grid-template-columns: 232px minmax(0, 1fr); }
-.central-rail { border-right: 1px solid #dedfe1; background: #fff; color: #111214; }
-.rail-account { min-height: 80px; padding: 14px 16px; border-bottom-color: #e4e5e7; }
-.rail-mark { width: 36px; height: 36px; background: #111214; color: #fff; }
-.rail-account strong { color: #111214; font-weight: 600; }
-.rail-account small, .rail-account > svg { color: #686b70; }
-.rail-lens { padding: 16px 14px 2px; }
-.rail-lens .operating-segmented-control { border-color: #d8dadd; background: #f4f4f5; }
-.rail-lens .operating-segmented-control button { min-height: 34px; color: #55585d; }
-.rail-lens .operating-segmented-control button:hover { color: #111214; }
-.rail-lens .operating-segmented-control button[aria-selected="true"] { background: #fff; color: #111214; box-shadow: inset 0 0 0 1px #111214; }
-.rail-navigation { padding: 10px 12px 20px; scrollbar-color: #c5c7ca transparent; }
-.rail-navigation p { margin: 20px 10px 8px; color: #686b70; }
-.rail-navigation button, .rail-footer button { min-height: 42px; gap: 11px; padding: 0 11px; color: #232529; font-weight: 450; }
-.rail-navigation button svg, .rail-footer button > svg { width: 16px; height: 16px; color: #111214; }
-.rail-navigation button:hover, .rail-footer button:hover { background: #f4f4f5; color: #111214; }
-.rail-navigation button.active { background: #eee; color: #111214; font-weight: 600; box-shadow: inset 3px 0 #111214; }
-.rail-footer { gap: 4px; padding: 12px; border-top-color: #e4e5e7; }
-.rail-status { min-height: 36px; padding: 0 11px; color: #55585d; }
-.rail-status span { background: #111214; box-shadow: 0 0 0 3px #e2e3e5; }
-.rail-profile { min-height: 54px !important; border-top-color: #e4e5e7 !important; }
-.rail-profile > svg:first-child, .rail-profile > svg:last-child, .rail-profile strong { color: #111214; }
-.rail-profile small { color: #686b70; }
+/* The navigation rail is intentionally quiet: structure comes from spacing and weight,
+   while every persistent control remains neutral black on white. */
+.central-shell {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.central-rail {
+  border-right: 1px solid #dedfe1;
+  background: #ffffff;
+  color: #111214;
+}
+
+.rail-account {
+  min-height: 80px;
+  padding: 14px 16px;
+  border-bottom-color: #e4e5e7;
+}
+
+.rail-mark {
+  width: 36px;
+  height: 36px;
+  background: #111214;
+  color: #ffffff;
+}
+
+.rail-account strong {
+  color: #111214;
+  font-weight: 600;
+}
+
+.rail-account small,
+.rail-account > svg {
+  color: #686b70;
+}
+
+.rail-lens {
+  padding: 16px 14px 2px;
+}
+
+.rail-lens .operating-segmented-control {
+  border-color: #d8dadd;
+  background: #f4f4f5;
+}
+
+.rail-lens .operating-segmented-control button {
+  min-height: 34px;
+  color: #55585d;
+}
+
+.rail-lens .operating-segmented-control button:hover {
+  color: #111214;
+}
+
+.rail-lens .operating-segmented-control button[aria-selected="true"] {
+  background: #ffffff;
+  color: #111214;
+  box-shadow: inset 0 0 0 1px #111214;
+}
+
+.rail-navigation {
+  padding: 10px 12px 20px;
+  scrollbar-color: #c5c7ca transparent;
+}
+
+.rail-navigation p {
+  margin: 20px 10px 8px;
+  color: #686b70;
+}
+
+.rail-navigation button,
+.rail-footer button {
+  min-height: 42px;
+  gap: 11px;
+  padding: 0 11px;
+  color: #232529;
+  font-weight: 450;
+}
+
+.rail-navigation button svg,
+.rail-footer button > svg {
+  width: 16px;
+  height: 16px;
+  color: #111214;
+}
+
+.rail-navigation button:hover,
+.rail-footer button:hover {
+  background: #f4f4f5;
+  color: #111214;
+}
+
+.rail-navigation button.active {
+  background: #eeeeef;
+  color: #111214;
+  font-weight: 600;
+  box-shadow: inset 3px 0 #111214;
+}
+
+.rail-footer {
+  gap: 4px;
+  padding: 12px;
+  border-top-color: #e4e5e7;
+}
+
+.rail-status {
+  min-height: 36px;
+  padding: 0 11px;
+  color: #55585d;
+}
+
+.rail-status span {
+  background: #111214;
+  box-shadow: 0 0 0 3px #e2e3e5;
+}
+
+.rail-profile {
+  min-height: 54px !important;
+  border-top-color: #e4e5e7 !important;
+}
+
+.rail-profile > svg:first-child,
+.rail-profile > svg:last-child,
+.rail-profile strong {
+  color: #111214;
+}
+
+.rail-profile small {
+  color: #686b70;
+}
+
 @media (max-width: 900px) {
-  .central-shell { display: block; }
-  .central-rail { width: min(304px, 86vw); box-shadow: 16px 0 40px rgba(0,0,0,.18); }
-  .rail-close { background: #f1f1f2; color: #111214; }
-  .central-rail .rail-lens .operating-segmented-control button { min-height: 44px; }
+  .central-shell {
+    display: block;
+  }
+
+  .central-rail {
+    width: min(304px, 86vw);
+    box-shadow: 16px 0 40px rgba(0, 0, 0, .18);
+  }
+
+  .rail-close {
+    background: #f1f1f2;
+    color: #111214;
+  }
+
+  .central-rail .rail-lens .operating-segmented-control button {
+    min-height: 44px;
+  }
 }

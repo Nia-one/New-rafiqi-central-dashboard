@@ -89,7 +89,7 @@ test("feedback aggregates state their population and calculate July NPS", () => 
   assert.deepEqual(calculateNps(npsResponses.filter((response) => response.month === CURRENT_NPS_MONTH)), { score: -13, respondents: 8, promoters: 2, passives: 3, detractors: 3 })
   assert.equal(recurringFeedback(memberFeedbackItems)[0]?.category, "Curry quality")
   assert.match(memberFeedbackScreen, /Population:/)
-  assert.match(memberFeedbackScreen, /of \{memberFeedbackItems\.length\}/)
+  assert.match(memberFeedbackScreen, /of \{items\.length\}/)
 })
 
 test("the ops-facing tab never renders raw conversation references", () => {

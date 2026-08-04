@@ -20,7 +20,7 @@ test("Member NPS keeps reporting in both lenses and gates recovery actions to Op
   const decide = renderMemberNps("decide")
   const operate = renderMemberNps("operate")
 
-  for (const html of [standalone, decide, operate]) assert.match(html, /Capture is designed\. The connectors are not live yet\./)
+  for (const html of [standalone, decide, operate]) assert.match(html, /Governed Member feedback sources are connected\.|No governed feedback records are available\./)
   assert.match(standalone, /Member feedback early warning queue/)
   assert.match(operate, /Member feedback early warning queue/)
   assert.doesNotMatch(decide, /Member feedback early warning queue/)

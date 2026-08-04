@@ -12,6 +12,16 @@ import {
   buildLiveMarginInputs,
   buildLiveSelfDriveSnapshot,
 } from "@/lib/live-mappers/self-drive"
+import {
+  buildLiveCashControlPreview,
+  buildLiveControlledAutonomyPreview,
+  buildLiveFinanceExpansionPreview,
+  buildLiveMemberEngagementPreview,
+  buildLiveMemberFeedbackModel,
+  buildLiveMemberSavingsPreview,
+  buildLiveNewAddsPreview,
+  buildLiveNiaGrowthPreview,
+} from "@/lib/live-mappers/final-ui-previews"
 
 export const dynamic = "force-dynamic"
 
@@ -41,6 +51,14 @@ export default async function Page() {
   const niaMarginsPreview = liveSelfDriveData && liveMarginInputs.length > 0
     ? buildNiaMarginsPreview(liveMarginInputs, liveSelfDriveData.asOf, [])
     : null
+  const newAddsPreview = liveSelfDriveData ? buildLiveNewAddsPreview(liveSelfDriveData) : null
+  const memberEngagementPreview = liveSelfDriveData ? buildLiveMemberEngagementPreview(liveSelfDriveData) : null
+  const memberSavingsPreview = liveSelfDriveData ? buildLiveMemberSavingsPreview(liveSelfDriveData) : null
+  const niaGrowthPreview = liveSelfDriveData ? buildLiveNiaGrowthPreview(liveSelfDriveData) : null
+  const cashControlPreview = financeAllowed && liveSelfDriveData ? buildLiveCashControlPreview(liveSelfDriveData) : null
+  const financeExpansionPreview = financeAllowed && liveSelfDriveData ? buildLiveFinanceExpansionPreview(liveSelfDriveData) : null
+  const controlledAutonomyPreview = liveSelfDriveData ? buildLiveControlledAutonomyPreview(liveSelfDriveData) : null
+  const memberFeedbackModel = liveSelfDriveData ? buildLiveMemberFeedbackModel(liveSelfDriveData) : { items: [], responses: [] }
   const liveDespatchEscalations = liveOpsData ? buildLiveDespatchEscalations({ actionLog: liveOpsData.actionLog, incidentLog: liveOpsData.incidentLog, people: liveOpsData.people }) : []
-  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} niaMarginsPreview={niaMarginsPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
+  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} memberFeedbackItems={memberFeedbackModel.items} memberNpsResponses={memberFeedbackModel.responses} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
 }
