@@ -251,7 +251,12 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       {validationMessage ? <p className="despatch-validation-message" role="status">{validationMessage}</p> : null}
     </section>
 
-    {loopHealth ? <LoopHealthStrip health={loopHealth} /> : null}
+    {loopHealth
+      ? <LoopHealthStrip health={loopHealth} />
+      : <section className="despatch-validation-empty" aria-label="Loop health unavailable">
+          <ShieldCheck aria-hidden />
+          <div><strong>Loop health cannot be confirmed.</strong><span>No governed verification source is connected.</span></div>
+        </section>}
 
     {heartbeatConnected ? <details className="system-monitoring-details">
       <summary>Who has gone quiet</summary>
@@ -318,6 +323,9 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </section>
     </div>
       </div>
-    </details> : null}
+    </details> : <section className="despatch-validation-empty" aria-label="Who has gone quiet unavailable">
+      <ShieldCheck aria-hidden />
+      <div><strong>No governed heartbeat source is connected.</strong><span>The section will populate automatically when live heartbeat signals are available.</span></div>
+    </section>}
   </DashboardSectionAccordion></div>
 }

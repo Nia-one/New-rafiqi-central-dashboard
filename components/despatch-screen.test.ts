@@ -23,5 +23,7 @@ test("Despatch derives its final compact queue and charts from live exceptions",
   assert.match(html, /Member Adds/)
   assert.doesNotMatch(html, />New Adds</)
   assert.match(html, /Deadline passed/)
-  assert.doesNotMatch(html, /Who has gone quiet|Vikram Singh|Illustrative control data/)
+  assert.match(html, /Who has gone quiet/)
+  assert.match(html, /No governed heartbeat source connected/)
+  assert.doesNotMatch(html, /Vikram Singh|Illustrative control data/)
 })
