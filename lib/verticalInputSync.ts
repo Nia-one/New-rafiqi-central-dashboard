@@ -122,7 +122,10 @@ export async function syncVerticalInputs() {
       spreadsheetId: SOURCE_ID,
       range: "TEAM_OCCUPANCY!A2",
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [...mirroredRows, ...sampleRows] },
+      // Keep the protected example immediately below the header so operators see
+      // the input format before the automated Studio rows. Sample rows remain
+      // excluded from every downstream projection by isSampleRow().
+      requestBody: { values: [...sampleRows, ...mirroredRows] },
     });
     occupancySource = { ...teamOccupancy, rows: mirroredRows };
   }
