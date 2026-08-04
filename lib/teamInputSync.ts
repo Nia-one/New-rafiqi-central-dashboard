@@ -38,6 +38,7 @@ const aliases: Record<string, string> = {
 };
 
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
+const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 
 const dateOnlyTargetHeaders = new Set(["business date", "effective from", "effective to"]);
 const userDateTargetHeaders = new Set([
@@ -125,7 +126,7 @@ async function syncEnterpriseOutcomes(
   const actions: Record<string, unknown>[] = [];
   const evidence: Record<string, unknown>[] = [];
   let skipped = 0;
-  for (const row of rows.slice(headerIndex + 1)) {
+  for (const row of rows.slice(headerIndex + 1).filter((row) => !isSampleRow(row))) {
     const demandRef = value(row, "demand reference");
     const outcome = value(row, "action / outcome");
     if (/^required\s*:/i.test(String(demandRef).trim())) continue;
@@ -194,7 +195,7 @@ async function syncNiaGrowthInputs(
   const headerIndex = rows.findIndex((row) => row.map(normal).includes("growth record id") && row.map(normal).includes("supply model"));
   if (headerIndex < 0) return null;
   const headers = rows[headerIndex].map(normal);
-  const objects = rows.slice(headerIndex + 1)
+  const objects = rows.slice(headerIndex + 1).filter((row) => !isSampleRow(row))
     .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])))
     .filter((row) => normal(row["growth record id"]));
   const now = new Date().toISOString();
@@ -361,7 +362,7 @@ export async function syncTeamInputs() {
       if (key) existing.set(key, index + 1);
     });
     let inserted = 0, updated = 0, skipped = 0;
-    for (const row of sourceRows.slice(sourceHeaderIndex + 1)) {
+    for (const row of sourceRows.slice(sourceHeaderIndex + 1).filter((row) => !isSampleRow(row))) {
       const sourceValue = (name: string) => {
         const index = sourceHeaders.indexOf(normal(name));
         return index < 0 ? "" : row[index];

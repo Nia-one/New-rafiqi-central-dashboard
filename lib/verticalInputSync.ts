@@ -4,6 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
+const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const number = (v: unknown) => Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0;
 const value = (row: unknown[], headers: string[], ...names: string[]) => {
   for (const name of names) {
@@ -76,7 +77,7 @@ export async function syncVerticalInputs() {
       const cells = row.map(norm);
       return cells.filter(Boolean).length >= 4 && cells.some((cell) => ["date", "theatre", "studio code", "client", "action", "s no."].includes(cell));
     });
-    return [tab, { headers: (rows[Math.max(0, headerIndex)] || []).map(String), rows: rows.slice(Math.max(0, headerIndex) + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())), rawRows: rows, headerIndex: Math.max(0, headerIndex) }];
+    return [tab, { headers: (rows[Math.max(0, headerIndex)] || []).map(String), rows: rows.slice(Math.max(0, headerIndex) + 1).filter((row) => !isSampleRow(row) && row.some((cell) => String(cell ?? "").trim())), rawRows: rows, headerIndex: Math.max(0, headerIndex) }];
   }));
   const imported = (base: string) => {
     const title = importedTitles.find((candidate) => candidate === base || candidate.startsWith(`${base} (`));
@@ -91,6 +92,7 @@ export async function syncVerticalInputs() {
   // because that operational readiness value is not present in the report.
   let occupancySource = studioReport?.rows.length ? studioReport : teamOccupancy;
   if (studioReport?.rows.length && teamOccupancy?.headers.length) {
+    const sampleRows = teamOccupancy.rows.filter(isSampleRow);
     const existingByStudio = new Map(teamOccupancy.rows.map((row) => [norm(value(row, teamOccupancy.headers, "Studio Code")), row]));
     const reportDate = studioReport.rawRows?.[1]?.[1] || "";
     const mirroredRows = studioReport.rows
@@ -118,7 +120,7 @@ export async function syncVerticalInputs() {
       spreadsheetId: SOURCE_ID,
       range: "TEAM_OCCUPANCY!A2",
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: mirroredRows },
+      requestBody: { values: [...mirroredRows, ...sampleRows] },
     });
     occupancySource = { ...teamOccupancy, rows: mirroredRows };
   }

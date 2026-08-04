@@ -3,6 +3,7 @@ import { google } from "googleapis";
 type SheetsClient = ReturnType<typeof google.sheets>;
 type Assignment = { assignmentId: string; vertical: string; scope: string; theatre: string; role: string; ownerName: string; responsibility: string; effectiveFrom: string; effectiveTo: string; status: string };
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
+const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const slug = (value: unknown) => String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
 const actorId = (name: string) => `ACT-${slug(name)}`;
 const aliases: Record<string, string> = { decaan: "deccan", coromandal: "coromandel", commandal: "coromandel", welington: "wellington" };
@@ -35,7 +36,7 @@ export function verticalForObjective(value: unknown) {
 
 const rowObjects = (rows: unknown[][]) => {
   const headers = (rows[0] || []).map(normal);
-  return rows.slice(1).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
+  return rows.slice(1).filter((row) => !isSampleRow(row)).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
 };
 
 async function ensureBackendRegistry(sheets: SheetsClient, spreadsheetId: string, assignments: Assignment[]) {

@@ -10,6 +10,7 @@ export const memberFeedbackInputHeaders = [
 ] as const;
 
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
+const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const stableId = (prefix: string, parts: unknown[]) => `${prefix}-${crypto.createHash("sha1").update(parts.map(norm).join("|")).digest("hex").slice(0, 12).toUpperCase()}`;
 const validDate = (value: unknown) => {
   const raw = String(value ?? "").trim();
@@ -83,7 +84,7 @@ function objects(rows: unknown[][]) {
   });
   if (headerIndex < 0) return [];
   const headers = rows[headerIndex].map(norm);
-  return rows.slice(headerIndex + 1).filter((row) => row.some((cell) => String(cell ?? "").trim())).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
+  return rows.slice(headerIndex + 1).filter((row) => !isSampleRow(row) && row.some((cell) => String(cell ?? "").trim())).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]])));
 }
 
 async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, tab: string, keyHeader: string, prefix: string, records: Record<string, unknown>[]) {
