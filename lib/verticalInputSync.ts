@@ -92,7 +92,7 @@ export async function syncVerticalInputs() {
   // because that operational readiness value is not present in the report.
   let occupancySource = studioReport?.rows.length ? studioReport : teamOccupancy;
   if (studioReport?.rows.length && teamOccupancy?.headers.length) {
-    const sampleRows = teamOccupancy.rows.filter(isSampleRow);
+    const sampleRows = teamOccupancy.rawRows.slice(teamOccupancy.headerIndex + 1).filter(isSampleRow);
     const existingByStudio = new Map(teamOccupancy.rows.map((row) => [norm(value(row, teamOccupancy.headers, "Studio Code")), row]));
     const reportDate = studioReport.rawRows?.[1]?.[1] || "";
     const mirroredRows = studioReport.rows
