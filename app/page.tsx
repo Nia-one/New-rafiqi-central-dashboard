@@ -26,7 +26,7 @@ import {
 
 export const dynamic = "force-dynamic"
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams?: Promise<{ period?: string }> } = {}) {
   if (!selfDrivePlatformEnabled()) return <LegacyNiaDashboard />
 
   const { NiaDashboard } = await import("@/components/nia-dashboard")
@@ -37,10 +37,11 @@ export default async function Page() {
   const role = sessionEmail ? roleAssignments().get(sessionEmail) ?? (process.env.NODE_ENV !== "production" && sessionEmail === configuredEmail ? "administrator" : null) : null
   const hasFinanceRole = financeAccessAllowed(role)
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
+  const requestedPeriod = (await searchParams)?.period ?? "latest"
   let liveOpsData: Awaited<ReturnType<typeof buildOpsData>> | null = null
   let allocationData: Awaited<ReturnType<typeof buildAllocationData>> | null = null
   try {
-    ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(), buildAllocationData()])
+    ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(requestedPeriod), buildAllocationData(requestedPeriod)])
   } catch (error) {
     console.warn("Live dashboard snapshot unavailable; rendering explicit no-data states.", error instanceof Error ? error.message : error)
   }

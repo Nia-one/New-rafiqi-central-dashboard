@@ -58,8 +58,8 @@ function confidence(value: any): "High" | "Medium" | "Low" | null {
   return label === "High" || label === "Medium" || label === "Low" ? label : null;
 }
 
-export async function buildAllocationData(): Promise<LiveAllocationData> {
-  const ops = await buildOpsData();
+export async function buildAllocationData(period: string = "all"): Promise<LiveAllocationData> {
+  const ops = await buildOpsData(period);
 
   const peopleById = new Map((ops.people ?? []).map((person: any) => [
     text(person, ["actor id", "Actor ID"]),

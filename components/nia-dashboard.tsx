@@ -30,6 +30,7 @@ import { NiaGrowthWorkspace } from "@/components/nia-growth-workspace"
 import { CashControlWorkspace } from "@/components/cash-control-workspace"
 import { LearningHistoryWorkspace, type LearningHistoryEntry } from "@/components/learning-history-workspace"
 import { ContextStrip, SegmentedControl } from "@/components/operating-ui"
+import { TokenSelect } from "@/components/token-select"
 import { dashboardDisplayLabel, POST_LOGIN_DASHBOARD_STATE, TABLE_SCREENS, workspaceLandingTab, type DashboardRoute, type DashboardTab, type DashboardWorkspace, type LivingSection } from "@/lib/dashboard-model"
 import { validateActionProof, type ExecutionAction } from "@/lib/execution-control"
 import { laneHeadline } from "@/lib/ops-data"
@@ -46,7 +47,12 @@ import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
 import type { HeartbeatSnapshot } from "@/lib/heartbeat-control"
 import { aggregateLoopHealth, buildDespatchQueue, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
-const DASHBOARD_PERIOD = "Jul 2026"
+function periodLabel(period: string) {
+  if (period === "all") return "All · cumulative"
+  const match = period.match(/^(\d{4})-(\d{2})$/)
+  if (!match) return period || "All · cumulative"
+  return new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1)))
+}
 
 function liveRows(snapshot: unknown, key: string): readonly Record<string, unknown>[] {
   if (!snapshot || typeof snapshot !== "object") return []
@@ -267,6 +273,11 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [searchQuery, setSearchQuery] = useState("")
   const [syncing, setSyncing] = useState(false)
   const [commitments, setCommitments] = useState<ExecutionAction[]>(() => [...liveDespatchCommitments])
+  const availablePeriods = Array.isArray((liveOpsData as { availablePeriods?: unknown } | null)?.availablePeriods)
+    ? ((liveOpsData as { availablePeriods: unknown[] }).availablePeriods.filter((value): value is string => typeof value === "string"))
+    : []
+  const selectedPeriod = String((liveOpsData as { selectedPeriod?: string } | null)?.selectedPeriod ?? "all")
+  const selectedPeriodLabel = periodLabel(selectedPeriod)
   // Keep the page shell stable while the Overview mode changes. The mode bar
   // and the report body already explain the active operating view.
   const meta = decisionRoomOpen
@@ -397,6 +408,13 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
     }
   }
 
+  function selectPeriod(period: string) {
+    const url = new URL(window.location.href)
+    if (period === "all") url.searchParams.set("period", "all")
+    else url.searchParams.set("period", period)
+    window.location.assign(url.toString())
+  }
+
   function openFeedbackExecution() {
     setActive("Overview")
     setOverviewMode("execution")
@@ -425,7 +443,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       <div className="utility-actions">
         <button type="button" className={filtersOpen ? "utility-button active" : "utility-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><SlidersHorizontal aria-hidden /><span>Filters</span></button>
         <button type="button" className="utility-icon" title="Governed live snapshot" aria-label="Governed live snapshot"><ShieldCheck aria-hidden /></button>
-        <button type="button" className="utility-button period"><CalendarDays aria-hidden /><span>{DASHBOARD_PERIOD}</span></button>
+        <div className="utility-button period dashboard-period-filter"><CalendarDays aria-hidden /><TokenSelect ariaLabel="Reporting period" value={selectedPeriod} onChange={selectPeriod} options={[{ value: "all", label: "All · cumulative" }, ...availablePeriods.map((period) => ({ value: period, label: periodLabel(period) }))]} /></div>
         <button type="button" className="utility-icon" title="Sync all source sheets" aria-label="Sync all source sheets" disabled={syncing} onClick={refreshLiveData}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /></button>
         <button type="button" className="utility-primary" onClick={() => navigateFromRail("self-drive", "Despatch")}><Truck aria-hidden /><span>Open Despatch</span></button>
       </div>
@@ -438,9 +456,9 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {decisionRoomOpen ? <h1 className="sr-only">Decision Room</h1> : null}
       {!decisionRoomOpen && active !== "Enterprise Demand" ? <PageContextHeader active={active} /> : null}
       {!decisionRoomOpen && active === "Enterprise Demand" && enterpriseDemandPreview && !OUTLINE_MANAGED_TABS.has(active) ? <EnterpriseContextHeader preview={enterpriseDemandPreview} /> : null}
-      {!decisionRoomOpen && active !== "Enterprise Demand" ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: meta.view }]} /> : null}
+      {!decisionRoomOpen ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: <TokenSelect className="context-period-filter" ariaLabel="Global reporting period" value={selectedPeriod} onChange={selectPeriod} options={[{ value: "all", label: "All · cumulative" }, ...availablePeriods.map((period) => ({ value: period, label: periodLabel(period) }))]} /> }]} /> : null}
       <div className="x-page-body">
-      {decisionRoomOpen && enterpriseDemandPreview && newAddsPreview && memberEngagementPreview && memberSavingsPreview && niaMarginsPreview && niaGrowthPreview ? <DecisionRoom enterpriseDemandPreview={enterpriseDemandPreview} cashControlPreview={cashControlPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaMarginsPreview={niaMarginsPreview} niaGrowthPreview={niaGrowthPreview} signOffCount={learningHistory.length} period={DASHBOARD_PERIOD} onOpenLoop={(tab) => navigateFromRail("self-drive", tab)} onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={liveOpsData ? [{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }] : []} /> : <LensProvider lens={lens}>
+      {decisionRoomOpen && enterpriseDemandPreview && newAddsPreview && memberEngagementPreview && memberSavingsPreview && niaMarginsPreview && niaGrowthPreview ? <DecisionRoom enterpriseDemandPreview={enterpriseDemandPreview} cashControlPreview={cashControlPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaMarginsPreview={niaMarginsPreview} niaGrowthPreview={niaGrowthPreview} signOffCount={learningHistory.length} period={selectedPeriodLabel} onOpenLoop={(tab) => navigateFromRail("self-drive", tab)} onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={liveOpsData ? [{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }] : []} /> : <LensProvider lens={lens}>
       {active === "Overview" && platformLoopHealth && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} allocationData={allocationData} onModeChange={setOverviewMode} onNavigate={navigate} />}
       {active === "Overview" && !platformLoopHealth && <LiveBackendTables title="Overview" groups={[]} />}
       {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users with governed finance data.</h2><p>Financial goals, cash, opex and leakage remain protected.</p></section>)}

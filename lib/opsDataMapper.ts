@@ -260,9 +260,9 @@ function summarizeLiving(rows: Record<string, any>[]) {
   };
 }
 
-export async function buildOpsData() {
+export async function buildOpsData(period: string = "all") {
   console.log('OPS_MAPPER_START');
-  const data = await getDashboardData();
+  const data = await getDashboardData(period);
 
   console.log("Action Log (first 10 rows):");
 console.log(data.actionLog?.slice(0, 10));
@@ -598,6 +598,8 @@ const askRateMultiple = currentDailyCmPace > 0
   : 0;
 
   return {
+  availablePeriods: data.availablePeriods,
+  selectedPeriod: data.selectedPeriod,
   meta: {
     block: "",
     ...reportingPeriod,

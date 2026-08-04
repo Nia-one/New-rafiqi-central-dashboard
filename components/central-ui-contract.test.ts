@@ -47,9 +47,10 @@ test("outline-managed pages do not duplicate section navigation in the horizonta
   assert.match(dashboard, /enterpriseDemandPreview && !OUTLINE_MANAGED_TABS\.has\(active\)/)
 })
 
-test("the utility chip retains the governed presentation period", () => {
-  assert.equal((dashboard.match(/"Jul 2026"/g) ?? []).length, 1)
-  assert.match(dashboard, /<span>\{DASHBOARD_PERIOD\}<\/span>/)
+test("the utility control exposes the governed sheet-derived reporting period", () => {
+  assert.match(dashboard, /ariaLabel="Reporting period"/)
+  assert.match(dashboard, /All · cumulative/)
+  assert.match(dashboard, /availablePeriods\.map/)
   assert.match(dashboard, /title="Decision Room"/)
 })
 

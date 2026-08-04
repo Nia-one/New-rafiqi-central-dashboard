@@ -3358,6 +3358,11 @@
 .utility-button:hover, .utility-icon:hover, .utility-button.active { border-color: #bfc1c4; background: #f3f3f4; color: #111214; }
 .utility-button.active { box-shadow: inset 0 -2px #111214; }
 .utility-button.period { margin-left: auto; }
+.dashboard-period-filter { cursor: default; }
+.dashboard-period-filter .token-select-trigger { min-width: 105px; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; }
+.dashboard-period-filter .token-select-menu { right: 0; left: auto; min-width: 180px; }
+.context-period-filter .token-select-trigger { min-width: 120px; justify-content: space-between; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: 650; }
+.context-period-filter .token-select-menu { right: 0; left: auto; z-index: 60; min-width: 190px; }
 .utility-primary { border-color: #111214; background: #111214; color: #ffffff; }
 .utility-primary:hover { background: #292a2d; }
 .platform-heading { display: flex; min-height: 78px; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 15px 20px 13px; border-bottom: 0; background: #ffffff; }
