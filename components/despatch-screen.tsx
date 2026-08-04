@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { Activity, BellRing, Check, Clock3, Pause, Play, RefreshCw, ShieldCheck } from "lucide-react"
 import { HEARTBEAT_POLL_INTERVAL_SECONDS, type EvaluatedHeartbeat, type HeartbeatSnapshot } from "@/lib/heartbeat-control"
 import { heartbeatRules } from "@/lib/heartbeat-data"
@@ -105,6 +105,26 @@ function ownerGroupTone(items: readonly { tone: OperationalTone }[]): Operationa
   return [...items].sort((left, right) => rank[right.tone] - rank[left.tone])[0]?.tone ?? "neutral"
 }
 
+function ownerItemSummary(item: DespatchOwnerItem) {
+  if (item.kind === "escalation") return {
+    issue: plainEscalationError(item.record), domain: dashboardDisplayLabel(item.record.domain),
+    timingLabel: "Due", timing: formatDateTime(item.record.dueAt), action: escalationAction(item.record), optic: escalationOptic(item.record),
+  }
+  if (item.kind === "heartbeat") {
+    const scale = Math.max(item.record.rule.threshold_minutes * 2, item.record.minutes_since_heartbeat)
+    return {
+      issue: `${item.record.name} went silent`, domain: `${item.record.theatre} · ${item.record.location}`,
+      timingLabel: "Due", timing: "Now", action: "Check safety, then confirm",
+      optic: { label: `${item.record.minutes_since_heartbeat} min · limit ${item.record.rule.threshold_minutes}`, percent: item.record.minutes_since_heartbeat / scale * 100 },
+    }
+  }
+  return {
+    issue: "Proof needs checking", domain: `${item.record.team} · ${item.record.theatre}`,
+    timingLabel: "Received", timing: formatDateTime(item.record.closedAt), action: "Validate submitted proof",
+    optic: { label: `${item.record.evidence.length} proof submission${item.record.evidence.length === 1 ? "" : "s"}`, percent: 82 },
+  }
+}
+
 function SignalIdentity({ stream }: { stream: EvaluatedHeartbeat }) {
   return <div className="heartbeat-identity"><strong>{stream.name}</strong><span>{stream.role} · {stream.theatre} · {stream.location}</span></div>
 }
@@ -170,6 +190,15 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       const rank: Readonly<Record<OperationalTone, number>> = { critical: 5, breach: 4, attention: 3, neutral: 2, verified: 1 }
       return rank[right.tone] - rank[left.tone] || left.owner.localeCompare(right.owner)
     })
+  const orderedItems = ownerClusters.flatMap((cluster) => cluster.items)
+  const maximumOwnerActions = Math.max(1, ...ownerClusters.map((cluster) => cluster.items.length))
+  const workTypes = [
+    { label: "Loop exceptions", value: ownerItems.filter((item) => item.kind === "escalation").length },
+    { label: "Missing signals", value: ownerItems.filter((item) => item.kind === "heartbeat").length },
+    { label: "Proof checks", value: ownerItems.filter((item) => item.kind === "verification").length },
+  ]
+  const maximumWorkType = Math.max(1, ...workTypes.map((item) => item.value))
+  const priority = orderedItems[0]
 
   async function acknowledge(heartbeatId: string) {
     setAcknowledgingId(heartbeatId)
@@ -198,85 +227,25 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
     setValidatingId("")
   }
 
-  return <DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
+  return <div id="despatch-screen"><DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
     { title: "What needs doing next", summary: `${escalationTotal + openAlerts.length + validationQueue.length} active actions ordered by urgency` },
     ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
     ...(heartbeatConnected ? [{ title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` }] : []),
   ]}>
-    <section className="heartbeat-section despatch-escalation-section" aria-labelledby="despatch-escalation-title">
-      <header><div><p className="heartbeat-kicker">NEXT ACTIONS</p><h2 id="despatch-escalation-title">What needs doing next</h2></div><p>{escalationTotal + openAlerts.length + validationQueue.length} active · ordered by urgency</p></header>
-      {ownerClusters.length > 0 ? <div className={`despatch-verdict is-${ownerClusters[0].tone}`} data-tone={ownerClusters[0].tone} role="status">
-        <b className="despatch-verdict-pill">{ownerClusters[0].tone === "critical" ? "Act now" : ownerClusters[0].tone === "breach" ? "Breach open" : "Needs attention"}</b>
-        <span><strong>{ownerClusters[0].owner}</strong> owns the most urgent action of {ownerClusters.length} owner{ownerClusters.length === 1 ? "" : "s"} waiting.</span>
-        <small>So what: each item below closes only on independently verified proof, so start at the top and work down until every owner clears.</small>
-      </div> : null}
-      <div className="despatch-owner-clusters" aria-label="Actions grouped by owner">
-        {ownerClusters.map((cluster) => <section className={`despatch-owner-cluster is-${cluster.tone}`} data-tone={cluster.tone} data-count={cluster.items.length} key={cluster.owner}>
-          <header><div><strong>{cluster.owner}</strong><span>{cluster.items.length} action{cluster.items.length === 1 ? "" : "s"}</span></div><i aria-hidden /></header>
-          <OperationalCardStack label={`${cluster.owner} actions`}>{cluster.items.map((item) => {
-            if (item.kind === "escalation") {
-              const escalation = item.record
-              return <OperationalCard
-                key={item.id}
-                title={item.owner}
-                subtitle={plainEscalationError(escalation)}
-                status={escalation.severity}
-                tone={item.tone}
-                domain={dashboardDisplayLabel(escalation.domain)}
-                fields={[{ label: "Due", value: <time dateTime={escalation.dueAt}>{formatDateTime(escalation.dueAt)}</time> }]}
-                progress={escalation.severity === "Attention" ? "assigned" : "working"}
-                optic={escalationOptic(escalation)}
-                action={escalationAction(escalation)}
-                description={<p>{escalation.reason}</p>}
-                story={[
-                  { label: "Why it matters", value: plainEscalationError(escalation) },
-                  { label: "What Nia already did", value: `Detected the exception and assigned ${escalation.ownerRole}.` },
-                  { label: "What happens next", value: escalationAction(escalation) },
-                ]}
-              />
-            }
-            if (item.kind === "heartbeat") {
-              const alert = item.record
-              const scale = Math.max(alert.rule.threshold_minutes * 2, alert.minutes_since_heartbeat)
-              return <OperationalCard
-                key={item.id}
-                title={item.owner}
-                subtitle={`${alert.name} went silent`}
-                status={statusLabels[alert.status]}
-                tone={item.tone}
-                domain={`${alert.theatre} · ${alert.location}`}
-                fields={[{ label: "Due", value: "Now" }]}
-                progress="assigned"
-                optic={{ label: `${alert.minutes_since_heartbeat} min · limit ${alert.rule.threshold_minutes}`, percent: alert.minutes_since_heartbeat / scale * 100, markerPercent: alert.rule.threshold_minutes / scale * 100 }}
-                action="Check safety, then confirm"
-                story={[
-                  { label: "Why it matters", value: `${alert.minutes_since_heartbeat} minutes have passed since the last qualifying signal.` },
-                  { label: "What Nia already did", value: alert.status === "escalated" ? "Raised the alert and escalated it after the first response window passed." : "Raised an alert under the configured heartbeat rule." },
-                  { label: "What happens next", value: "Check safety, then confirm." },
-                ]}
-              ><button onClick={() => void acknowledge(alert.id)} disabled={acknowledgingId === alert.id}><Check aria-hidden />{acknowledgingId === alert.id ? "Recording" : "Confirm checked"}</button></OperationalCard>
-            }
-            const action = item.record
-            return <OperationalCard
-              key={item.id}
-              title={item.owner}
-              subtitle="Proof needs checking"
-              domain={`${action.team} · ${action.theatre}`}
-              status="Evidence received"
-              tone={item.tone}
-              fields={[{ label: "Received", value: formatDateTime(action.closedAt) }]}
-              progress="evidence"
-              optic={{ label: `${action.evidence.length} proof submission${action.evidence.length === 1 ? "" : "s"}`, percent: 82, markerPercent: 100 }}
-              action="Validate submitted proof"
-              story={[
-                { label: "Why it matters", value: "The result cannot be counted until someone independent checks the proof." },
-                { label: "What Nia already did", value: `Collected ${action.evidence.length} protected proof submission${action.evidence.length === 1 ? "" : "s"}.` },
-                { label: "What happens next", value: "Validate submitted proof" },
-              ]}
-              description={<p>{action.evidence.join(" · ")}</p>}
-            ><button onClick={() => validateProof(action.id)} disabled={validatingId === action.id}><Check aria-hidden />{validatingId === action.id ? "Validating" : "Validate proof"}</button></OperationalCard>
-          })}</OperationalCardStack>
-        </section>)}
+    <section className="heartbeat-section despatch-escalation-section" aria-label="Operate action overview">
+      {priority ? <div className="despatch-priority-line" role="status"><span>Start here</span><strong>{priority.owner}</strong><p>{ownerItemSummary(priority).action}</p><small>{ownerItemSummary(priority).issue}</small></div> : null}
+      <div className="despatch-chart-grid">
+        <figure aria-label="Actions by owner"><figcaption><strong>Actions by owner</strong><span>{ownerClusters.length} owners waiting</span></figcaption><ol>{ownerClusters.map((cluster) => <li key={cluster.owner}><span>{cluster.owner}</span><i aria-hidden><b style={{ "--despatch-bar": `${cluster.items.length / maximumOwnerActions * 100}%` } as CSSProperties} /></i><strong>{cluster.items.length}</strong></li>)}</ol></figure>
+        <figure aria-label="Work type distribution"><figcaption><strong>Work needing response</strong><span>{ownerItems.length} visible actions</span></figcaption><ol>{workTypes.map((item) => <li key={item.label}><span>{item.label}</span><i aria-hidden><b style={{ "--despatch-bar": `${item.value / maximumWorkType * 100}%` } as CSSProperties} /></i><strong>{item.value}</strong></li>)}</ol></figure>
+      </div>
+      <div className="despatch-action-queue" aria-label="Action queue">
+        <div className="despatch-action-head" aria-hidden><span>Owner and issue</span><span>Comparison</span><span>Next action</span><span>Timing</span><span /></div>
+        <ol>{orderedItems.map((item) => { const summary = ownerItemSummary(item); return <li key={`${item.kind}-${item.id}`}><div className="despatch-action-row">
+          <span className="despatch-action-owner"><strong>{item.owner}</strong><small>{summary.issue} · {summary.domain}</small></span>
+          <span className="despatch-action-measure"><i aria-hidden><b style={{ "--despatch-bar": `${Math.min(100, summary.optic.percent)}%` } as CSSProperties} /></i><small>{summary.optic.label}</small></span>
+          <strong className="despatch-action-next">{summary.action}</strong><span className="despatch-action-time"><small>{summary.timingLabel}</small><strong>{summary.timing}</strong></span>
+          {item.kind === "heartbeat" ? <button onClick={() => void acknowledge(item.record.id)} disabled={acknowledgingId === item.record.id}>{acknowledgingId === item.record.id ? "Recording" : "Confirm"}</button> : item.kind === "verification" ? <button onClick={() => validateProof(item.record.id)} disabled={validatingId === item.record.id}>{validatingId === item.record.id ? "Validating" : "Validate"}</button> : <span aria-hidden />}
+        </div></li> })}</ol>
       </div>
       {ownerItems.length === 0 ? <div className="despatch-validation-empty"><ShieldCheck aria-hidden /><div><strong>No action needs attention.</strong><span>Nia will place new work here automatically.</span></div></div> : null}
       {validationMessage ? <p className="despatch-validation-message" role="status">{validationMessage}</p> : null}
@@ -350,5 +319,5 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
     </div>
       </div>
     </details> : null}
-  </DashboardSectionAccordion>
+  </DashboardSectionAccordion></div>
 }

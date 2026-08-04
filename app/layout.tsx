@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next"
 import { ThemeInitializer } from "@/components/theme-initializer"
 import "./globals.css"
 import "../components/central-sidebar.css"
+import "../components/despatch-screen.css"
 
 export const metadata: Metadata = { title: "RafiQi Central", description: "Nia's secure operating control center for Living, Work and Essentials." }
 export const viewport: Viewport = {
