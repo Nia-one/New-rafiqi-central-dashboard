@@ -1,5 +1,4 @@
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
 import test from "node:test"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
@@ -11,8 +10,6 @@ import { buildMemberSavingsPreview } from "@/lib/operating-loop/member-savings-l
 import { buildNewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import { buildNiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import { buildNiaMarginsPreview, NIA_MARGINS_SYNTHETIC_INPUTS } from "@/lib/operating-loop/nia-margins-loop"
-
-const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 
 function renderDecisionRoom(cashControlPreview: DecisionRoomProps["cashControlPreview"]) {
   return renderToStaticMarkup(createElement(DecisionRoom, {
@@ -41,7 +38,10 @@ test("Decision Room includes finance approvals and its scoreboard row only when 
   assert.match(finance, /Approve the monthly collected-cash target/)
 })
 
-test("Decision Room score columns wrap long finance values without overflowing", () => {
-  assert.match(css, /\.decision-room-score \{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)
-  assert.match(css, /\.decision-room-score em b \{[^}]*overflow-wrap:\s*anywhere/)
+test("Decision Room renders chart-first comparisons and an exact evidence table", () => {
+  const html = renderDecisionRoom(buildCashControlPreview())
+  assert.match(html, /Current vs target/)
+  assert.match(html, /Escalations/)
+  assert.match(html, /Loop evidence table/)
+  assert.match(html, /--decision-position/)
 })

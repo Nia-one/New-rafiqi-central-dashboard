@@ -48,6 +48,12 @@ import { aggregateLoopHealth, buildDespatchQueue, type DespatchEscalationRecord 
 
 const DASHBOARD_PERIOD = "Jul 2026"
 
+function liveRows(snapshot: unknown, key: string): readonly Record<string, unknown>[] {
+  if (!snapshot || typeof snapshot !== "object") return []
+  const value = (snapshot as Record<string, unknown>)[key]
+  return Array.isArray(value) ? value.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object") : []
+}
+
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode · synthetic fixture" },
   "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode · synthetic fixture" },
@@ -393,8 +399,8 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen />}
-      {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} />}
-      {active === "People" && <PeopleScreen commitments={commitments} />}
+      {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "essentialsDashboard"), cohorts: liveRows(liveOpsData, "essentialsCohorts"), inventory: liveRows(liveOpsData, "essentialsInventory") } : null} />}
+      {active === "People" && <PeopleScreen commitments={commitments} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "peopleDashboard"), performance: liveRows(liveOpsData, "peoplePerformance"), followThrough: liveRows(liveOpsData, "peopleFollowThrough"), roster: liveRows(liveOpsData, "people") } : null} />}
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
       {active === "Despatch" && <DespatchScreen commitments={liveDespatchCommitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} onValidateAction={validateExecutionAction} />}

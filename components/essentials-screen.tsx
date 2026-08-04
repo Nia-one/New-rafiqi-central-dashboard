@@ -4,7 +4,21 @@ import { DataTable } from "@/components/data-table"
 import { TodayMtdFunnel } from "@/components/today-mtd-funnel"
 import { essentialsCohorts, essentialsHeadline, essentialsInventory, teamBlocks } from "@/lib/operating-data"
 
-export function EssentialsScreen({ allocationFocus }: { allocationFocus?: string }) {
+type LiveRow = Record<string, unknown>
+
+function LiveTable({ title, rows }: { title: string; rows: readonly LiveRow[] }) {
+  if (!rows.length) return <section className="operating-section"><h2>{title}</h2><p className="footer-note">No verified records are available in the backend sheet.</p></section>
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))].filter((key) => !key.startsWith("__"))
+  return <section className="operating-section"><h2>{title}</h2><DataTable caption={title} columns={columns} rows={rows.map((row) => columns.map((key) => String(row[key] ?? "")))} /></section>
+}
+
+export function EssentialsScreen({ allocationFocus, liveData }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
+  if (liveData !== undefined) return <DashboardSectionAccordion className="pillar-screen essentials-screen" ariaLabel="Essentials sections" sections={[
+    { title: "Main point", summary: liveData ? "Live Essentials bot and backend records" : "Live snapshot unavailable" },
+    { title: "Member buying journey", summary: `${liveData?.dashboard.length ?? 0} verified dashboard records` },
+    { title: "Demand", summary: `${liveData?.cohorts.length ?? 0} verified cohort records` },
+    { title: "Supply", summary: `${liveData?.inventory.length ?? 0} verified inventory records` },
+  ]}><div className="decision-bar"><div><span>MAIN POINT</span><strong>{liveData ? "Essentials is driven by the normalized bot and inventory records below." : "Essentials data is unavailable; no synthetic values are shown."}</strong></div><p>Orders and inventory remain bot-owned. Missing records stay missing.</p></div><AllocationContextStrip mismatchId={allocationFocus} /><LiveTable title="Member buying journey" rows={liveData?.dashboard ?? []} /><LiveTable title="Purchases by Member group" rows={liveData?.cohorts ?? []} /><LiveTable title="Stock by Studio and SKU" rows={liveData?.inventory ?? []} /></DashboardSectionAccordion>
   const demand = teamBlocks.find((team) => team.name === "Essentials Demand")!
   const supply = teamBlocks.find((team) => team.name === "Essentials Supply")!
   return <DashboardSectionAccordion className="pillar-screen essentials-screen" ariaLabel="Essentials sections" sections={[
