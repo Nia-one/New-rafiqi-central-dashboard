@@ -13,6 +13,25 @@ function stage(label: string, today: number, mtd: number, previous: number | nul
   return { label, today, mtd, todayConversion: previous && previous > 0 ? percent(today, previous) : null, mtdConversion: previous && previous > 0 ? percent(mtd, previous) : null, delta: "Live Sheet" }
 }
 
+const demandChannel = (row: Row) => value(row, "demand id").toUpperCase().startsWith("OPS-RPT-FONO") ? "FONO" : value(row, "demand id").toUpperCase().startsWith("SP-BOT-") ? "SP" : "OTHER"
+const stageBucket = (row: Row) => {
+  const state = `${value(row, "status")} ${value(row, "certainty")}`.toLowerCase()
+  if (/drop|lost|reject|cancel/.test(state)) return "Dropped"
+  if (/contracted|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
+  if (/contracting|negotiat|contract review|proposal/.test(state)) return "Contracting"
+  return "Lead"
+}
+
+function groupedCounts(rows: Row[], owner: (row: Row) => string) {
+  const stages = ["Lead", "Contracting", "Contracted", "Dropped"]
+  const stageCounts = stages.map((stage) => ({ stage, count: rows.filter((row) => stageBucket(row) === stage).length, requirement: rows.filter((row) => stageBucket(row) === stage).reduce((sum, row) => sum + n(row["headcount required"]), 0) }))
+  const byOwner = [...new Set(rows.map(owner).filter(Boolean))].map((name) => {
+    const owned = rows.filter((row) => owner(row) === name)
+    return { owner: name, total: owned.length, ...Object.fromEntries(stages.map((stage) => [stage.toLowerCase(), owned.filter((row) => stageBucket(row) === stage).length])) }
+  }).sort((a, b) => b.total - a.total || a.owner.localeCompare(b.owner))
+  return { stageCounts, byOwner }
+}
+
 export function buildLivingScreenData(ops: any) {
   const living: Row[] = ops?.living ?? []
   const studios: Row[] = ops?.studios ?? []
@@ -29,8 +48,10 @@ export function buildLivingScreenData(ops: any) {
   const occupancyOccupied = sum(occupancySource, "occupied nests")
   const fonoReady = sum(fono, "activation ready nests")
   const fonoOccupied = sum(fono, "occupied nests")
-  const demandRequired = sum(demand, "headcount required")
-  const demandMatched = sum(demand, "headcount matched")
+  const fonoDemandRows = demand.filter((row) => demandChannel(row) === "FONO")
+  const spDemandRows = demand.filter((row) => demandChannel(row) === "SP")
+  const demandRequired = sum(spDemandRows, "headcount required")
+  const demandMatched = sum(spDemandRows, "headcount matched")
   const spReady = sum(sp, "activation ready nests")
   const dashboardMetric = (key: string) => dashboard.find((row) => value(row, "key") === key)
   const metricNumber = (key: string) => n(dashboardMetric(key)?.["value number"])
@@ -53,8 +74,11 @@ export function buildLivingScreenData(ops: any) {
   }
 
   const fonoSupply: FunnelStage[] = [stage("Contracted Nests", sum(fono, "contracted nests"), sum(fono, "contracted nests")), stage("Activation-ready Nests", fonoReady, fonoReady, sum(fono, "contracted nests")), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
-  const fonoDemand: FunnelStage[] = [stage("Demand required", demandRequired, demandRequired), stage("Demand matched", demandMatched, demandMatched, demandRequired), stage("Members active", fonoOccupied, fonoOccupied, demandMatched)]
-  const demandStages: FunnelStage[] = [stage("Demand required", demandRequired, demandRequired), stage("Demand matched", demandMatched, demandMatched, demandRequired)]
+  const fonoPipeline = groupedCounts(fonoDemandRows, (row) => person(value(row, "owner actor id")))
+  const spPipeline = groupedCounts(spDemandRows, (row) => person(value(row, "owner actor id")))
+  const fonoDemand: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
+  const fonoRequirementStages: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.requirement, item.requirement, index ? items[index - 1].requirement : null))
+  const demandStages: FunnelStage[] = spPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
   const supplyStages: FunnelStage[] = [stage("SP ready Nests", spReady, spReady), stage("SP occupied Nests", sum(sp, "occupied nests"), sum(sp, "occupied nests"), spReady)]
 
   const occupancyRows = occupancySource.map((row) => {
@@ -63,11 +87,11 @@ export function buildLivingScreenData(ops: any) {
     const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
     return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied)), person(value(row, "owner actor id"))]
   })
-  const demandRows = demand.map((row) => [value(row, "plant name") || value(row, "enterprise name"), String(n(row["headcount required"])), value(row, "theatre id"), displayDate(value(row, "activation required at")), person(value(row, "owner actor id")), displayDate(value(row, "opened at")), value(row, "status") || "Open"])
+  const demandRows = spDemandRows.map((row) => [value(row, "plant name") || value(row, "enterprise name"), "1", value(row, "theatre id"), displayDate(value(row, "activation required at")), person(value(row, "owner actor id")), displayDate(value(row, "opened at")), stageBucket(row)])
   const supplyRows = studios.filter((row) => value(row, "supply model").toUpperCase() === "SP").map((row) => [value(row, "studio name") || value(row, "studio id"), metricText("jco") || "Unassigned", metricText("relationship_manager") || "Unassigned", value(row, "studio name") || value(row, "studio id"), `${metricNumber("distance_km")} km`, `${metricNumber("response_hours")}h`, value(row, "contract status") || value(row, "readiness status") || "No data"])
 
   const spStudios = studios.filter((row) => value(row, "supply model").toUpperCase() === "SP")
-  const proximityNodes: DemandProximityNode[] = demand.map((row, demandIndex) => {
+  const proximityNodes: DemandProximityNode[] = spDemandRows.map((row, demandIndex) => {
     const demandLat = n(row.latitude); const demandLon = n(row.longitude)
     const options = spStudios.map((studio, index) => {
       const studioLat = n(studio.latitude); const studioLon = n(studio.longitude)
@@ -98,5 +122,5 @@ export function buildLivingScreenData(ops: any) {
     }
   })
 
-  return { fonoSupply, fonoDemand, demandStages, supplyStages, occupancyRows, demandRows, supplyRows, proximityNodes, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
+  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
 }
