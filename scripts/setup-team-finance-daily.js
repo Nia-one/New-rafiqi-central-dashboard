@@ -17,6 +17,7 @@ function loadEnv(file) {
 }
 
 const columns = [
+  ["reporting_month", true, "REQUIRED — Dashboard reporting period. Format: YYYY-MM only. Example: 2026-08."],
   ["business_date", true, "REQUIRED — Finance snapshot date. Format: YYYY-MM-DD. Example: 2026-07-29"],
   ["theatre_id", true, "REQUIRED — Theatre identifier used in dashboard filters. Use the same ID as Theatre_Master."],
   ["studio_id", true, "OPTIONAL — Studio identifier from Studio_Master. Leave blank only when the row is a theatre-level total."],
@@ -49,6 +50,7 @@ const columns = [
 ]
 
 const displayLabels = {
+  reporting_month: "Reporting Month (YYYY-MM)",
   business_date: "Date",
   theatre_id: "Theatre",
   studio_id: "Studio Code",

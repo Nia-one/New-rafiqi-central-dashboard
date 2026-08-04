@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
 import { syncOwnerRegistry } from "./ownerRegistrySync";
+import { normalizeReportingMonth, REPORTING_MONTH_HEADER, reportingMonthTimestamp } from "./reportingMonth";
 
 const mappings = [
   ["TEAM_FINANCE_DAILY", "Finance_Daily"],
@@ -19,7 +20,7 @@ const generatedKeyParts: Record<string, string[]> = {
   TEAM_FINANCE_DAILY: ["business date", "theatre id", "studio id"],
   TEAM_MEMBER_ACTIVATION: ["member token", "activated at", "studio id"],
   TEAM_REQ_PEOPLE_ROSTER: ["display name", "role", "theatre id", "studio id"],
-  TEAM_LEARNING_HISTORY: ["domain", "observed", "proposed change"],
+  TEAM_LEARNING_HISTORY: ["reporting month", "domain", "observed", "proposed change"],
 };
 const generatedKeyPrefixes: Record<string, string> = {
   TEAM_FINANCE_DAILY: "OPS-FIN",
@@ -29,6 +30,7 @@ const generatedKeyPrefixes: Record<string, string> = {
 };
 
 const aliases: Record<string, string> = {
+  "date": "business date",
   "approved by actor id": "approved by",
   "active status": "active shift",
   "metric name": "policy name",
@@ -39,6 +41,7 @@ const aliases: Record<string, string> = {
 
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
+const reportingMonthRequiredTabs = new Set(mappings.map(([source]) => source).filter((source) => source !== "TEAM_REQ_PEOPLE_ROSTER"));
 
 const dateOnlyTargetHeaders = new Set(["business date", "effective from", "effective to"]);
 const userDateTargetHeaders = new Set([
@@ -131,7 +134,9 @@ async function syncEnterpriseOutcomes(
     const outcome = value(row, "action / outcome");
     if (/^required\s*:/i.test(String(demandRef).trim())) continue;
     if (!String(demandRef).trim() || !String(outcome).trim()) { if (row.some((cell) => String(cell ?? "").trim())) skipped++; continue; }
-    const actionId = stableEnterpriseId("OPS-ENT-ACT", demandRef, outcome);
+    const reportingMonth = normalizeReportingMonth(value(row, "reporting month"));
+    if (!reportingMonth) { skipped++; continue; }
+    const actionId = stableEnterpriseId("OPS-ENT-ACT", reportingMonth, demandRef, outcome);
     const proof = value(row, "proof reference");
     const state = value(row, "state") || "Open";
     const verifiedAt = value(row, "verified at");
@@ -148,6 +153,7 @@ async function syncEnterpriseOutcomes(
       "updated at": verifiedAt || new Date().toISOString(),
       notes: value(row, "notes"),
       "source submission id": `TEAM-ENTERPRISE-${actionId}`,
+      [REPORTING_MONTH_HEADER]: reportingMonth,
     });
     if (String(proof).trim()) {
       evidence.push({
@@ -160,6 +166,7 @@ async function syncEnterpriseOutcomes(
         "uploaded at": verifiedAt || new Date().toISOString(),
         description: value(row, "notes") || outcome,
         "verification status": /verified|closed|resolved/i.test(String(state)) ? "Verified" : "Pending",
+        [REPORTING_MONTH_HEADER]: reportingMonth,
       });
     }
   }
@@ -208,7 +215,9 @@ async function syncNiaGrowthInputs(
   const learning: Record<string, unknown>[] = [];
   for (const row of objects) {
     const model = field(row, "supply model").toUpperCase();
-    if (!model) continue;
+    const reportingMonth = normalizeReportingMonth(field(row, REPORTING_MONTH_HEADER));
+    if (!model || !reportingMonth) continue;
+    const recordSuffix = `${model}-${reportingMonth}`;
     const required = amount(row, "required nests");
     const ready = amount(row, "activation ready nests");
     const gap = Math.max(0, required - ready);
@@ -218,7 +227,7 @@ async function syncNiaGrowthInputs(
     const financeApproved = /^approved$/i.test(approvalDecision);
     const governedVerified = readinessComplete && financeApproved;
     const governedVerifiedAt = governedVerified ? (field(row, "readiness verified at") || now) : field(row, "readiness verified at");
-    const actionId = `OPS-NIA-GROWTH-${model}`;
+    const actionId = `OPS-NIA-GROWTH-${recordSuffix}`;
     if (gap > 0) {
       actions.push({
         "action id": actionId, "operating objective": `Nia Growth ${model} readiness gap`,
@@ -227,44 +236,49 @@ async function syncNiaGrowthInputs(
         "owner actor id": owner, "due at": normalizeTeamInputDate("due at", field(row, "action due at")),
         "required evidence": `${model} readiness evidence and authorised approval`, "approval tier": "Growth / capital",
         state: governedVerified || (field(row, "readiness status") === "Ready" && field(row, "verification status") === "Verified") ? "Proof submitted" : "Open",
-        "proposed at": now, "source submission id": `TEAM-NIA-GROWTH-${model}`, "updated at": now,
+        "proposed at": reportingMonthTimestamp(reportingMonth), "source submission id": `TEAM-NIA-GROWTH-${recordSuffix}`, "updated at": now,
+        [REPORTING_MONTH_HEADER]: reportingMonth,
         "next action": field(row, "notes") || `Close and independently verify the ${gap}-Nest ${model} readiness gap`,
       });
       approvals.push({
-        "approval id": `OPS-NIA-GROWTH-APR-${model}`, "linked action id": actionId,
+        "approval id": `OPS-NIA-GROWTH-APR-${recordSuffix}`, "linked action id": actionId,
         "decision type": `${model} capacity readiness`, "current terms": model === "FONO"
           ? `${ready} activation-ready Nests; ${field(row, "nia filled nests") ? `${amount(row, "nia filled nests")} Nia-filled Nests` : "Nia-fill split not recorded"}`
           : `${ready} activation-ready Nests; ${field(row, "signed contract covered nests") ? `${amount(row, "signed contract covered nests")} signed-contract-covered Nests` : "Signed contract coverage not recorded"}`,
         "proposed terms": `${required} required Nests`, "business reason": `${gap}-Nest governed readiness gap`,
         "expected result": `${required} independently verified activation-ready Nests`, "approver role": "Growth owner",
         "approver actor id": owner, decision: field(row, "approval decision") || "Pending",
-        "decision reason": field(row, "notes"), "source submission id": `TEAM-NIA-GROWTH-APR-${model}`, "updated at": now,
+        "decision reason": field(row, "notes"), "source submission id": `TEAM-NIA-GROWTH-APR-${recordSuffix}`, "updated at": now,
+        [REPORTING_MONTH_HEADER]: reportingMonth,
       });
     }
     const evidenceUrl = field(row, "evidence url");
     if (evidenceUrl || governedVerified) evidence.push({
-      "evidence id": `OPS-NIA-GROWTH-EVD-${model}`, "linked type": "Action", "linked id": actionId,
+      "evidence id": `OPS-NIA-GROWTH-EVD-${recordSuffix}`, "linked type": "Action", "linked id": actionId,
       "evidence type": `${model} capacity readiness`, "protected url": evidenceUrl || `protected://governed/nia-growth/${model.toLowerCase()}/finance-approved`, "uploaded by actor id": owner,
       "uploaded at": normalizeTeamInputDate("verified at", governedVerifiedAt) || now,
       description: `${ready} of ${required} Nests recorded activation-ready`,
       "verification status": governedVerified ? "Verified" : field(row, "verification status") || "Pending",
-      "source submission id": `TEAM-NIA-GROWTH-EVD-${model}`, "updated at": now,
+      "source submission id": `TEAM-NIA-GROWTH-EVD-${recordSuffix}`, "updated at": now,
+      [REPORTING_MONTH_HEADER]: reportingMonth,
     });
     const sla = amount(row, "readiness sla days");
     const policyStatus = field(row, "policy status");
     const policyApprover = field(row, "policy approved by actor id");
     if (sla > 0 && policyStatus === "Approved" && policyApprover) policies.push({
-      "policy id": `OPS-NIA-GROWTH-SLA-${model}`, "policy name": `Nia Growth ${model} readiness SLA and verified closure`,
+      "policy id": `OPS-NIA-GROWTH-SLA-${recordSuffix}`, "policy name": `Nia Growth ${model} readiness SLA and verified closure`,
       "policy value": sla, unit: "days", "effective from": now.slice(0, 10), "approved by": policyApprover,
       status: "Approved", "source note": "Closure requires independently verified readiness evidence and human approval.", "updated at": now,
+      [REPORTING_MONTH_HEADER]: reportingMonth,
     });
     const observed = field(row, "learning observation");
     const proposal = field(row, "learning proposal");
     if (observed || proposal) learning.push({
-      id: `OPS-NIA-GROWTH-LEARN-${model}`, domain: "Nia Growth", observed,
+      id: `OPS-NIA-GROWTH-LEARN-${recordSuffix}`, domain: "Nia Growth", observed,
       "proposed change": proposal, "expected effect": `Improve verified ${model} readiness without automatic capital commitment`,
       attribution: "Connected operations data", confidence: field(row, "verification status") === "Verified" ? "Medium" : "Low",
       disposition: "Human sign-off", "owner actor id": owner, "updated at": now, notes: field(row, "notes"),
+      [REPORTING_MONTH_HEADER]: reportingMonth,
     });
   }
   return {
@@ -367,6 +381,8 @@ export async function syncTeamInputs() {
         const index = sourceHeaders.indexOf(normal(name));
         return index < 0 ? "" : row[index];
       };
+      const reportingMonth = normalizeReportingMonth(sourceValue(REPORTING_MONTH_HEADER));
+      if (reportingMonthRequiredTabs.has(source) && !reportingMonth) { skipped++; continue; }
       const suppliedKey = keySource < 0 ? "" : row[keySource];
       const generatedIdentity = generatedKey?.map((part) => sourceValue(part)).filter((part) => String(part ?? "").trim()).join("-") || "";
       const key = normal(suppliedKey || (generatedIdentity ? `${generatedKeyPrefixes[source]}-${generatedIdentity}` : ""));
@@ -381,6 +397,8 @@ export async function syncTeamInputs() {
           destination[destinationIndex] = normalizeTeamInputDate(targetHeader, value);
         }
       });
+      const reportingMonthIndex = targetIndex.get(REPORTING_MONTH_HEADER);
+      if (reportingMonthIndex != null && reportingMonth) destination[reportingMonthIndex] = reportingMonth;
       if (generatedKey) destination[0] = String(suppliedKey || key).toUpperCase();
       if (source === "TEAM_MEMBER_ACTIVATION") {
         const billedIndex = targetIndex.get("membership billed inr"), collectedIndex = targetIndex.get("membership collected inr");

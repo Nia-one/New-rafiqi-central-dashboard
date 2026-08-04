@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { normalizeReportingMonth, reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
@@ -109,6 +110,7 @@ export async function syncVerticalInputs() {
           if (sourceIndex >= 0) return row[sourceIndex] ?? "";
           if (norm(header) === "dashboard record id") return id("OPS-OCC", [studio]);
           if (norm(header) === "as of at" || norm(header) === "source updated at") return reportDate ? timestamp(reportDate) : "";
+          if (norm(header) === REPORTING_MONTH_HEADER) return reportingMonthFromDate(reportDate) || "";
           if (norm(header) === "location id") return studio;
           if (norm(header) === "supply model") return "EXISTING";
           if (norm(header) === "activation ready nests") return existing ? value(existing, teamOccupancy.headers, "Activation Ready Nests") : "";
@@ -126,19 +128,21 @@ export async function syncVerticalInputs() {
   }
   if (!occupancySource?.rows.length) throw new Error("TEAM_OCCUPANCY is required as the authoritative occupancy source");
   const livingPrefix = "OPS-RPT-OCC";
-  const living = occupancySource.rows.filter((row) => norm(value(row, occupancySource.headers, "Studio Code")) !== "studio code").map((row) => {
+  const living = occupancySource.rows.filter((row) => norm(value(row, occupancySource.headers, "Studio Code")) !== "studio code" && Boolean(normalizeReportingMonth(value(row, occupancySource.headers, REPORTING_MONTH_HEADER)))).map((row) => {
     const studio = value(row, occupancySource.headers, "Studio Code", "Studio Name", "studio_id");
+    const reportingMonth = normalizeReportingMonth(value(row, occupancySource.headers, REPORTING_MONTH_HEADER))!;
     const at = timestamp(value(row, occupancySource.headers, "as_of_at", "source_updated_at", "Date", "updated_at"));
     const contracted = number(value(row, occupancySource.headers, "Contracted Nest"));
     const occupied = number(value(row, occupancySource.headers, "Occupied Nest"));
-    return { "living hourly id": id(livingPrefix, [studio, at.slice(0, 13)]), "theatre id": value(row, occupancySource.headers, "Theatre", "theatre_id"), "studio id": studio, "supply model": "EXISTING", "contracted nests": contracted, "activation ready nests": number(value(row, occupancySource.headers, "Activation Ready Nests")), "occupied nests": occupied, "living billed inr": number(value(row, occupancySource.headers, "Determined Revenue", "living_billed_inr")), "living collected inr": number(value(row, occupancySource.headers, "Living Collected INR", "living_collected_inr")), "collection leakage inr": number(value(row, occupancySource.headers, "Collection Leakage INR", "collection_leakage_inr")), "occupancy ratio": contracted ? occupied / contracted : 0, "source submission id": id(`${livingPrefix}-SRC`, [studio, at]), "updated at": at };
+    return { "living hourly id": id(livingPrefix, [studio, reportingMonth, at.slice(0, 13)]), "theatre id": value(row, occupancySource.headers, "Theatre", "theatre_id"), "studio id": studio, "supply model": "EXISTING", "contracted nests": contracted, "activation ready nests": number(value(row, occupancySource.headers, "Activation Ready Nests")), "occupied nests": occupied, "living billed inr": number(value(row, occupancySource.headers, "Determined Revenue", "living_billed_inr")), "living collected inr": number(value(row, occupancySource.headers, "Living Collected INR", "living_collected_inr")), "collection leakage inr": number(value(row, occupancySource.headers, "Collection Leakage INR", "collection_leakage_inr")), "occupancy ratio": contracted ? occupied / contracted : 0, "source submission id": id(`${livingPrefix}-SRC`, [studio, reportingMonth, at]), "updated at": at, [REPORTING_MONTH_HEADER]: reportingMonth };
   });
 
   const spSupplySource = tables.get("TEAM_REQ_SP_SUPPLY");
   const spSupply = (spSupplySource?.rows || []).filter((row) => {
     const site = value(row, spSupplySource!.headers, "sp_supply_id", "site_name", "location_id");
-    return Boolean(String(site).trim()) && norm(site) !== "sp supply id";
+    return Boolean(String(site).trim()) && norm(site) !== "sp supply id" && Boolean(normalizeReportingMonth(value(row, spSupplySource!.headers, REPORTING_MONTH_HEADER)));
   }).map((row) => {
+    const reportingMonth = normalizeReportingMonth(value(row, spSupplySource!.headers, REPORTING_MONTH_HEADER))!;
     const sourceId = value(row, spSupplySource!.headers, "sp_supply_id") || id("OPS-SP-SUPPLY", [
       value(row, spSupplySource!.headers, "location_id", "site_name"),
       value(row, spSupplySource!.headers, "as_of_at", "updated_at"),
@@ -155,7 +159,7 @@ export async function syncVerticalInputs() {
         "theatre id": theatreId, "studio id": studioId, "supply model": "SP",
         "contracted nests": contracted, "activation ready nests": ready, "occupied nests": occupied,
         "occupancy ratio": contracted > 0 ? occupied / contracted : 0,
-        "source submission id": String(sourceId), "updated at": at,
+        "source submission id": String(sourceId), "updated at": at, [REPORTING_MONTH_HEADER]: reportingMonth,
       },
       studio: {
         "studio id": `OPS-SP-${studioId}`, "theatre id": theatreId,
@@ -164,7 +168,7 @@ export async function syncVerticalInputs() {
         "contract status": value(row, spSupplySource!.headers, "contract_coverage_status"),
         "readiness status": ready >= contracted && contracted > 0 ? "Ready" : "In progress",
         "contracted nests": contracted, "activation ready nests": ready, "occupied nests": occupied,
-        "owner actor id": value(row, spSupplySource!.headers, "owner_actor_id"), "updated at": at,
+        "owner actor id": value(row, spSupplySource!.headers, "owner_actor_id"), "updated at": at, [REPORTING_MONTH_HEADER]: reportingMonth,
       },
     };
   });
@@ -182,6 +186,7 @@ export async function syncVerticalInputs() {
       // parsed by JavaScript as 2001 and are not safe record identifiers.
       const sourceDate = value(row, table.headers, "Lead date", "Date");
       const opened = timestamp(sourceDate);
+      const reportingMonth = reportingMonthFromDate(sourceDate) || reportingMonthFromDate(opened)!;
       const required = number(value(row, table.headers, "headcount_required", "Client Nests Potential", "Nests Potential", "Total Room"));
       const matched = number(value(row, table.headers, "headcount_matched", "current occupancy"));
       const sourceIdentity = [
@@ -193,7 +198,7 @@ export async function syncVerticalInputs() {
         value(row, table.headers, "Time"),
       ];
       const activationAt = value(row, table.headers, "activation_required_at", "Next Action Date", "Contract start date");
-      demandRecords.push({ "demand id": value(row, table.headers, "dashboard_record_id") || id(prefix, sourceIdentity), "enterprise id": value(row, table.headers, "enterprise_id") || id(`${prefix}-ENT`, [company]), "enterprise name": company, "plant id": value(row, table.headers, "plant_id") || id(`${prefix}-PLANT`, [location]), "plant name": location, latitude: number(value(row, table.headers, "Latitude")), longitude: number(value(row, table.headers, "Longitude")), "role required": kind === "FONO" ? "Living supply" : "Workforce", "headcount required": required, "headcount matched": matched, "headcount remaining": Math.max(0, required - matched), "wage inr": number(value(row, table.headers, "RENT", "monthly wage inr")), "activation required at": activationAt ? timestamp(activationAt) : "", "certainty": value(row, table.headers, "certainty", "Stage After", "Current Stage"), "status": value(row, table.headers, "status", "Stage After", "Current Stage") || "Open", "owner actor id": value(row, table.headers, "owner_actor_id", "Acquirer", "JCO", "by"), "opened at": opened, "source submission id": id(`${prefix}-SRC`, sourceIdentity), "updated at": timestamp(value(row, table.headers, "source_updated_at")) });
+      demandRecords.push({ "demand id": value(row, table.headers, "dashboard_record_id") || id(prefix, sourceIdentity), "enterprise id": value(row, table.headers, "enterprise_id") || id(`${prefix}-ENT`, [company]), "enterprise name": company, "plant id": value(row, table.headers, "plant_id") || id(`${prefix}-PLANT`, [location]), "plant name": location, latitude: number(value(row, table.headers, "Latitude")), longitude: number(value(row, table.headers, "Longitude")), "role required": kind === "FONO" ? "Living supply" : "Workforce", "headcount required": required, "headcount matched": matched, "headcount remaining": Math.max(0, required - matched), "wage inr": number(value(row, table.headers, "RENT", "monthly wage inr")), "activation required at": activationAt ? timestamp(activationAt) : "", "certainty": value(row, table.headers, "certainty", "Stage After", "Current Stage"), "status": value(row, table.headers, "status", "Stage After", "Current Stage") || "Open", "owner actor id": value(row, table.headers, "owner_actor_id", "Acquirer", "JCO", "by"), "opened at": opened, "source submission id": id(`${prefix}-SRC`, sourceIdentity), "updated at": timestamp(value(row, table.headers, "source_updated_at")), [REPORTING_MONTH_HEADER]: reportingMonth });
     });
   }
 
@@ -244,8 +249,10 @@ export async function syncVerticalInputs() {
   const flow = imported("Flow");
   const work = (flow?.rows || []).filter((row) => norm(value(row, flow!.headers, "Client")) !== "client").map((row) => {
     const client = value(row, flow!.headers, "Client");
-    const month = timestamp(value(row, flow!.headers, "Month"));
-    return { "work hourly id": id("OPS-RPT-WORK", [client, month]), "enterprise id": id("OPS-RPT-ENT", [client]), "matched headcount": number(value(row, flow!.headers, "HC")), "work billed inr": number(value(row, flow!.headers, "Total Billing (₹)")), "work collected inr": "", "captured at": month, "source submission id": id("OPS-RPT-WORK-SRC", [client, month]) };
+    const sourceMonth = value(row, flow!.headers, "Month");
+    const month = timestamp(sourceMonth);
+    const reportingMonth = reportingMonthFromDate(sourceMonth) || reportingMonthFromDate(month)!;
+    return { "work hourly id": id("OPS-RPT-WORK", [client, month]), "enterprise id": id("OPS-RPT-ENT", [client]), "matched headcount": number(value(row, flow!.headers, "HC")), "work billed inr": number(value(row, flow!.headers, "Total Billing (₹)")), "work collected inr": "", "captured at": month, "source submission id": id("OPS-RPT-WORK-SRC", [client, month]), [REPORTING_MONTH_HEADER]: reportingMonth };
   });
   const cmActions = imported("CM Actions");
   const reportActions = (cmActions?.rows || []).filter((row) => {
@@ -254,9 +261,10 @@ export async function syncVerticalInputs() {
   }).map((row) => {
     const objective = value(row, cmActions!.headers, "Studio / Entity");
     const proposedAt = timestamp(value(row, cmActions!.headers, "Date"));
+    const reportingMonth = reportingMonthFromDate(proposedAt)!;
     const planned = number(value(row, cmActions!.headers, "Planned Impact (₹)"));
     const realized = number(value(row, cmActions!.headers, "Realized (₹)"));
-    return { "action id": id("OPS-RPT-CM", [objective, proposedAt]), "incident id": "", "operating objective": objective, "expected metric": "CM impact (₹)", "baseline value": realized, "target value": planned, "expected financial impact inr": Math.max(0, planned - realized), "confidence": "Reported", "owner actor id": "", "due at": timestamp(value(row, cmActions!.headers, "Target Close")), "required evidence": "Business Performance Report — CM Actions source row", "approval tier": "Human", "state": value(row, cmActions!.headers, "Status") || "Open", "proposed at": proposedAt, "notes": value(row, cmActions!.headers, "Notes") };
+    return { "action id": id("OPS-RPT-CM", [objective, proposedAt]), "incident id": "", "operating objective": objective, "expected metric": "CM impact (₹)", "baseline value": realized, "target value": planned, "expected financial impact inr": Math.max(0, planned - realized), "confidence": "Reported", "owner actor id": "", "due at": timestamp(value(row, cmActions!.headers, "Target Close")), "required evidence": "Business Performance Report — CM Actions source row", "approval tier": "Human", "state": value(row, cmActions!.headers, "Status") || "Open", "proposed at": proposedAt, "notes": value(row, cmActions!.headers, "Notes"), [REPORTING_MONTH_HEADER]: reportingMonth };
   });
 
   const targets = ["Living_Hourly", "Studio_Master", "Enterprise_Demand", "Work_Hourly", "Action_Log"];

@@ -49,8 +49,10 @@ function monthKey(input: unknown): string | null {
 
 function tableMonths(table: unknown[][], fields: string[]) {
   if (!Array.isArray(table) || table.length < 2) return [];
-  const allowed = new Set(fields.map((field) => field.toLowerCase()));
-  const indexes = (table[0] ?? []).map((header, index) => allowed.has(String(header).trim().toLowerCase()) ? index : -1).filter((index) => index >= 0);
+  const allowed = new Set(["reporting month", ...fields.map((field) => field.toLowerCase())]);
+  const headers = (table[0] ?? []).map((header) => String(header).trim().toLowerCase());
+  const reportingMonthIndex = headers.indexOf("reporting month");
+  const indexes = reportingMonthIndex >= 0 ? [reportingMonthIndex] : headers.map((header, index) => allowed.has(header) ? index : -1).filter((index) => index >= 0);
   return table.slice(1).flatMap((row) => indexes.map((index) => monthKey(row[index])).filter((value): value is string => Boolean(value)));
 }
 
@@ -60,8 +62,10 @@ export function availableDashboardPeriods(data: Record<string, unknown>) {
 
 function filterTable(table: unknown[][], fields: string[], period: string) {
   if (!Array.isArray(table) || table.length < 2) return table;
-  const allowed = new Set(fields.map((field) => field.toLowerCase()));
-  const indexes = (table[0] ?? []).map((header, index) => allowed.has(String(header).trim().toLowerCase()) ? index : -1).filter((index) => index >= 0);
+  const allowed = new Set(["reporting month", ...fields.map((field) => field.toLowerCase())]);
+  const headers = (table[0] ?? []).map((header) => String(header).trim().toLowerCase());
+  const reportingMonthIndex = headers.indexOf("reporting month");
+  const indexes = reportingMonthIndex >= 0 ? [reportingMonthIndex] : headers.map((header, index) => allowed.has(header) ? index : -1).filter((index) => index >= 0);
   if (!indexes.length) return table;
   return [table[0], ...table.slice(1).filter((row) => indexes.some((index) => monthKey(row[index]) === period))];
 }

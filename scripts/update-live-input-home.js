@@ -5,7 +5,7 @@ const { google } = require("googleapis")
 
 const rows = [
   ["RAFIQI LIVE DATA ENTRY", "BLACK tabs/columns = user or report input · RED = automated/system, do not edit"],
-  ["Rule", "Enter each fact once in its owning tab. Other pages and components derive automatically after sync."],
+  ["Rule", "Enter each fact once in its owning tab. For every dated/event row, Reporting Month is required in YYYY-MM format (example: 2026-08). Other pages derive automatically after sync."],
   ["ORDER", "INPUT TAB", "WHAT THE USER DOES", "DASHBOARD CONSUMERS"],
   [1, "TEAM_OCCUPANCY", "Only fill Activation Ready Nests when verified. All other columns come from active Studios.", "Living · Member Adds · Nia Margins · Nia Growth · Overview"],
   [2, "Fono Funnel", "Import/replace the latest Business Report FONO Funnel tab; do not duplicate it elsewhere.", "Living FONO · Member Adds · Nia Growth · Overview"],
@@ -19,7 +19,7 @@ const rows = [
   [10, "TEAM_OWNER_REGISTRY", "Change only when accountable ownership changes.", "All owner labels and action routing"],
   [11, "TEAM_LEARNING_HISTORY", "Record a verified observation/proposal once; no duplicate entry on reference pages.", "Learning History · Sign-Off · Overview"],
   ["BOT SOURCES", "SP Demand and Essentials", "Bot workbooks sync automatically and are strictly protected.", "Enterprise Demand · Essentials · Savings · Margins"],
-  ["SYNC", "Automatic / Refresh data", "Normal refresh uses the same source-to-backend pipeline; no backend editing is required.", "All pages"],
+  ["SYNC", "Automatic / Refresh data", "Sync validates Reporting Month, quarantines invalid/missing temporal rows, and moves valid YYYY-MM periods into the dashboard filter.", "All pages"],
 ]
 
 function credentials() {

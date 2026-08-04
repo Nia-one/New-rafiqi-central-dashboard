@@ -1,11 +1,12 @@
 import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { normalizeReportingMonth, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
 export const MEMBER_FEEDBACK_INPUT_TAB = "TEAM_MEMBER_FEEDBACK";
 
 export const memberFeedbackInputHeaders = [
-  "member token", "score", "feedback", "collected at", "theatre", "studio",
+  "member token", "score", "feedback", "collected at", "reporting month", "theatre", "studio",
   "pillar", "category", "exit risk", "action id", "raw conversation ref",
 ] as const;
 
@@ -37,12 +38,13 @@ export function deriveMemberFeedback(records: InputRecord[], now = new Date().to
     const row = Object.fromEntries(Object.entries(input).map(([key, value]) => [norm(key), value]));
     const member = String(row["member token"] ?? "").trim();
     const collectedAt = validDate(row["collected at"]);
+    const reportingMonth = normalizeReportingMonth(row[REPORTING_MONTH_HEADER]);
     const score = Number(String(row.score ?? "").trim());
-    if (!member || !collectedAt || !Number.isInteger(score) || score < 0 || score > 10) { skipped++; continue; }
+    if (!member || !collectedAt || !reportingMonth || collectedAt.slice(0, 7) !== reportingMonth || !Number.isInteger(score) || score < 0 || score > 10) { skipped++; continue; }
     const responseId = stableId("OPS-NPS-RESP", [member, collectedAt]);
     const response = {
       id: responseId, "member token": member, score, "follow up text": row.feedback || "",
-      "collected at": collectedAt, month: collectedAt.slice(0, 7), theatre: row.theatre || "", studio: row.studio || "",
+      "collected at": collectedAt, month: reportingMonth, [REPORTING_MONTH_HEADER]: reportingMonth, theatre: row.theatre || "", studio: row.studio || "",
     };
     responses.push(response);
     if (String(row.feedback ?? "").trim()) {
@@ -52,17 +54,21 @@ export function deriveMemberFeedback(records: InputRecord[], now = new Date().to
         summary: row.feedback, "captured at": collectedAt, source: "Member Feedback/NPS input",
         "exit risk": row["exit risk"] || (score <= 6 ? "Immediate attention" : score <= 8 ? "Watch closely" : "Low"),
         "raw conversation ref": row["raw conversation ref"] || "", "nps response id": responseId,
+        [REPORTING_MONTH_HEADER]: reportingMonth,
       });
     }
   }
-  const latestMonth = responses.map((row) => String(row.month)).sort().at(-1) || "";
+  // Even when there are no valid responses, the generated zero-state dashboard
+  // belongs to the sync month so it remains period-addressable and never creates
+  // unscoped rows in the dashboard filter.
+  const latestMonth = responses.map((row) => String(row.month)).sort().at(-1) || now.slice(0, 7);
   const current = responses.filter((row) => row.month === latestMonth);
   const promoters = current.filter((row) => Number(row.score) >= 9).length;
   const detractors = current.filter((row) => Number(row.score) <= 6).length;
   const nps = current.length ? Math.round(((promoters - detractors) / current.length) * 100) : 0;
   const monthLabel = latestMonth ? new Date(`${latestMonth}-01T00:00:00Z`).toLocaleString("en", { month: "long", year: "numeric", timeZone: "UTC" }) : "NPS";
   const immediate = feedback.filter((row) => row["exit risk"] === "Immediate attention").length;
-  const metric = (key: string, label: string, number: number, text = "") => ({ section: "Feedback summary", key, label, "value number": number, "value text": text, "owner actor id": "SYSTEM", "updated at": now, notes: "Automatically derived from TEAM_MEMBER_FEEDBACK" });
+  const metric = (key: string, label: string, number: number, text = "") => ({ section: "Feedback summary", key, label, "value number": number, "value text": text, "owner actor id": "SYSTEM", "updated at": now, [REPORTING_MONTH_HEADER]: latestMonth, notes: "Automatically derived from TEAM_MEMBER_FEEDBACK" });
   const dashboard = [
     metric("member_nps_feedback_captured", "Feedback captured", feedback.length),
     metric("member_nps_feedback_open", "Feedback open", feedback.length),

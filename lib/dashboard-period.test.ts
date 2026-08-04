@@ -31,3 +31,15 @@ test("one selected month filters temporal rows but retains master data", () => {
 test("All preserves the complete cumulative snapshot", () => {
   assert.equal(filterDashboardDataByPeriod(snapshot, "all"), snapshot)
 })
+
+test("explicit reporting month is authoritative over operational timestamps", () => {
+  const governed = {
+    actionLog: [
+      ["action id", "reporting month", "created at"],
+      ["A-AUG", "2026-08", "2026-07-31T23:59:00Z"],
+    ],
+  }
+  assert.deepEqual(availableDashboardPeriods(governed), ["2026-08"])
+  assert.equal(filterDashboardDataByPeriod(governed, "2026-07").actionLog.length, 1)
+  assert.equal(filterDashboardDataByPeriod(governed, "2026-08").actionLog.length, 2)
+})

@@ -1,7 +1,8 @@
 import { google } from "googleapis";
+import { REPORTING_MONTH_HEADER, normalizeReportingMonth, reportingMonthFromDate } from "./reportingMonth";
 
 type SheetsClient = ReturnType<typeof google.sheets>;
-type Assignment = { assignmentId: string; vertical: string; scope: string; theatre: string; role: string; ownerName: string; responsibility: string; effectiveFrom: string; effectiveTo: string; status: string };
+type Assignment = { assignmentId: string; vertical: string; scope: string; theatre: string; role: string; ownerName: string; responsibility: string; effectiveFrom: string; effectiveTo: string; status: string; reportingMonth: string };
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const slug = (value: unknown) => String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -45,9 +46,9 @@ async function ensureBackendRegistry(sheets: SheetsClient, spreadsheetId: string
   if (!(metadata.data.sheets || []).some((sheet) => sheet.properties?.title === title)) {
     await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ addSheet: { properties: { title } } }] } });
   }
-  const headers = ["assignment id", "vertical", "scope", "theatre", "role type", "owner name", "business responsibility", "effective from", "effective to", "status", "owner actor id", "synced at"];
+  const headers = ["assignment id", "vertical", "scope", "theatre", "role type", "owner name", "business responsibility", "effective from", "effective to", "status", "owner actor id", "synced at", REPORTING_MONTH_HEADER];
   const now = new Date().toISOString();
-  const values = assignments.map((item) => [item.assignmentId, item.vertical, item.scope, item.theatre, item.role, item.ownerName, item.responsibility, item.effectiveFrom, item.effectiveTo, item.status, actorId(item.ownerName), now]);
+  const values = assignments.map((item) => [item.assignmentId, item.vertical, item.scope, item.theatre, item.role, item.ownerName, item.responsibility, item.effectiveFrom, item.effectiveTo, item.status, actorId(item.ownerName), now, item.reportingMonth || reportingMonthFromDate(item.effectiveFrom)]);
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${title}!A:Z` });
   await sheets.spreadsheets.values.update({ spreadsheetId, range: `${title}!A1`, valueInputOption: "RAW", requestBody: { values: [headers, ...values] } });
 }
@@ -65,9 +66,9 @@ async function upsertPeople(sheets: SheetsClient, spreadsheetId: string, assignm
   const active = assignments.filter((item) => normal(item.status) === "active");
   const people = [...new Map(active.map((item) => [normal(item.ownerName), item])).values()];
   const spOwners = [...new Set(active.filter((item) => normal(item.vertical) === "sp supply" && normal(item.role) === "owner").map((item) => item.ownerName))];
-  if (spOwners.length) people.push({ assignmentId: "OWNER-SP-THEATRE-GROUP", vertical: "SP Supply", scope: "All", theatre: "All", role: "Owner", ownerName: spOwners.join(" / "), responsibility: "Derived Shram Park theatre-owner group", effectiveFrom: "", effectiveTo: "", status: "Active" });
+  if (spOwners.length) people.push({ assignmentId: "OWNER-SP-THEATRE-GROUP", vertical: "SP Supply", scope: "All", theatre: "All", role: "Owner", ownerName: spOwners.join(" / "), responsibility: "Derived Shram Park theatre-owner group", effectiveFrom: "", effectiveTo: "", status: "Active", reportingMonth: "" });
   for (const item of people) {
-    const record: Record<string, unknown> = { "actor id": actorId(item.ownerName), "display name": item.ownerName, role: `${item.vertical} ${item.role}`, "active shift": "Active", language: "English / Hindi", "updated at": now };
+    const record: Record<string, unknown> = { "actor id": actorId(item.ownerName), "display name": item.ownerName, role: `${item.vertical} ${item.role}`, "active shift": "Active", language: "English / Hindi", "updated at": now, [REPORTING_MONTH_HEADER]: item.reportingMonth || reportingMonthFromDate(item.effectiveFrom) };
     if (item.assignmentId === "OWNER-SP-THEATRE-GROUP") record["actor id"] = "ACT-SP-THEATRE-OWNERS";
     const found = existing.get(normal(record["actor id"]));
     const destination = found == null ? Array(headers.length).fill("") : [...output[found]];
@@ -99,8 +100,9 @@ async function cascadeNiaGrowthOwners(sheets: SheetsClient, spreadsheetId: strin
   updated += update(evidence, "evidence id", "uploaded by actor id", (row, headers) => owners.get(String(row[headers.indexOf("linked id")])) || "");
   updated += update(learning, "id", "owner actor id", (row, headers) => {
     const id = String(row[headers.indexOf("id")] || "");
-    const model = id.endsWith("-FONO") ? "FONO" : id.endsWith("-SP") ? "SP" : "";
-    return model ? owners.get(`OPS-NIA-GROWTH-${model}`) || (model === "SP" ? "ACT-SP-THEATRE-OWNERS" : "") : "";
+    const match = id.match(/^OPS-NIA-GROWTH-LEARN-(FONO|SP)-(20\d{2}-\d{2})$/);
+    const model = match?.[1] || "", month = match?.[2] || "";
+    return model ? owners.get(`OPS-NIA-GROWTH-${model}-${month}`) || (model === "SP" ? "ACT-SP-THEATRE-OWNERS" : "") : "";
   });
   if (updated) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: [
     { range: "Approval_Log!A1", values: approvals }, { range: "Evidence_Log!A1", values: evidence }, { range: "Learning_History!A1", values: learning },
@@ -143,7 +145,7 @@ async function updateTab(sheets: SheetsClient, spreadsheetId: string, tab: strin
 export async function syncOwnerRegistry(sheets: SheetsClient, sourceSpreadsheetId: string, spreadsheetId: string) {
   const source = await sheets.spreadsheets.values.get({ spreadsheetId: sourceSpreadsheetId, range: "TEAM_OWNER_REGISTRY!A:Z" });
   const objects = rowObjects((source.data.values || []) as unknown[][]);
-  const assignments: Assignment[] = objects.map((row) => ({ assignmentId: String(row["assignment id"] || row.assignment_id || ""), vertical: String(row.vertical || ""), scope: String(row.scope || "All"), theatre: String(row.theatre || "All"), role: String(row["role type"] || row.role_type || "Owner"), ownerName: String(row["owner name"] || row.owner_name || ""), responsibility: String(row["business responsibility"] || row.business_responsibility || ""), effectiveFrom: String(row["effective from"] || row.effective_from || ""), effectiveTo: String(row["effective to"] || row.effective_to || ""), status: String(row.status || "Active") })).filter((item) => item.assignmentId && item.ownerName);
+  const assignments: Assignment[] = objects.map((row) => ({ assignmentId: String(row["assignment id"] || row.assignment_id || ""), vertical: String(row.vertical || ""), scope: String(row.scope || "All"), theatre: String(row.theatre || "All"), role: String(row["role type"] || row.role_type || "Owner"), ownerName: String(row["owner name"] || row.owner_name || ""), responsibility: String(row["business responsibility"] || row.business_responsibility || ""), effectiveFrom: String(row["effective from"] || row.effective_from || ""), effectiveTo: String(row["effective to"] || row.effective_to || ""), status: String(row.status || "Active"), reportingMonth: normalizeReportingMonth(row[REPORTING_MONTH_HEADER]) || reportingMonthFromDate(row["effective from"] || row.effective_from) })).filter((item) => item.assignmentId && item.ownerName);
   await ensureBackendRegistry(sheets, spreadsheetId, assignments);
   const people = await upsertPeople(sheets, spreadsheetId, assignments);
   const tabs: Record<string, { updated: number }> = {};

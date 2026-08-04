@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
 const SOURCE_SHEET_ID = process.env.ESSENTIALS_BOT_SHEET_ID || "1C8y3uVxp5toMwLBPGVWbltOoNX_hVuKtvyfiqIUC0oY";
 const BOT_MIRRORS = [
@@ -246,6 +247,7 @@ export async function syncEssentialsBotData() {
       "source submission id": `BOT-ESS-${orderId}`,
       "acquisition source": "Essentials Bot",
       "updated at": captured || new Date().toISOString(),
+      [REPORTING_MONTH_HEADER]: reportingMonthFromDate(captured || new Date().toISOString()),
     });
   }
   const unresolvedStudioOrders = [...groups.values()]
@@ -259,14 +261,14 @@ export async function syncEssentialsBotData() {
     "direct fulfilment cost inr": g.fulfilment, "member savings inr": g.savings, "nia margin inr": g.billed - g.cogs - g.fulfilment,
     "attach pct": (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) > 0
       ? g.members.size / (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) : "",
-    "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured,
+    "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
   }));
   const quarantined = [...groups.entries()].filter(([, group]) => group.studio === "UNRESOLVED").map(([key, g]) => ({
     "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`,
     "theatre id": "UNRESOLVED", "studio id": "UNRESOLVED", "buying members": 0, "orders placed": 0,
     "orders fulfilled": 0, "essentials billed inr": 0, "essentials collected inr": 0, "product cogs inr": 0,
     "direct fulfilment cost inr": 0, "member savings inr": 0, "nia margin inr": 0,
-    "primary blocker": `${g.placed} order(s) quarantined: missing studio mapping`, "updated at": g.captured, "captured at": g.captured,
+    "primary blocker": `${g.placed} order(s) quarantined: missing studio mapping`, "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
   }));
   const inventoryRows = inventory.rows.map((r) => ({
     "sku": cell(r, inventory.headers, "product_code", "product_id", "id"), "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",

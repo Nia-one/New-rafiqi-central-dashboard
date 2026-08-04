@@ -9,10 +9,10 @@ const WHITE = { red: 1, green: 1, blue: 1 }
 const normal = (value) => String(value || "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ")
 
 const specs = [
-  { source: "TEAM_FINANCE_DAILY", target: "Finance_Daily", manual: new Set(["business date", "theatre id", "studio id", "opex mtd inr", "opex forecast inr", "opex cap inr", "cash balance inr", "cash target inr", "cm target inr", "destination approved", "destination owner actor id", "decision due at", "cm1 inr", "cm2 inr", "reported by actor id", "notes"]) },
-  { source: "TEAM_MEMBER_ACTIVATION", target: "Member_Activation", manual: new Set(["member token", "activated at", "theatre id", "studio id", "nest id", "demand id", "enterprise id", "work assignment id", "membership billed inr", "membership collected inr", "activation evidence url", "verified at", "verified by", "verification status"]) },
-  { source: "TEAM_REQ_PEOPLE_ROSTER", target: "People_Roster", manual: new Set(["display name", "role", "theatre id", "studio id", "manager actor id", "active shift", "shift start at", "shift end at", "language"]) },
-  { source: "TEAM_LEARNING_HISTORY", target: "Learning_History", manual: new Set(["domain", "observed", "proposed change", "expected effect", "attribution", "evidence", "confidence", "disposition", "notes"]) },
+  { source: "TEAM_FINANCE_DAILY", target: "Finance_Daily", manual: new Set(["business date", "reporting month", "theatre id", "studio id", "opex mtd inr", "opex forecast inr", "opex cap inr", "cash balance inr", "cash target inr", "cm target inr", "destination approved", "destination owner actor id", "decision due at", "cm1 inr", "cm2 inr", "reported by actor id", "notes"]) },
+  { source: "TEAM_MEMBER_ACTIVATION", target: "Member_Activation", manual: new Set(["member token", "activated at", "reporting month", "theatre id", "studio id", "nest id", "demand id", "enterprise id", "work assignment id", "membership billed inr", "membership collected inr", "activation evidence url", "verified at", "verified by", "verification status"]) },
+  { source: "TEAM_REQ_PEOPLE_ROSTER", target: "People_Roster", manual: new Set(["display name", "role", "reporting month", "theatre id", "studio id", "manager actor id", "active shift", "shift start at", "shift end at", "language"]) },
+  { source: "TEAM_LEARNING_HISTORY", target: "Learning_History", manual: new Set(["reporting month", "domain", "observed", "proposed change", "expected effect", "attribution", "evidence", "confidence", "disposition", "notes"]) },
 ]
 
 function credentials() {

@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 import { ownerFor } from "./ownerRegistry";
 
 const SOURCE_SHEET_ID = process.env.SHRAM_PARK_DEMAND_BOT_SHEET_ID || "1cF4YdD3ydSwqhKCN5KzSV3CdATLZaiTR-Gu0Xm39d9Y";
@@ -153,6 +154,7 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     "opened at": openedAt,
     "source submission id": submissionId,
     "updated at": openedAt,
+    [REPORTING_MONTH_HEADER]: reportingMonthFromDate(openedAt),
   };
   return { record, errors };
 }
