@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { latestImportedReport, niaGrowthFonoFormulas, reportCandidates } from "./businessReportTabs";
+import { latestImportedReport, niaGrowthFonoFormulas, niaGrowthSpFormulas, reportCandidates } from "./businessReportTabs";
 
 const tabs = [
   { sheetId: 1, title: "Fono Funnel", index: 2, rowCount: 10, columnCount: 5 },
@@ -11,6 +11,14 @@ const tabs = [
 
 test("business report matching accepts only canonical and Google import suffixes", () => {
   assert.deepEqual(reportCandidates(tabs, "Fono Funnel").map((tab) => tab.sheetId), [1, 2, 3]);
+});
+
+test("Nia Growth SP required count uses only valid bot-classified Leads", () => {
+  assert.deepEqual(niaGrowthSpFormulas(6), {
+    C: `=COUNTIFS(INDEX(TEAM_SHRAMPARK_DEMAND!A:AZ,0,MATCH("BOT SYNC STATUS",TEAM_SHRAMPARK_DEMAND!1:1,0)),"VALID*SYNCED",INDEX(TEAM_SHRAMPARK_DEMAND!A:AZ,0,MATCH("BOT FUNNEL STAGE",TEAM_SHRAMPARK_DEMAND!1:1,0)),"Lead")`,
+    E: "=MAX(0,C6-D6)",
+    H: "=C6",
+  });
 });
 
 test("latest imported report is the newest suffixed sheet", () => {

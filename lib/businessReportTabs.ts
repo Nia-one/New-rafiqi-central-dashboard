@@ -32,6 +32,17 @@ export function niaGrowthFonoFormulas(row: number, stageColumn: string, nestsCol
   };
 }
 
+export function niaGrowthSpFormulas(row: number) {
+  const source = "TEAM_SHRAMPARK_DEMAND!A:AZ";
+  const header = "TEAM_SHRAMPARK_DEMAND!1:1";
+  const column = (name: string) => `INDEX(${source},0,MATCH("${name}",${header},0))`;
+  return {
+    C: `=COUNTIFS(${column("BOT SYNC STATUS")},"VALID*SYNCED",${column("BOT FUNNEL STAGE")},"Lead")`,
+    E: `=MAX(0,C${row}-D${row})`,
+    H: `=C${row}`,
+  };
+}
+
 const columnName = (index: number) => {
   let value = index + 1;
   let output = "";
@@ -109,6 +120,12 @@ export async function repairBusinessReportFormulaReferences(sheets: SheetsClient
     const nestsColumn = columnName(headers.indexOf("nests potential"));
     const growthRow = growthRowIndex + 1;
     for (const [column, formula] of Object.entries(niaGrowthFonoFormulas(growthRow, stageColumn, nestsColumn, fonoHeaderIndex + 2))) data.set(`'${tab}'!${column}${growthRow}`, formula);
+  }
+
+  const spGrowthRowIndex = rows.findIndex((row) => String(row[0] || "").trim() === "NIA-GROWTH-SP");
+  if (spGrowthRowIndex >= 0) {
+    const growthRow = spGrowthRowIndex + 1;
+    for (const [column, formula] of Object.entries(niaGrowthSpFormulas(growthRow))) data.set(`'${tab}'!${column}${growthRow}`, formula);
   }
 
   const updates = [...data].map(([range, formula]) => ({ range, values: [[formula]] }));

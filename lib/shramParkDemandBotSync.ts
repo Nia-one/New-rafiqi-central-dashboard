@@ -245,8 +245,8 @@ export async function syncShramParkDemandBotData() {
   const sourceRows = values.slice(1).filter((row) => row.some((cell) => String(cell ?? "").trim()));
   const mapped = sourceRows.map((row) => mapShramParkDemandRow(row, headers));
   const mirrorValues = [
-    [...headers, "BOT SYNC STATUS", "QUARANTINE REASON"],
-    ...mapped.map((item, index) => [...sourceRows[index], item.errors.length ? "QUARANTINED" : "VALID — SYNCED", item.errors.join(", ")]),
+    [...headers, "BOT FUNNEL STAGE", "BOT SYNC STATUS", "QUARANTINE REASON"],
+    ...mapped.map((item, index) => [...sourceRows[index], item.record.status, item.errors.length ? "QUARANTINED" : "VALID — SYNCED", item.errors.join(", ")]),
   ];
   const mirror = await mirrorShramParkSource(mirrorValues);
   const valid = mapped.filter((item) => item.errors.length === 0).map((item) => item.record);
