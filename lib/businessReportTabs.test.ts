@@ -22,6 +22,7 @@ test("Nia Growth formulas implement the governed FONO stage contract", () => {
     C: `=SUMIF('Fono Funnel'!G4:G,"Lead",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracting",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
     D: `=SUMIF('Fono Funnel'!G4:G,"Contracting",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
     E: "=MAX(0,C5-D5)",
+    F: `=IFERROR("ACT-"&REGEXREPLACE(REGEXREPLACE(UPPER(TRIM(INDEX(FILTER(TEAM_OWNER_REGISTRY!F:F,TEAM_OWNER_REGISTRY!B:B="FONO Supply",TEAM_OWNER_REGISTRY!E:E="Owner",TEAM_OWNER_REGISTRY!J:J="Active"),1))),"[^A-Z0-9]+","-"),"(^-|-$)",""),"ACT-UNASSIGNED")`,
     H: "=D5",
     I: `=SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
   });

@@ -26,6 +26,7 @@ export function niaGrowthFonoFormulas(row: number, stageColumn: string, nestsCol
     C: `=${sum("Lead")}+${sum("Contracting")}+${sum("Contracted")}`,
     D: `=${sum("Contracting")}+${sum("Contracted")}`,
     E: `=MAX(0,C${row}-D${row})`,
+    F: `=IFERROR("ACT-"&REGEXREPLACE(REGEXREPLACE(UPPER(TRIM(INDEX(FILTER(TEAM_OWNER_REGISTRY!F:F,TEAM_OWNER_REGISTRY!B:B="FONO Supply",TEAM_OWNER_REGISTRY!E:E="Owner",TEAM_OWNER_REGISTRY!J:J="Active"),1))),"[^A-Z0-9]+","-"),"(^-|-$)",""),"ACT-UNASSIGNED")`,
     H: `=D${row}`,
     I: `=${sum("Contracted")}`,
   };
