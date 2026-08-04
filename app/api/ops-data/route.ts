@@ -34,11 +34,15 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const url = new URL(request.url);
-    const result = await syncAllSources({ force: url.searchParams.get("auto") !== "1" });
+    const fullSync = url.searchParams.get("full") === "1";
+    const result = fullSync ? await syncAllSources({ force: true }) : null;
     clearSheetCache();
-    return NextResponse.json({ success: true, ...result }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(
+      { success: true, mode: fullSync ? "full-sync" : "refresh", ...(result ?? {}) },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
-    console.error("Team input sync error:", error);
+    console.error("Ops data refresh error:", error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500, headers: { "Cache-Control": "no-store" } },

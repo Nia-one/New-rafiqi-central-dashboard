@@ -3365,6 +3365,13 @@
 .context-period-filter .token-select-menu { right: 0; left: auto; z-index: 60; min-width: 190px; }
 .utility-primary { border-color: #111214; background: #111214; color: #ffffff; }
 .utility-primary:hover { background: #292a2d; }
+.context-period-state { display: inline-flex; align-items: center; gap: 10px; }
+.context-period-state [role="status"] { color: var(--muted); font-size: 11px; font-weight: 500; white-space: nowrap; }
+.context-sync-button { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface); color: var(--ink); font: inherit; font-size: 11px; font-weight: 650; white-space: nowrap; cursor: pointer; }
+.context-sync-button:hover:not(:disabled) { background: var(--surface-subtle); }
+.context-sync-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.context-sync-button:disabled { cursor: wait; opacity: .65; }
+.context-sync-button svg { width: 13px; height: 13px; }
 .platform-heading { display: flex; min-height: 78px; flex-direction: row; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 15px 20px 13px; border-bottom: 0; background: #ffffff; }
 .platform-heading > div { min-width: 0; }
 .platform-heading h1 { margin: 0; color: #111214; font-size: 21px; font-weight: 680 !important; letter-spacing: -.025em !important; }
@@ -3921,6 +3928,7 @@
 
 @media (max-width: 960px) {
   .x-page-shell > .platform-utility { display: flex; }
+  .dashboard-period-filter { display: none; }
   .page-context-header { top: 56px; }
   .page-context-header-inner { grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); }
   .page-context-actions { display: none; }
@@ -3954,7 +3962,7 @@
    These shared primitives are intentionally route-agnostic so every workspace
    inherits the same geometry and status language.
    ========================================================================== */
-.operating-context-strip { display: flex; width: 100%; max-width: 1320px; min-height: 38px; align-items: stretch; gap: 0; margin: 0 auto; overflow-x: auto; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
+.operating-context-strip { position: relative; z-index: 20; display: flex; width: 100%; max-width: 1320px; min-height: 38px; align-items: stretch; gap: 0; margin: 0 auto; overflow: visible; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); }
 .operating-context-strip > div { display: flex; min-width: max-content; align-items: center; gap: 7px; padding: 8px 12px; border-left: 1px solid var(--border); }
 .operating-context-strip > div:first-child { border-left: 0; }
 .operating-context-strip dt { color: var(--muted); font-size: 10px; font-weight: 500; }
@@ -4158,7 +4166,8 @@
 
 @media (max-width: 760px) {
   .enterprise-form-shell .platform-content { padding: 0 12px 44px; }
-  .operating-context-strip { border-radius: 7px; }
+  .operating-context-strip { flex-wrap: wrap; border-radius: 7px; }
+  .operating-context-strip > div:last-child { width: 100%; border-top: 1px solid var(--border); border-left: 0; }
   .operating-decision-copy { padding: 14px 15px 16px; }
   .operating-decision-copy h2 { font-size: 16px; }
   .operating-owner-due { grid-template-columns: repeat(2, minmax(0, 1fr)); }

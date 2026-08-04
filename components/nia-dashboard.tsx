@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { CalendarDays, LockKeyhole, Menu, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Truck, UserPlus } from "lucide-react"
 import { AllocationContextStrip } from "@/components/allocation-context-strip"
 import { AttachSlopeChart } from "@/components/charts/attach-slope-chart"
@@ -261,6 +262,7 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
 }
 
 export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview = null, newAddsPreview = null, memberEngagementPreview = null, memberSavingsPreview = null, niaGrowthPreview = null, cashControlPreview = null, memberFeedbackItems = [], memberNpsResponses = [], financeAllowed = false, liveOpsData, allocationData, liveDespatchEscalations = [], liveDespatchCommitments = [], liveHeartbeatSnapshot = null }: { enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview?: NiaMarginsPreview | null; newAddsPreview?: NewAddsPreview | null; memberEngagementPreview?: MemberEngagementPreview | null; memberSavingsPreview?: MemberSavingsPreview | null; niaGrowthPreview?: NiaGrowthPreview | null; cashControlPreview?: CashControlPreview | null; memberFeedbackItems?: readonly MemberFeedbackItem[]; memberNpsResponses?: NpsResponse[]; financeAllowed?: boolean; liveOpsData?: unknown; allocationData?: unknown; liveDespatchEscalations?: readonly DespatchEscalationRecord[]; liveDespatchCommitments?: ExecutionAction[]; liveHeartbeatSnapshot?: HeartbeatSnapshot | null }) {
+  const router = useRouter()
   const [active, setActive] = useState<DashboardTab>("Despatch")
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [lens, setLens] = useState<OperatingLens>("operate")
@@ -272,6 +274,8 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
   const [railOpen, setRailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [syncing, setSyncing] = useState(false)
+  const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(45)
+  const syncInFlight = useRef(false)
   const [commitments, setCommitments] = useState<ExecutionAction[]>(() => [...liveDespatchCommitments])
   const availablePeriods = Array.isArray((liveOpsData as { availablePeriods?: unknown } | null)?.availablePeriods)
     ? ((liveOpsData as { availablePeriods: unknown[] }).availablePeriods.filter((value): value is string => typeof value === "string"))
@@ -395,18 +399,33 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       : action))
   }
 
-  async function refreshLiveData() {
-    if (syncing) return
+  const refreshLiveData = useCallback(async (mode: "auto" | "manual" = "manual") => {
+    if (syncInFlight.current) return
+    syncInFlight.current = true
     setSyncing(true)
     try {
-      const response = await fetch("/api/ops-data", { method: "POST", cache: "no-store" })
-      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Source sync failed")
-      window.location.reload()
+      const response = await fetch("/api/ops-data?refresh=1", { method: "POST", cache: "no-store" })
+      if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "Dashboard refresh failed")
+      setSecondsUntilRefresh(45)
+      router.refresh()
     } catch (error) {
+      if (mode === "manual") window.alert(error instanceof Error ? error.message : "Dashboard refresh failed")
+    } finally {
+      syncInFlight.current = false
       setSyncing(false)
-      window.alert(error instanceof Error ? error.message : "Source sync failed")
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    const countdown = window.setInterval(() => {
+      setSecondsUntilRefresh((current) => current > 1 ? current - 1 : 45)
+    }, 1_000)
+    const refresh = window.setInterval(() => { void refreshLiveData("auto") }, 45_000)
+    return () => {
+      window.clearInterval(countdown)
+      window.clearInterval(refresh)
+    }
+  }, [refreshLiveData])
 
   function selectPeriod(period: string) {
     const url = new URL(window.location.href)
@@ -444,7 +463,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
         <button type="button" className={filtersOpen ? "utility-button active" : "utility-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><SlidersHorizontal aria-hidden /><span>Filters</span></button>
         <button type="button" className="utility-icon" title="Governed live snapshot" aria-label="Governed live snapshot"><ShieldCheck aria-hidden /></button>
         <div className="utility-button period dashboard-period-filter"><CalendarDays aria-hidden /><TokenSelect ariaLabel="Reporting period" value={selectedPeriod} onChange={selectPeriod} options={[{ value: "all", label: "All · cumulative" }, ...availablePeriods.map((period) => ({ value: period, label: periodLabel(period) }))]} /></div>
-        <button type="button" className="utility-icon" title="Sync all source sheets" aria-label="Sync all source sheets" disabled={syncing} onClick={refreshLiveData}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /></button>
+        <button type="button" className="utility-icon" title="Sync now — do not wait for the 45-second refresh" aria-label="Sync now" disabled={syncing} onClick={() => { void refreshLiveData("manual") }}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /></button>
         <button type="button" className="utility-primary" onClick={() => navigateFromRail("self-drive", "Despatch")}><Truck aria-hidden /><span>Open Despatch</span></button>
       </div>
       </>}
@@ -456,7 +475,7 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {decisionRoomOpen ? <h1 className="sr-only">Decision Room</h1> : null}
       {!decisionRoomOpen && active !== "Enterprise Demand" ? <PageContextHeader active={active} /> : null}
       {!decisionRoomOpen && active === "Enterprise Demand" && enterpriseDemandPreview && !OUTLINE_MANAGED_TABS.has(active) ? <EnterpriseContextHeader preview={enterpriseDemandPreview} /> : null}
-      {!decisionRoomOpen ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: <TokenSelect className="context-period-filter" ariaLabel="Global reporting period" value={selectedPeriod} onChange={selectPeriod} options={[{ value: "all", label: "All · cumulative" }, ...availablePeriods.map((period) => ({ value: period, label: periodLabel(period) }))]} /> }]} /> : null}
+      {!decisionRoomOpen ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: <div className="context-period-state"><TokenSelect className="context-period-filter" ariaLabel="Global reporting period" value={selectedPeriod} onChange={selectPeriod} options={[{ value: "all", label: "All · cumulative" }, ...availablePeriods.map((period) => ({ value: period, label: periodLabel(period) }))]} /><span role="status" aria-live="polite">{syncing ? "Refreshing…" : `Live · refresh in ${secondsUntilRefresh}s`}</span><button type="button" className="context-sync-button" title="Refresh sheet data now" disabled={syncing} onClick={() => { void refreshLiveData("manual") }}><RefreshCw aria-hidden className={syncing ? "spin" : undefined} /><span>{syncing ? "Syncing…" : "Sync now"}</span></button></div> }]} /> : null}
       <div className="x-page-body">
       {decisionRoomOpen && enterpriseDemandPreview && newAddsPreview && memberEngagementPreview && memberSavingsPreview && niaMarginsPreview && niaGrowthPreview ? <DecisionRoom enterpriseDemandPreview={enterpriseDemandPreview} cashControlPreview={cashControlPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaMarginsPreview={niaMarginsPreview} niaGrowthPreview={niaGrowthPreview} signOffCount={learningHistory.length} period={selectedPeriodLabel} onOpenLoop={(tab) => navigateFromRail("self-drive", tab)} onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")} /> : decisionRoomOpen ? <LiveBackendTables title="Decision Room" groups={liveOpsData ? [{ label: "Open actions", rows: liveRows(liveOpsData, "actionLog") }, { label: "Incidents", rows: liveRows(liveOpsData, "incidentLog") }, { label: "Approvals waiting", rows: liveRows(liveOpsData, "approvalLog") }] : []} /> : <LensProvider lens={lens}>
       {active === "Overview" && platformLoopHealth && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} allocationData={allocationData} onModeChange={setOverviewMode} onNavigate={navigate} />}

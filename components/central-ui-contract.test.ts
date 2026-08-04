@@ -10,6 +10,7 @@ const primitives = readFileSync(new URL("./operating-ui.tsx", import.meta.url), 
 const login = readFileSync(new URL("./login-screen.tsx", import.meta.url), "utf8")
 const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8")
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
+const opsDataRoute = readFileSync(new URL("../app/api/ops-data/route.ts", import.meta.url), "utf8")
 
 test("the route inventory remains complete and unchanged by the presentation redesign", () => {
   assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
@@ -52,6 +53,19 @@ test("the utility control exposes the governed sheet-derived reporting period", 
   assert.match(dashboard, /All · cumulative/)
   assert.match(dashboard, /availablePeriods\.map/)
   assert.match(dashboard, /title="Decision Room"/)
+})
+
+test("live dashboard refreshes every 45 seconds and keeps an immediate manual sync", () => {
+  assert.match(dashboard, /window\.setInterval\(\(\) => \{ void refreshLiveData\("auto"\) \}, 45_000\)/)
+  assert.match(dashboard, /className="context-sync-button"/)
+  assert.match(dashboard, /Sync now/)
+  assert.match(dashboard, /fetch\("\/api\/ops-data\?refresh=1"/)
+  assert.match(opsDataRoute, /const fullSync = url\.searchParams\.get\("full"\) === "1"/)
+  assert.match(opsDataRoute, /fullSync \? await syncAllSources\(\{ force: true \}\) : null/)
+  assert.match(dashboard, /aria-label="Sync now"/)
+  assert.match(dashboard, /Live · refresh in/)
+  assert.match(css, /@media \(max-width: 960px\)[\s\S]*?\.dashboard-period-filter \{ display: none; \}/)
+  assert.match(css, /\.operating-context-strip \{[^}]*overflow: visible;/)
 })
 
 test("Self Drive has symmetric Decide and Operate landing surfaces", () => {
