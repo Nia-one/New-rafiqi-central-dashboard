@@ -67,7 +67,7 @@ function ActionRegister({ actions, onNavigate }: { actions: ActionWithResult[]; 
       {filters.map((item) => <button type="button" key={item} className={filter === item ? "is-active" : ""} aria-pressed={filter === item} onClick={() => setFilter(item)}>{item}<span>{filterActions(actions, item).length}</span></button>)}
     </div>
     <OperationalCardStack label={`${filter} action register`}>{visible.map((action) => <OperationalCard key={action.id} title={action.title} domain={`${sourceLabel(action.source)} · ${action.theatre}`} status={action.result} fields={[{ label: "Owner", value: `${action.owner} · ${action.team}` }, { label: "Due", value: dueLabel(action.dueAt) }, { label: "Outcome", value: action.outcome }, { label: "Closed / verified", value: `Closed ${dueLabel(action.closedAt)} · Verified ${dueLabel(action.verifiedAt)}` }, { label: "Expected result", value: `${action.expectedMetric.label}: ${action.expectedMetric.direction === "up" ? "Increase" : "Decrease"} from ${action.expectedMetric.baselineValue}${action.expectedMetric.unit}; check after ${action.expectedMetric.checkWindowDays} day${action.expectedMetric.checkWindowDays === 1 ? "" : "s"}` }, { label: "Measured", value: action.expectedMetric.actualValue === null ? "Result not yet available" : `${action.expectedMetric.actualValue}${action.expectedMetric.unit}` }]}><button type="button" className="execution-open" onClick={() => onNavigate(action.route, action.mismatchId)}>Open details <ArrowUpRight aria-hidden /></button></OperationalCard>)}</OperationalCardStack>
-    <p className="execution-row-count">Showing {visible.length} of {actions.length} illustrative commitments.</p>
+    <p className="execution-row-count">Showing {visible.length} of {actions.length} governed commitments.</p>
   </section>
 }
 
@@ -132,7 +132,7 @@ export function ExecutionControlPanel({ commitments, asOf, onNavigate }: { commi
             return <OperationalCard key={action.id} title={action.title} domain={`${sourceLabel(action.source)} · ${previousReportLabel(action)} · ${action.theatre}`} status={action.result} description={<p>{checkerDelay ? "Assign a checker and verify the evidence." : "Get execution proof from the named owner."}</p>} fields={[{ label: "Owner", value: checkerDelay ? "Checker not named" : action.owner }, { label: "Due", value: dueLabel(action.dueAt) }, { label: "Open for", value: chaseAge(action, reportAsOf) }, { label: "Expected result", value: action.expectedMetric.label }, { label: "Last step", value: `${last?.new_status ?? "No update"} · ${dueLabel(last?.executed_at ?? null)}` }]}><button type="button" className="execution-open" onClick={() => onNavigate(action.route, action.mismatchId)}>Open details <ArrowUpRight aria-hidden /></button></OperationalCard>
           })}
       </OperationalCardStack>
-      <p className="execution-row-count">Illustrative data. Every row remains in the shared action register below.</p>
+      <p className="execution-row-count">Governed source data. Every row remains in the shared action register below.</p>
     </section>
 
     <section className="execution-section member-outcome-section" aria-labelledby="member-outcome-title">

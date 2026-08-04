@@ -40,7 +40,7 @@ export function DemandProximityChart({ node }: { node: DemandProximityNode }) {
       <p><span>Nearest option</span><strong>{nearest.name} · {nearest.distanceKm.toFixed(1)} km</strong></p>
       <p><span>Demand owner</span><strong>{node.owner}</strong></p>
     </div>
-    <p className="proximity-note">Illustrative SP options. This demand node drops when its status becomes Matched.</p>
+    <p className="proximity-note">Governed SP options from the connected supply feed. This demand node drops when its status becomes Matched.</p>
     <ul className="sr-only">
       {node.options.map(option => <li key={option.id}>{option.name}, {option.distanceKm.toFixed(1)} kilometres from {node.demandName}</li>)}
     </ul>

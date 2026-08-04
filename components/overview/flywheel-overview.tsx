@@ -142,13 +142,13 @@ export function FlywheelOverview({ liveOpsData, allocationData, commitments, onS
 
     <section className="flywheel-bottlenecks-section" aria-labelledby="bottleneck-title">
       <header className="flywheel-section-heading"><div><p className="story-kicker">02 · WHAT TO FIX TODAY</p><h2 id="bottleneck-title">Start with the largest demand–supply gap.</h2></div><p>Each line has one action, one owner, and the metric it should move.</p></header>
-      <div className="flywheel-bottleneck-groups">{bottlenecks.map(({ pillar, items }) => <section className={`flywheel-bottleneck-group flywheel-${pillar.name.toLowerCase()}`} key={pillar.name}><header><div><h3>{pillar.name}</h3><p>{pillar.name === "Work" ? "Work: not yet instrumented." : `${items.length} bottleneck${items.length === 1 ? "" : "s"} found in the current sample.`}</p></div>{pillar.name !== "Work" && <span>{items.length} open</span>}</header>{pillar.name === "Work" ? <div className="flywheel-not-instrumented"><strong>Not yet instrumented</strong><p>No Work demand or supply feed is connected. Add employer requests and worker availability before ranking bottlenecks.</p></div> : items.length > 0 ? items.map((item) => <Bottleneck key={item.id} mismatch={item} priority={item.id === top?.id} onNavigate={onNavigate} />) : <div className="flywheel-not-instrumented"><strong>No open mismatch</strong><p>There is no open demand–supply gap in the current sample.</p></div>}</section>)}</div>
+      <div className="flywheel-bottleneck-groups">{bottlenecks.map(({ pillar, items }) => <section className={`flywheel-bottleneck-group flywheel-${pillar.name.toLowerCase()}`} key={pillar.name}><header><div><h3>{pillar.name}</h3><p>{pillar.name === "Work" ? "Work: not yet instrumented." : `${items.length} bottleneck${items.length === 1 ? "" : "s"} found in governed data.`}</p></div>{pillar.name !== "Work" && <span>{items.length} open</span>}</header>{pillar.name === "Work" ? <div className="flywheel-not-instrumented"><strong>Not yet instrumented</strong><p>No Work demand or supply feed is connected. Add employer requests and worker availability before ranking bottlenecks.</p></div> : items.length > 0 ? items.map((item) => <Bottleneck key={item.id} mismatch={item} priority={item.id === top?.id} onNavigate={onNavigate} />) : <div className="flywheel-not-instrumented"><strong>No open mismatch</strong><p>There is no open demand–supply gap in governed data.</p></div>}</section>)}</div>
     </section>
 
-    <AllocationAttentionQueue allocationData={allocationData} commitments={commitments} onShowExecution={onShowExecution} onNavigate={(route, mismatchId) => onNavigate(route, mismatchId)} />
+    <AllocationAttentionQueue allocationData={allocationData} commitments={commitments} asOf={liveOpsData?.fetchedAt} onShowExecution={onShowExecution} onNavigate={(route, mismatchId) => onNavigate(route, mismatchId)} />
 
     <DailyActionMatrix allocationData={allocationData} onNavigate={onNavigate} />
 
-    <BlockRecap />
+    <BlockRecap liveOpsData={liveOpsData} />
   </div>
 }
