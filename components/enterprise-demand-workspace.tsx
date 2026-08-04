@@ -31,7 +31,7 @@ function percent(value: number, max: number) {
 
 function RingPlan({ steps }: { steps: readonly JourneyStep[] }) {
   return <div className="enterprise-ring-visual">
-    <svg viewBox="0 0 420 238" role="img" aria-label="Synthetic demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres">
+    <svg viewBox="0 0 420 238" role="img" aria-label="Governed demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres">
       <title>Enterprise plant at the centre; Ring 1 is exhausted before Ring 2.</title>
       <circle className="enterprise-ring-two" cx="210" cy="119" r="96" />
       <circle className="enterprise-ring-one" cx="210" cy="119" r="43" />
@@ -269,7 +269,7 @@ export function EnterpriseDemandWorkspace({ preview }: Props) {
 
     <div className="enterprise-proof">
       <LoopHealthStrip health={preview.loopHealth} id="enterprise-demand-health" />
-      <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{preview.source.name} · as of {date(preview.source.asOf)} · protected references only · synthetic/shadow</span><Clock3 aria-hidden /><span>RafiQi Central may summarise later; Ops Control owns execution and verified closure.</span></footer>
+      <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{preview.source.name} · as of {date(preview.source.asOf)} · protected governed references only</span><Clock3 aria-hidden /><span>RafiQi Central may summarise later; Ops Control owns execution and verified closure.</span></footer>
     </div>
     </DashboardSectionAccordion>
   </div>

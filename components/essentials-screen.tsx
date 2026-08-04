@@ -26,7 +26,7 @@ function liveNumber(row: LiveRow | undefined, ...keys: string[]) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export function EssentialsScreen({ allocationFocus, liveData }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
+export function EssentialsScreen({ allocationFocus, liveData = null }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
   if (liveData !== undefined) {
     const dashboard = liveData?.dashboard ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
     const firstDashboard = dashboard[0], firstInventory = inventory[0]

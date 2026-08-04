@@ -103,7 +103,7 @@ test("shared Loop Health still qualifies stale claims and exposes integrity evid
   for (const label of ["Data freshness", "Clocks running", "Outcome checks"]) assert.match(html, new RegExp(`>${label}<`))
   assert.match(html, /1 row quarantined/)
   assert.match(html, /11 of 14 outcomes confirmed/)
-  assert.match(html, /protected references only · synthetic\/shadow/)
+  assert.match(html, /protected governed references only/)
 })
 
 test("UI interactions remain local and preserve all upstream safety boundaries", () => {

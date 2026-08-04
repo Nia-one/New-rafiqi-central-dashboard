@@ -32,7 +32,7 @@ function LivePeopleCards({ rows, label }: { rows: readonly LiveRow[]; label: str
   })}</OperationalCardStack>
 }
 
-export function PeopleScreen({ commitments, liveData }: { commitments: ExecutionAction[]; liveData?: { dashboard: readonly LiveRow[]; performance: readonly LiveRow[]; followThrough: readonly LiveRow[]; roster: readonly LiveRow[] } | null }) {
+export function PeopleScreen({ commitments, liveData = null }: { commitments: ExecutionAction[]; liveData?: { dashboard: readonly LiveRow[]; performance: readonly LiveRow[]; followThrough: readonly LiveRow[]; roster: readonly LiveRow[] } | null }) {
   if (liveData !== undefined) {
     const dashboard = liveData?.dashboard ?? [], performance = liveData?.performance ?? [], followThroughRows = liveData?.followThrough ?? []
     const headline = dashboard[0] ? Object.entries(dashboard[0]).filter(([key]) => !key.startsWith("__")).slice(0, 7) : []
