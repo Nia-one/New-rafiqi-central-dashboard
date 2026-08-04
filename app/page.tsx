@@ -1,9 +1,7 @@
 import { LegacyNiaDashboard } from "@/components/legacy-nia-dashboard"
 import { financeExpansionControlEnabled, selfDrivePlatformEnabled } from "@/lib/operating-loop/feature-flags"
 import { buildLiveEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
-import { buildFinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
-import { buildNiaMarginsPreview, NIA_MARGINS_SYNTHETIC_INPUTS } from "@/lib/operating-loop/nia-margins-loop"
-import { buildCashControlPreview } from "@/lib/operating-loop/cash-control-loop"
+import { buildNiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
 import { cookies } from "next/headers"
 import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessionSecretFromEnvironment } from "@/lib/auth"
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
@@ -28,15 +26,12 @@ export default async function Page() {
   const role = sessionEmail ? roleAssignments().get(sessionEmail) ?? (process.env.NODE_ENV !== "production" && sessionEmail === configuredEmail ? "administrator" : null) : null
   const hasFinanceRole = financeAccessAllowed(role)
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
-  const financeExpansionPreview = financeAllowed ? buildFinanceExpansionPreview() : null
   let liveOpsData: Awaited<ReturnType<typeof buildOpsData>> | null = null
   let allocationData: Awaited<ReturnType<typeof buildAllocationData>> | null = null
   try {
     ;[liveOpsData, allocationData] = await Promise.all([buildOpsData(), buildAllocationData()])
   } catch (error) {
-    // The governed fixtures keep the demo usable while a Sheet connector is
-    // unavailable; a failed refresh must never turn a missing value into zero.
-    console.warn("Live dashboard snapshot unavailable; using governed fixture fallback.", error instanceof Error ? error.message : error)
+    console.warn("Live dashboard snapshot unavailable; rendering explicit no-data states.", error instanceof Error ? error.message : error)
   }
   const liveSelfDriveData = liveOpsData ? buildLiveSelfDriveSnapshot(liveOpsData) : null
   const enterpriseDemandPreview = liveSelfDriveData
@@ -45,8 +40,7 @@ export default async function Page() {
   const liveMarginInputs = liveSelfDriveData ? buildLiveMarginInputs(liveSelfDriveData) : []
   const niaMarginsPreview = liveSelfDriveData && liveMarginInputs.length > 0
     ? buildNiaMarginsPreview(liveMarginInputs, liveSelfDriveData.asOf, [])
-    : buildNiaMarginsPreview(NIA_MARGINS_SYNTHETIC_INPUTS)
-  const cashControlPreview = financeAllowed ? buildCashControlPreview() : null
+    : null
   const liveDespatchEscalations = liveOpsData ? buildLiveDespatchEscalations({ actionLog: liveOpsData.actionLog, incidentLog: liveOpsData.incidentLog, people: liveOpsData.people }) : []
-  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} niaMarginsPreview={niaMarginsPreview} cashControlPreview={cashControlPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
+  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} niaMarginsPreview={niaMarginsPreview} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
 }
