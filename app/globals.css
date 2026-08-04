@@ -2052,6 +2052,9 @@
   [data-theme="light"] .dashboard-accordion-trigger:hover .dashboard-accordion-chevron { color: var(--muted); }
   .dashboard-accordion-item[data-open="true"] .dashboard-accordion-chevron { transform: rotate(180deg); color: var(--ink); }
   .dashboard-accordion-panel { min-width: 0; padding: 16px; border-top: 1px solid var(--border); background: var(--canvas); }
+  .dashboard-section-unavailable { display: grid; gap: 5px; min-height: 110px; align-content: center; padding: 20px; border: 1px dashed var(--border-strong); border-radius: 8px; background: var(--surface); }
+  .dashboard-section-unavailable strong { color: var(--ink); font-size: 12px; }
+  .dashboard-section-unavailable span { color: var(--muted); font-size: 10px; }
   [data-theme="light"] .dashboard-accordion-panel { background: var(--surface-subtle); }
   .dashboard-accordion-panel[hidden] { display: none; }
 }
