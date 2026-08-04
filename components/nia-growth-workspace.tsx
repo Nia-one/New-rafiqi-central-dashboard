@@ -80,7 +80,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     <LoopHealthStrip health={preview.loopHealth} />
     <div className={styles.freshness} role="status">
       <AlertTriangle aria-hidden />
-      <strong>Stale synthetic fixture</strong>
+      <strong>Governed source snapshot</strong>
       <span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span>
       <b>{preview.quarantineCount} supply-model or protected-input rows quarantined</b>
     </div>

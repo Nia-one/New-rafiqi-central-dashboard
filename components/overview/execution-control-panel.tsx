@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react"
 import { ArrowUpRight, BellRing, CheckCircle2, CircleDashed, FileCheck2, UsersRound, type LucideIcon } from "lucide-react"
-import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildActionChaseQueue, buildExecutionReport, type ActionWithResult, type CommitmentSource, type ExecutionAction } from "@/lib/execution-control"
 import type { DashboardRoute } from "@/lib/dashboard-model"
 import { OperationalCard, OperationalCardStack } from "@/components/operational-card"
@@ -40,11 +39,11 @@ function latestStep(action: ActionWithResult) {
   return [...action.actionLog].sort((a, b) => Date.parse(a.executed_at) - Date.parse(b.executed_at)).at(-1) ?? null
 }
 
-function chaseAge(action: ActionWithResult) {
+function chaseAge(action: ActionWithResult, asOf: string) {
   const chaseStartedAt = action.result === "Verification overdue" && action.closedAt
     ? Date.parse(action.closedAt) + 72 * 3_600_000
     : Date.parse(action.dueAt)
-  const hours = Math.max(0, Math.floor((Date.parse(EXECUTION_REPORT_AS_OF) - chaseStartedAt) / 3_600_000))
+  const hours = Math.max(0, Math.floor((Date.parse(asOf) - chaseStartedAt) / 3_600_000))
   if (hours < 24) return `${hours}h overdue`
   const days = Math.floor(hours / 24)
   const remainder = hours % 24
@@ -72,8 +71,9 @@ function ActionRegister({ actions, onNavigate }: { actions: ActionWithResult[]; 
   </section>
 }
 
-export function ExecutionControlPanel({ commitments, onNavigate }: { commitments: ExecutionAction[]; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
-  const report = useMemo(() => buildExecutionReport(commitments, EXECUTION_REPORT_AS_OF), [commitments])
+export function ExecutionControlPanel({ commitments, asOf, onNavigate }: { commitments: ExecutionAction[]; asOf: string; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+  const reportAsOf = Number.isFinite(Date.parse(asOf)) ? asOf : new Date(0).toISOString()
+  const report = useMemo(() => buildExecutionReport(commitments, reportAsOf), [commitments, reportAsOf])
   const chase = buildActionChaseQueue(report.actions)
   const evaluated = report.resolvedOutcomes + report.closedButNotResolved
   const loopStages: Array<{ number: string; label: string; value: number; note: string; icon: LucideIcon }> = [
@@ -87,7 +87,7 @@ export function ExecutionControlPanel({ commitments, onNavigate }: { commitments
   return <div className="execution-control">
     <section className="execution-lede" aria-labelledby="execution-title">
       <div><p className="story-kicker">EXECUTION CONTROL &amp; MEMBER SATISFACTION</p><h2 id="execution-title">From root cause to validated closure.</h2><p>Reports stay read-only. The system generates the action, tags the owner and sends the alert. The owner submits proof. Despatch validates it.</p></div>
-      <p className="execution-data-note"><strong>Illustrative operating data</strong><span>Reviewed 15 Jul at 14:00 IST</span><span>Alert delivery, WhatsApp and Google Sheets are not connected yet.</span></p>
+      <p className="execution-data-note"><strong>Governed execution snapshot</strong><span>Source refresh {dueLabel(reportAsOf)}</span><span>{commitments.length ? `${commitments.length} source-backed commitments` : "No verified commitments available"}</span></p>
     </section>
 
     {report.carryForward.length > 0 ? <section className="execution-carry-forward" aria-labelledby="carry-forward-title">
@@ -129,7 +129,7 @@ export function ExecutionControlPanel({ commitments, onNavigate }: { commitments
         {chase.map((action) => {
             const last = latestStep(action)
             const checkerDelay = action.result === "Verification overdue"
-            return <OperationalCard key={action.id} title={action.title} domain={`${sourceLabel(action.source)} · ${previousReportLabel(action)} · ${action.theatre}`} status={action.result} description={<p>{checkerDelay ? "Assign a checker and verify the evidence." : "Get execution proof from the named owner."}</p>} fields={[{ label: "Owner", value: checkerDelay ? "Checker not named" : action.owner }, { label: "Due", value: dueLabel(action.dueAt) }, { label: "Open for", value: chaseAge(action) }, { label: "Expected result", value: action.expectedMetric.label }, { label: "Last step", value: `${last?.new_status ?? "No update"} · ${dueLabel(last?.executed_at ?? null)}` }]}><button type="button" className="execution-open" onClick={() => onNavigate(action.route, action.mismatchId)}>Open details <ArrowUpRight aria-hidden /></button></OperationalCard>
+            return <OperationalCard key={action.id} title={action.title} domain={`${sourceLabel(action.source)} · ${previousReportLabel(action)} · ${action.theatre}`} status={action.result} description={<p>{checkerDelay ? "Assign a checker and verify the evidence." : "Get execution proof from the named owner."}</p>} fields={[{ label: "Owner", value: checkerDelay ? "Checker not named" : action.owner }, { label: "Due", value: dueLabel(action.dueAt) }, { label: "Open for", value: chaseAge(action, reportAsOf) }, { label: "Expected result", value: action.expectedMetric.label }, { label: "Last step", value: `${last?.new_status ?? "No update"} · ${dueLabel(last?.executed_at ?? null)}` }]}><button type="button" className="execution-open" onClick={() => onNavigate(action.route, action.mismatchId)}>Open details <ArrowUpRight aria-hidden /></button></OperationalCard>
           })}
       </OperationalCardStack>
       <p className="execution-row-count">Illustrative data. Every row remains in the shared action register below.</p>

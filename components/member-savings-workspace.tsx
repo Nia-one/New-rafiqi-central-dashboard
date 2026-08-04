@@ -66,7 +66,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
   ]}>
     <div className={styles.freshness} role="status">
       <AlertTriangle aria-hidden />
-      <strong>Stale synthetic fixture</strong>
+      <strong>Governed source snapshot</strong>
       <span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span>
       <b>{preview.quarantineCount} protected-input rows quarantined</b>
     </div>

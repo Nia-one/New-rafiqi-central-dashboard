@@ -18,10 +18,10 @@ function PacingCard({ channel, actual, owner }: { channel: string; actual: numbe
 export function LivingScreen({ focus, allocationFocus, liveOpsData }: { focus?: LivingSection; allocationFocus?: string; liveOpsData?: unknown }) {
   const live = liveOpsData ? buildLivingScreenData(liveOpsData) : null
   const fonoTeam = teamBlocks.find(t => t.name === "FONO Supply")!, fonoDemand = teamBlocks.find(t => t.name === "FONO Demand")!, demandTeam = teamBlocks.find(t => t.name === "Śram Park Demand")!, supplyTeam = teamBlocks.find(t => t.name === "Śram Park Supply")!
-  const openDemandNodes = (live?.proximityNodes.length ? live.proximityNodes : demandProximityNodes).filter(node => node.status !== "Matched")
-  const occupancyRows = live?.occupancyRows.length ? live.occupancyRows : fonoOccupancy
-  const demandRows = live?.demandRows.length ? live.demandRows : shramDemand
-  const supplyRows = live?.supplyRows.length ? live.supplyRows : shramSupply
+  const openDemandNodes = (live ? live.proximityNodes : demandProximityNodes).filter(node => node.status !== "Matched")
+  const occupancyRows = live ? live.occupancyRows : fonoOccupancy
+  const demandRows = live ? live.demandRows : shramDemand
+  const supplyRows = live ? live.supplyRows : shramSupply
   return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLabel="Living sections" sections={[
     { title: "Main point", summary: "Named demand should become occupied Nests." },
     { title: "Allocation context", summary: "Review the active allocation mismatch and evidence." },
@@ -32,7 +32,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData }: { focus?: 
     { title: "Śram Park supply", summary: `${openDemandNodes.length} open demand nodes need nearby options` },
     { title: "Living summary", summary: "Demand and occupied Nests are both 18% below plan." },
   ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>Named demand should become occupied Nests.</strong></div><p>Compare both channels by Theatre, Studio, and activation date.</p></div><AllocationContextStrip mismatchId={allocationFocus} />
-    <LivingSupplyModelReport />
+    <LivingSupplyModelReport preview={null} />
     <div className="pacing-grid"><PacingCard channel="FONO" actual={live?.fonoOccupied ?? 920} owner={live?.metricOwner("fono_owner") ?? "Franchise Acquisition + Theatre ops"} /><PacingCard channel="Śram Park" actual={live?.demandMatched ?? 862} owner={live?.metricOwner("sp_owner") ?? "JCO + RM teams"} /></div>
     <section id="fono" className={`operating-section ${focus === "fono" ? "focused-section" : ""}`}>
       <p className="pillar-kicker">ACQUISITION CHANNEL 01</p>

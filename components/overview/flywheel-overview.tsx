@@ -2,7 +2,7 @@ import { ArrowRight, ArrowUpRight, CircleAlert } from "lucide-react"
 import { THEATRES, type DashboardRoute } from "@/lib/dashboard-model"
 import { ACTION_GRID_CATEGORIES, buildDailyActionGrid, buildRankedQueue, isNoData } from "@/lib/allocation-engine"
 import type { AllocationDomain, RankedMismatch } from "@/lib/allocation-types"
-import { formatInr, opsData } from "@/lib/ops-data"
+import { formatInr } from "@/lib/ops-data"
 import type { ExecutionAction } from "@/lib/execution-control"
 import { AllocationAttentionQueue } from "./allocation-attention-queue"
 import { BlockRecap } from "./block-recap"
@@ -15,18 +15,18 @@ type Pillar = {
   domains: AllocationDomain[]
 }
 
-const spineValue = (id: string) => {
-  const metric = opsData.spine.find((item) => item.id === id)
+const spineValue = (spine: any[], id: string) => {
+  const metric = spine.find((item) => item.id === id)
   return metric ? metric.actual.toLocaleString("en-IN") : "Not yet instrumented"
 }
 
-const pillars: Pillar[] = [
+const buildPillars = (liveOpsData: any): Pillar[] => [
   {
     name: "Living",
     description: "Stage 1 · A Nest creates the stable base and brings the Member into the flywheel.",
     pairs: [
-      { side: "Demand", label: "Named enterprise requirement", value: spineValue("contracted"), note: "Members contracted" },
-      { side: "Supply", label: "Live Nests", value: spineValue("capacity"), note: "Capacity live" },
+      { side: "Demand", label: "Named enterprise requirement", value: spineValue(liveOpsData?.spine ?? [], "contracted"), note: "Members contracted" },
+      { side: "Supply", label: "Live Nests", value: spineValue(liveOpsData?.spine ?? [], "capacity"), note: "Capacity live" },
     ],
     domains: ["Śram Park", "FONO"],
   },
@@ -34,8 +34,8 @@ const pillars: Pillar[] = [
     name: "Work",
     description: "Stage 2 · Employment access supports income continuity for Members.",
     pairs: [
-      { side: "Demand", label: "Employer placement requests", value: "Not yet instrumented", note: "Work demand feed" },
-      { side: "Supply", label: "Available / skilled workers", value: "Not yet instrumented", note: "Work supply feed" },
+      { side: "Demand", label: "Employer placement requests", value: liveOpsData?.flywheel?.work?.demand?.toLocaleString?.("en-IN") ?? "Not yet instrumented", note: "Work demand feed" },
+      { side: "Supply", label: "Available / skilled workers", value: liveOpsData?.flywheel?.work?.supply?.toLocaleString?.("en-IN") ?? "Not yet instrumented", note: "Work supply feed" },
     ],
     domains: [],
   },
@@ -43,8 +43,8 @@ const pillars: Pillar[] = [
     name: "Essentials",
     description: "Stage 3 · Lower-cost Essentials protect savings and encourage another order.",
     pairs: [
-      { side: "Demand", label: "Eligible / purchasing Members", value: "3,760 / 1,542", note: "Eligible / purchasing · sample" },
-      { side: "Supply", label: "SKU fulfilment", value: "Not yet instrumented", note: "Studio × SKU feed" },
+      { side: "Demand", label: "Eligible / purchasing Members", value: liveOpsData?.flywheel?.essentials ? `${liveOpsData.flywheel.essentials.eligible.toLocaleString("en-IN")} / ${liveOpsData.flywheel.essentials.purchasing.toLocaleString("en-IN")}` : "Not yet instrumented", note: "Eligible / purchasing · live" },
+      { side: "Supply", label: "SKU fulfilment", value: liveOpsData?.flywheel?.essentials?.purchasing?.toLocaleString?.("en-IN") ?? "Not yet instrumented", note: "Studio × SKU feed" },
     ],
     domains: ["Essentials"],
   },
@@ -93,8 +93,8 @@ function DailyAction({ mismatch, onNavigate }: { mismatch: RankedMismatch; onNav
   </article>
 }
 
-function DailyActionMatrix({ onNavigate }: { onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
-  const grid = buildDailyActionGrid()
+function DailyActionMatrix({ allocationData, onNavigate }: { allocationData?: any; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+  const grid = buildDailyActionGrid({}, allocationData?.mismatchInputs)
 
   return <section className="daily-action-grid-section" aria-labelledby="daily-action-grid-title">
     <header className="flywheel-section-heading"><div><p className="story-kicker">04 · TODAY&apos;S ACTION GRID</p><h2 id="daily-action-grid-title">Quick actions by Theatre and category.</h2></div><p>Scan each Theatre for its three highest-priority open actions today.</p></header>
@@ -116,15 +116,16 @@ function DailyActionMatrix({ onNavigate }: { onNavigate: (route: DashboardRoute,
   </section>
 }
 
-function PillarCard({ pillar }: { pillar: Pillar }) {
+function PillarCard({ pillar, index }: { pillar: Pillar; index: number }) {
   return <article className={`flywheel-pillar flywheel-${pillar.name.toLowerCase()}`}>
-    <header><span className="flywheel-pillar-number">0{pillars.findIndex((item) => item.name === pillar.name) + 1}</span><div><h3>{pillar.name}</h3><p>{pillar.description}</p></div></header>
+    <header><span className="flywheel-pillar-number">0{index + 1}</span><div><h3>{pillar.name}</h3><p>{pillar.description}</p></div></header>
     <div className="flywheel-pairs">{pillar.pairs.map((pair) => <div className={`flywheel-pair semantic-${pair.side.toLowerCase()}`} key={pair.side}><span>{pair.side}</span><strong>{pair.value}</strong><p>{pair.label}</p><small>{pair.note}</small></div>)}</div>
   </article>
 }
 
-export function FlywheelOverview({ commitments, onShowExecution, onNavigate }: { commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
-  const queue = buildRankedQueue()
+export function FlywheelOverview({ liveOpsData, allocationData, commitments, onShowExecution, onNavigate }: { liveOpsData?: any; allocationData?: any; commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+  const pillars = buildPillars(liveOpsData)
+  const queue = buildRankedQueue({}, allocationData?.mismatchInputs)
   const top = queue.find((item) => !isNoData(item.priorityScore))
   const bottlenecks = pillars.map((pillar) => ({ pillar, items: queue.filter((item) => pillar.domains.includes(item.domain)).filter((item) => !isNoData(item.demandQty) && !isNoData(item.supplyQty) && !isNoData(item.gapQty)).slice(0, 3) }))
 
@@ -133,7 +134,7 @@ export function FlywheelOverview({ commitments, onShowExecution, onNavigate }: {
       <header className="flywheel-section-heading"><div><p className="story-kicker">01 · THE CONTINUITY FLYWHEEL</p><h2 id="loop-title">One system. Three connected pillars.</h2></div><p>Living brings the Member in. Work and Essentials deepen continuity without starting a new relationship.</p></header>
       <p className="flywheel-stage-line"><span>Community Living</span><ArrowRight aria-hidden /><span>Access to work</span><ArrowRight aria-hidden /><span>Lower-cost Essentials</span><ArrowRight aria-hidden /><span>Greater stability</span><ArrowRight aria-hidden /><span>Stronger Living demand</span></p>
       <div className="flywheel-loop" role="list" aria-label="Living, Work and Essentials flywheel">
-        {pillars.map((pillar, index) => <div className="flywheel-loop-item" role="listitem" key={pillar.name}><PillarCard pillar={pillar} />{index < pillars.length - 1 && <ArrowRight className="flywheel-arrow" aria-hidden />}</div>)}
+        {pillars.map((pillar, index) => <div className="flywheel-loop-item" role="listitem" key={pillar.name}><PillarCard pillar={pillar} index={index} />{index < pillars.length - 1 && <ArrowRight className="flywheel-arrow" aria-hidden />}</div>)}
         <div className="flywheel-return" aria-hidden><ArrowRight /><span>Member stability strengthens Living demand</span></div>
       </div>
       <p className="flywheel-loop-caption"><span>One Member relationship</span><b>·</b><span>Living</span><ArrowRight aria-hidden /><span>Work</span><ArrowRight aria-hidden /><span>Essentials</span><ArrowRight aria-hidden /><span>Living</span></p>
@@ -144,9 +145,9 @@ export function FlywheelOverview({ commitments, onShowExecution, onNavigate }: {
       <div className="flywheel-bottleneck-groups">{bottlenecks.map(({ pillar, items }) => <section className={`flywheel-bottleneck-group flywheel-${pillar.name.toLowerCase()}`} key={pillar.name}><header><div><h3>{pillar.name}</h3><p>{pillar.name === "Work" ? "Work: not yet instrumented." : `${items.length} bottleneck${items.length === 1 ? "" : "s"} found in the current sample.`}</p></div>{pillar.name !== "Work" && <span>{items.length} open</span>}</header>{pillar.name === "Work" ? <div className="flywheel-not-instrumented"><strong>Not yet instrumented</strong><p>No Work demand or supply feed is connected. Add employer requests and worker availability before ranking bottlenecks.</p></div> : items.length > 0 ? items.map((item) => <Bottleneck key={item.id} mismatch={item} priority={item.id === top?.id} onNavigate={onNavigate} />) : <div className="flywheel-not-instrumented"><strong>No open mismatch</strong><p>There is no open demand–supply gap in the current sample.</p></div>}</section>)}</div>
     </section>
 
-    <AllocationAttentionQueue commitments={commitments} onShowExecution={onShowExecution} onNavigate={(route, mismatchId) => onNavigate(route, mismatchId)} />
+    <AllocationAttentionQueue allocationData={allocationData} commitments={commitments} onShowExecution={onShowExecution} onNavigate={(route, mismatchId) => onNavigate(route, mismatchId)} />
 
-    <DailyActionMatrix onNavigate={onNavigate} />
+    <DailyActionMatrix allocationData={allocationData} onNavigate={onNavigate} />
 
     <BlockRecap />
   </div>

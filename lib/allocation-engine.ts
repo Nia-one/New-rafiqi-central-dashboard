@@ -232,8 +232,8 @@ export function scoreComponents(mismatch: Mismatch): Measured<ScoreComponents> {
 }
 
 /** Open queue. Closed and Dismissed rows are excluded from scoring. */
-export function buildRankedQueue(context: ActionLogContext = {}): RankedMismatch[] {
-  const unresolved = mismatchInputs
+export function buildRankedQueue(context: ActionLogContext = {}, inputs: MismatchInput[] = mismatchInputs): RankedMismatch[] {
+  const unresolved = inputs
     .map((input) => getMismatchForStage(input.domain, input.joinKey, context))
     .filter((mismatch): mismatch is Mismatch => mismatch !== undefined)
     .filter((mismatch) => isUnresolved(mismatch.actionStatus))
@@ -271,13 +271,13 @@ export type DailyActionGrid = Record<ActionGridCategory, Record<(typeof THEATRES
  * Preserves the audited queue order while grouping open actions for the daily
  * Theatre × category matrix. A null cell means the feed is not instrumented.
  */
-export function buildDailyActionGrid(context: ActionLogContext = {}): DailyActionGrid {
+export function buildDailyActionGrid(context: ActionLogContext = {}, inputs: MismatchInput[] = mismatchInputs): DailyActionGrid {
   const grid = Object.fromEntries(ACTION_GRID_CATEGORIES.map((category) => [
     category,
     Object.fromEntries(THEATRES.map((theatre) => [theatre, category === "Work" ? null : []])),
   ])) as DailyActionGrid
 
-  for (const mismatch of buildRankedQueue(context)) {
+  for (const mismatch of buildRankedQueue(context, inputs)) {
     const category: ActionGridCategory = mismatch.domain === "Essentials" ? "Essentials" : "Living"
     const theatre = THEATRES.find((name) => name === mismatch.theatre)
     if (!theatre) continue

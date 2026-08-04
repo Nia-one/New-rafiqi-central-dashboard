@@ -68,8 +68,10 @@ function Readiness({ state }: { state: string }) {
   return <span className={`living-readiness state-${state.toLowerCase().replaceAll(" ", "-")}`}>{state}</span>
 }
 
-export function LivingSupplyModelReport() {
-  const preview = buildLivingSupplyPreview()
+export function LivingSupplyModelReport({ preview }: { preview?: ReturnType<typeof buildLivingSupplyPreview> | null }) {
+  const resolvedPreview = preview === undefined ? buildLivingSupplyPreview() : preview
+  if (!resolvedPreview) return <section className="living-supply-report" aria-labelledby="living-supply-report-title"><header className="living-supply-report-head"><div><p className="section-kicker">LIVING REPORT · GOVERNED SUPPLY VIEW</p><h2 id="living-supply-report-title">No governed supply-model report is available.</h2><p>This section will populate only from connected FONO and Śram Park source rows; sample values are never substituted.</p></div></header></section>
+  preview = resolvedPreview
   const { report, policies } = preview
   const combined = report.combined
   return <section className="living-supply-report" aria-labelledby="living-supply-report-title">

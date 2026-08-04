@@ -21,7 +21,7 @@ function cmLabel(mismatch: RankedMismatch) {
   return isNoData(mismatch.forwardCmAtRisk24h) ? "No data" : formatInr(mismatch.forwardCmAtRisk24h, true)
 }
 
-export function AllocationAttentionQueue({ commitments, onShowExecution, onNavigate }: { commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
+export function AllocationAttentionQueue({ allocationData, commitments, onShowExecution, onNavigate }: { allocationData?: { mismatchInputs?: import("@/lib/allocation-types").MismatchInput[] }; commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
   const [entries, setEntries] = useState<ActionLogEntry[]>(seedActionLog)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState("")
@@ -44,7 +44,7 @@ export function AllocationAttentionQueue({ commitments, onShowExecution, onNavig
   }, [])
 
   const context = useMemo(() => ({ actionLog: entries, now: ACTION_LOG_REFERENCE_AT }), [entries])
-  const queue = useMemo(() => buildRankedQueue(context), [context])
+  const queue = useMemo(() => buildRankedQueue(context, allocationData?.mismatchInputs), [context, allocationData])
   const selected = queue.find((item) => item.id === selectedId) ?? null
   const meetingCommitments = useMemo(() => buildExecutionReport(commitments, EXECUTION_REPORT_AS_OF).actions.filter((action) => action.source === "meeting_commitment" && action.status !== "Verified" && action.status !== "Dismissed"), [commitments])
 

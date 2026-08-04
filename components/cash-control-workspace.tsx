@@ -104,7 +104,7 @@ export function CashControlWorkspace({ preview }: Props) {
     </section>
 
     <LoopHealthStrip health={preview.loopHealth} />
-    <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>Stale synthetic fixture</strong><span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span><b>All financial actions blocked</b></div>
+    <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>Governed source snapshot</strong><span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span><b>All financial actions blocked</b></div>
 
     <section className={styles.taskBand} aria-labelledby="cash-control-heading">
       <div><span>{preview.fixtureLabel} · {preview.mode}</span><h2 id="cash-control-heading">{preview.headline}</h2><p>{preview.question}</p></div>

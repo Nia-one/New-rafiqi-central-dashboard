@@ -12,13 +12,48 @@ function LiveTable({ title, rows }: { title: string; rows: readonly LiveRow[] })
   return <section className="operating-section"><h2>{title}</h2><DataTable caption={title} columns={columns} rows={rows.map((row) => columns.map((key) => String(row[key] ?? "")))} /></section>
 }
 
+function liveValue(row: LiveRow | undefined, ...keys: string[]) {
+  for (const key of keys) {
+    const normalized = key.toLowerCase().replaceAll("_", " ")
+    const found = Object.keys(row ?? {}).find((candidate) => candidate.toLowerCase().replaceAll("_", " ") === normalized)
+    if (found && String(row?.[found] ?? "").trim()) return row?.[found]
+  }
+  return undefined
+}
+
+function liveNumber(row: LiveRow | undefined, ...keys: string[]) {
+  const parsed = Number(String(liveValue(row, ...keys) ?? "").replace(/[₹,%\s,]/g, ""))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 export function EssentialsScreen({ allocationFocus, liveData }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
-  if (liveData !== undefined) return <DashboardSectionAccordion className="pillar-screen essentials-screen" ariaLabel="Essentials sections" sections={[
-    { title: "Main point", summary: liveData ? "Live Essentials bot and backend records" : "Live snapshot unavailable" },
-    { title: "Member buying journey", summary: `${liveData?.dashboard.length ?? 0} verified dashboard records` },
-    { title: "Demand", summary: `${liveData?.cohorts.length ?? 0} verified cohort records` },
-    { title: "Supply", summary: `${liveData?.inventory.length ?? 0} verified inventory records` },
-  ]}><div className="decision-bar"><div><span>MAIN POINT</span><strong>{liveData ? "Essentials is driven by the normalized bot and inventory records below." : "Essentials data is unavailable; no synthetic values are shown."}</strong></div><p>Orders and inventory remain bot-owned. Missing records stay missing.</p></div><AllocationContextStrip mismatchId={allocationFocus} /><LiveTable title="Member buying journey" rows={liveData?.dashboard ?? []} /><LiveTable title="Purchases by Member group" rows={liveData?.cohorts ?? []} /><LiveTable title="Stock by Studio and SKU" rows={liveData?.inventory ?? []} /></DashboardSectionAccordion>
+  if (liveData !== undefined) {
+    const dashboard = liveData?.dashboard ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
+    const firstDashboard = dashboard[0], firstInventory = inventory[0]
+    const headlineFields = firstDashboard ? Object.entries(firstDashboard).filter(([key]) => !key.startsWith("__")).slice(0, 6) : []
+    const selling = inventory.reduce((sum, row) => sum + liveNumber(row, "selling price", "selling", "gmv inr"), 0)
+    const mrp = inventory.reduce((sum, row) => sum + liveNumber(row, "mrp", "list price"), 0)
+    const savingsPct = mrp > 0 ? Math.round((mrp - selling) / mrp * 1_000) / 10 : 0
+    const ownedCapital = inventory.reduce((sum, row) => sum + liveNumber(row, "owned inventory value", "inventory value inr", "stock value"), 0)
+    const daysCover = liveNumber(firstInventory, "days cover", "dio")
+    return <DashboardSectionAccordion className="pillar-screen essentials-screen" ariaLabel="Essentials sections" sections={[
+      { title: "Main point", summary: liveData ? "Live Essentials bot and backend records" : "Live snapshot unavailable" },
+      { title: "Allocation context", summary: "Review the active allocation mismatch and evidence." },
+      { title: "Member buying journey", summary: `${dashboard.length} verified dashboard records` },
+      { title: "Demand", summary: `${cohorts.length} Member groups tracked` },
+      { title: "Supply", summary: `${inventory.length} Studio and SKU inventory records` },
+      { title: "Savings and pricing", summary: mrp ? `${savingsPct}% recorded Member savings` : "No governed pricing values available" },
+      { title: "Money in stock", summary: ownedCapital ? `₹${ownedCapital.toLocaleString("en-IN")} recorded inventory capital` : "No governed inventory-capital value" },
+    ]}>
+      <div className="decision-bar"><div><span>MAIN POINT</span><strong>{liveData ? "Member buying, supply, savings and stock are driven by governed Essentials records." : "Essentials data is unavailable; no synthetic values are shown."}</strong></div><p>Orders and inventory remain bot-owned. Missing records stay missing.</p></div>
+      <AllocationContextStrip mismatchId={allocationFocus} />
+      <section><p className="pillar-kicker">MEMBER BUYING JOURNEY</p>{headlineFields.length ? <div className="essentials-spine">{headlineFields.map(([label, value], index) => <article key={label}><span>{String(index + 1).padStart(2, "0")} · {label.replaceAll("_", " ")}</span><strong>{String(value ?? "")}</strong><small>Governed Essentials dashboard</small></article>)}</div> : <p className="footer-note">No verified buying-journey records are available.</p>}</section>
+      <section className="operating-section semantic-demand"><header><p className="pillar-kicker">DEMAND · MARKETING TEAM</p><h2>Purchases by Member group</h2><p>Repeat purchases remain grouped by the governed cohort rows.</p></header><LiveTable title="Essentials purchases and repeat purchases by Member group" rows={cohorts} /></section>
+      <section className="operating-section semantic-supply"><header><p className="pillar-kicker">SUPPLY · EAE / MERCHANDISING</p><h2>Stock and Member savings by Studio and product</h2><p>Recorded list price and selling price drive Member savings.</p></header><LiveTable title="Essentials stock by Studio and SKU" rows={inventory} /></section>
+      <section className="two-panel-grid"><article className="analysis-card"><p className="pillar-kicker">LIST PRICE &amp; SAVINGS</p><h2>{mrp ? `Members save ${savingsPct}% on recorded value.` : "No governed pricing value is available."}</h2><dl><div><dt>Recorded MRP</dt><dd>{mrp ? `₹${mrp.toLocaleString("en-IN")}` : "Not recorded"}</dd></div><div><dt>Recorded selling value</dt><dd>{selling ? `₹${selling.toLocaleString("en-IN")}` : "Not recorded"}</dd></div></dl></article><article className="analysis-card tension-card"><p className="pillar-kicker">PRICING CONTROL</p><h2>Only recorded bot pricing is evaluated.</h2><p>Missing buy price, selling price or Member-saving values remain unavailable and are never inferred.</p></article></section>
+      <section className="operating-section"><header><p className="pillar-kicker">MONEY IN STOCK · FINANCE</p><h2>{ownedCapital ? `₹${ownedCapital.toLocaleString("en-IN")} recorded inventory capital.` : "No governed inventory-capital value is available."}</h2></header><div className="wc-grid"><article><span>OWNED INVENTORY</span><strong>{ownedCapital ? `₹${ownedCapital.toLocaleString("en-IN")}` : "—"}</strong><small>Recorded Nia capital</small></article><article><span>DAYS COVER</span><strong>{daysCover ? `${daysCover} days` : "—"}</strong><small>Recorded inventory cover</small></article><article><span>INVENTORY ROWS</span><strong>{inventory.length}</strong><small>Bot-owned records</small></article></div></section>
+    </DashboardSectionAccordion>
+  }
   const demand = teamBlocks.find((team) => team.name === "Essentials Demand")!
   const supply = teamBlocks.find((team) => team.name === "Essentials Supply")!
   return <DashboardSectionAccordion className="pillar-screen essentials-screen" ariaLabel="Essentials sections" sections={[
