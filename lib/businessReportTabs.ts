@@ -18,6 +18,19 @@ export function latestImportedReport(tabs: ReportTab[], base: string) {
     .sort((a, b) => b.index - a.index)[0];
 }
 
+export function niaGrowthFonoFormulas(row: number, stageColumn: string, nestsColumn: string, sourceStartRow: number) {
+  const stages = `'Fono Funnel'!${stageColumn}${sourceStartRow}:${stageColumn}`;
+  const nests = `'Fono Funnel'!${nestsColumn}${sourceStartRow}:${nestsColumn}`;
+  const sum = (stage: string) => `SUMIF(${stages},"${stage}",${nests})`;
+  return {
+    C: `=${sum("Lead")}+${sum("Contracting")}+${sum("Contracted")}`,
+    D: `=${sum("Contracting")}+${sum("Contracted")}`,
+    E: `=MAX(0,C${row}-D${row})`,
+    H: `=D${row}`,
+    I: `=${sum("Contracted")}`,
+  };
+}
+
 const columnName = (index: number) => {
   let value = index + 1;
   let output = "";
@@ -72,9 +85,10 @@ export async function canonicalizeBusinessReportTabs(sheets: SheetsClient, sprea
 
 export async function repairBusinessReportFormulaReferences(sheets: SheetsClient, spreadsheetId: string) {
   const tab = "TEAM_NIA_GROWTH";
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${tab}'!A1:U200`, valueRenderOption: "FORMULA" });
-  const rows = response.data.values || [];
-  const data: Array<{ range: string; values: string[][] }> = [];
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: [`'${tab}'!A1:U200`, "'Fono Funnel'!A1:AZ20"], valueRenderOption: "FORMULA" });
+  const rows = response.data.valueRanges?.[0]?.values || [];
+  const fonoRows = response.data.valueRanges?.[1]?.values || [];
+  const data = new Map<string, string>();
   rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
     if (typeof value !== "string" || !value.startsWith("=")) return;
     let formula = value;
@@ -83,8 +97,20 @@ export async function repairBusinessReportFormulaReferences(sheets: SheetsClient
         .replaceAll(`__OLD_REPORT__${base}`, base)
         .replace(new RegExp(`${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\(\\d+\\)`, "g"), base);
     }
-    if (formula !== value) data.push({ range: `'${tab}'!${columnName(columnIndex)}${rowIndex + 1}`, values: [[formula]] });
+    if (formula !== value) data.set(`'${tab}'!${columnName(columnIndex)}${rowIndex + 1}`, formula);
   }));
-  if (data.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data } });
-  return { repaired: data.length };
+
+  const growthRowIndex = rows.findIndex((row) => String(row[0] || "").trim() === "NIA-GROWTH-FONO");
+  const fonoHeaderIndex = fonoRows.findIndex((row) => row.some((cell) => String(cell || "").trim().toLowerCase() === "stage after") && row.some((cell) => String(cell || "").trim().toLowerCase() === "nests potential"));
+  if (growthRowIndex >= 0 && fonoHeaderIndex >= 0) {
+    const headers = fonoRows[fonoHeaderIndex].map((cell) => String(cell || "").trim().toLowerCase());
+    const stageColumn = columnName(headers.indexOf("stage after"));
+    const nestsColumn = columnName(headers.indexOf("nests potential"));
+    const growthRow = growthRowIndex + 1;
+    for (const [column, formula] of Object.entries(niaGrowthFonoFormulas(growthRow, stageColumn, nestsColumn, fonoHeaderIndex + 2))) data.set(`'${tab}'!${column}${growthRow}`, formula);
+  }
+
+  const updates = [...data].map(([range, formula]) => ({ range, values: [[formula]] }));
+  if (updates.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: updates } });
+  return { repaired: updates.length };
 }

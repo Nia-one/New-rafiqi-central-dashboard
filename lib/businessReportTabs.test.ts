@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { latestImportedReport, reportCandidates } from "./businessReportTabs";
+import { latestImportedReport, niaGrowthFonoFormulas, reportCandidates } from "./businessReportTabs";
 
 const tabs = [
   { sheetId: 1, title: "Fono Funnel", index: 2, rowCount: 10, columnCount: 5 },
@@ -15,4 +15,14 @@ test("business report matching accepts only canonical and Google import suffixes
 
 test("latest imported report is the newest suffixed sheet", () => {
   assert.equal(latestImportedReport(tabs, "Fono Funnel")?.sheetId, 3);
+});
+
+test("Nia Growth formulas implement the governed FONO stage contract", () => {
+  assert.deepEqual(niaGrowthFonoFormulas(5, "G", "H", 4), {
+    C: `=SUMIF('Fono Funnel'!G4:G,"Lead",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracting",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
+    D: `=SUMIF('Fono Funnel'!G4:G,"Contracting",'Fono Funnel'!H4:H)+SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
+    E: "=MAX(0,C5-D5)",
+    H: "=D5",
+    I: `=SUMIF('Fono Funnel'!G4:G,"Contracted",'Fono Funnel'!H4:H)`,
+  });
 });
