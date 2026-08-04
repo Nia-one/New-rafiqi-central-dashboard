@@ -5,6 +5,7 @@ import {
   ENTERPRISE_DEMAND_CONTRACT_FIXTURES,
   ENTERPRISE_DEMAND_JOURNEY_FIXTURES,
   buildEnterpriseDemandLoopPreview,
+  buildLiveEnterpriseDemandLoopPreview,
   buildJourneyPlan,
   createOrUpdateDemandNode,
   dailyRunRate,
@@ -199,4 +200,19 @@ test("Enterprise Demand emits due operating exceptions but keeps commercial appr
   assert.equal(queue[0].domain, "Enterprise Demand")
   assert.match(queue[0].title, /arrival moved/i)
   assert.equal(queue.some((entry) => entry.ownerRole === "Pushkar"), false)
+})
+
+test("live Enterprise Demand never promotes matched headcount to independently verified readiness", () => {
+  const preview = buildLiveEnterpriseDemandLoopPreview([{
+    "demand id": "SP-BOT-LIVE-1", "enterprise name": "Live Enterprise", "plant name": "Live Plant",
+    "activation required at": "2026-08-10T09:00:00+05:30", "headcount required": 100,
+    "headcount matched": 70, status: "Contracted", "owner actor id": "ACT-OWNER", "updated at": "2026-08-04T09:00:00+05:30",
+  }], "2026-08-04T10:00:00+05:30")
+  assert.ok(preview)
+  assert.equal(preview.mode, "Live read-only")
+  assert.equal(preview.source.synthetic, false)
+  assert.equal(preview.activeNode.verifiedReadyNests, 0)
+  assert.equal(preview.activeNode.readinessGap, 100)
+  assert.equal(preview.supplyLanes.find((lane) => lane.supplyModel === "SP")?.stages[1].count, 70)
+  assert.equal(preview.despatchEscalations.every((item) => item.synthetic === false), true)
 })

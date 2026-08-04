@@ -1,6 +1,6 @@
 import { LegacyNiaDashboard } from "@/components/legacy-nia-dashboard"
 import { financeExpansionControlEnabled, selfDrivePlatformEnabled } from "@/lib/operating-loop/feature-flags"
-import { buildEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
+import { buildLiveEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import { buildFinanceExpansionPreview } from "@/lib/operating-loop/finance-expansion-preview"
 import { buildControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
 import { buildNiaMarginsPreview, NIA_MARGINS_SYNTHETIC_INPUTS } from "@/lib/operating-loop/nia-margins-loop"
@@ -43,7 +43,6 @@ export default async function Page() {
   const role = sessionEmail ? roleAssignments().get(sessionEmail) ?? (process.env.NODE_ENV !== "production" && sessionEmail === configuredEmail ? "administrator" : null) : null
   const hasFinanceRole = financeAccessAllowed(role)
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
-  const enterpriseDemandPreview = buildEnterpriseDemandLoopPreview()
   const financeExpansionPreview = financeAllowed ? buildFinanceExpansionPreview() : null
   let liveOpsData: Awaited<ReturnType<typeof buildOpsData>> | null = null
   let allocationData: Awaited<ReturnType<typeof buildAllocationData>> | null = null
@@ -55,6 +54,9 @@ export default async function Page() {
     console.warn("Live dashboard snapshot unavailable; using governed fixture fallback.", error instanceof Error ? error.message : error)
   }
   const liveSelfDriveData = liveOpsData ? buildLiveSelfDriveSnapshot(liveOpsData) : null
+  const enterpriseDemandPreview = liveSelfDriveData
+    ? buildLiveEnterpriseDemandLoopPreview(liveSelfDriveData.enterpriseDemand, liveSelfDriveData.asOf)
+    : null
   const liveMarginInputs = liveSelfDriveData ? buildLiveMarginInputs(liveSelfDriveData) : []
   const niaMarginsPreview = liveSelfDriveData && liveMarginInputs.length > 0
     ? buildNiaMarginsPreview(liveMarginInputs, liveSelfDriveData.asOf, [])

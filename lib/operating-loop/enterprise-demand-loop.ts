@@ -207,9 +207,9 @@ export type SupplyLane = {
 }
 
 export type EnterpriseDemandLoopPreview = {
-  mode: "Shadow only"
-  fixtureLabel: "Synthetic fixture"
-  source: { name: string; asOf: string; lastRefreshAt: string; freshness: "Stale"; synthetic: true }
+  mode: "Shadow only" | "Live read-only"
+  fixtureLabel: "Synthetic fixture" | "Normalized backend"
+  source: { name: string; asOf: string; lastRefreshAt: string; freshness: "Fresh" | "Stale"; synthetic: boolean }
   loopHealth: LoopHealth
   headline: string
   activeNode: EnterpriseDemandNode
@@ -670,5 +670,74 @@ export function buildEnterpriseDemandLoopPreview(): EnterpriseDemandLoopPreview 
     protectedPriorities: Object.freeze([...SCOUT_PROTECTED_PRIORITY]),
     policyRegistry: ENTERPRISE_DEMAND_POLICY_REGISTRY,
     blockedCapabilities: ENTERPRISE_DEMAND_BLOCKED_CAPABILITIES,
+  })
+}
+
+type EnterpriseSheetRow = Record<string, unknown>
+const enterpriseKey = (value: string) => value.trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ")
+const enterpriseValue = (row: EnterpriseSheetRow, key: string) => {
+  const wanted = enterpriseKey(key)
+  const found = Object.entries(row).find(([candidate]) => enterpriseKey(candidate) === wanted)
+  return String(found?.[1] ?? "").trim()
+}
+const enterpriseNumber = (row: EnterpriseSheetRow, key: string) => {
+  const value = Number(enterpriseValue(row, key).replace(/[^0-9.-]/g, ""))
+  return Number.isFinite(value) ? value : 0
+}
+
+/** Maps governed Enterprise_Demand rows without promoting matched capacity to independently verified readiness. */
+export function buildLiveEnterpriseDemandLoopPreview(rows: readonly EnterpriseSheetRow[], asOf: string): EnterpriseDemandLoopPreview | null {
+  const inputs: EnterpriseContractInput[] = rows.flatMap((row) => {
+    const demandId = enterpriseValue(row, "demand id")
+    const enterpriseName = enterpriseValue(row, "enterprise name")
+    const plantName = enterpriseValue(row, "plant name")
+    const arrivalAt = enterpriseValue(row, "activation required at")
+    const required = enterpriseNumber(row, "headcount required")
+    const status = enterpriseValue(row, "status")
+    if (!demandId || !enterpriseName || !plantName || !arrivalAt || !Number.isFinite(Date.parse(arrivalAt)) || required <= 0 || !/contract|signed|won|onboard|live/i.test(status)) return []
+    const supplyModel: SupplyModel = demandId.toUpperCase().startsWith("SP-BOT") ? "SP" : "FONO"
+    return [{
+      nodeId: demandId, contractId: demandId, contractStatus: "Signed" as const, enterpriseName, plantName,
+      plantReference: `protected://enterprise-plant/${demandId}`, committedNests: required,
+      eligibleSupplyModels: [supplyModel], contractedServices: [], specStatus: "Match" as const, termsStatus: "Match" as const,
+      arrivalAt, ownerActorId: enterpriseValue(row, "owner actor id") || "Unassigned", priorMissedFollowUps: 0,
+      dailyPlan: { plannedStops: 0, completedStops: 0, missedStopsCarried: 0 }, readiness: [],
+      updatedAt: enterpriseValue(row, "updated at") || enterpriseValue(row, "opened at") || asOf,
+    }]
+  })
+  const decisions = inputs.map((input) => createOrUpdateDemandNode(input, asOf))
+  const priorityQueue = rankDemandNodes(decisions.flatMap((decision) => decision.disposition === "Admitted" ? [decision.node] : []))
+  const activeNode = priorityQueue[0]
+  if (!activeNode) return null
+  const progress = buildProgress(activeNode)
+  const exceptions = buildExceptions(priorityQueue, asOf)
+  const lastRefreshAt = inputs.map((input) => input.updatedAt).sort((a, b) => Date.parse(b) - Date.parse(a))[0] || asOf
+  const ageMinutes = Math.max(0, (Date.parse(asOf) - Date.parse(lastRefreshAt)) / 60_000)
+  const loopHealth = buildLoopHealth({
+    asOf,
+    feeds: [{ feedId: "enterprise-demand", label: "Enterprise Demand", lastUpdatedAt: lastRefreshAt, cadenceMinutes: 300, critical: true, affectedClaims: ["contracted demand", "readiness gap"] }],
+    clocks: [{ clockId: `${activeNode.nodeId}-arrival`, label: "Arrival readiness", ownerRole: activeNode.ownerActorId, dueAt: activeNode.arrivalAt, state: "Running" }],
+    verification: { claimed: rows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount matched"), 0), verified: 0, awaiting: rows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount matched"), 0), reopened: 0, oldestAwaitingAt: rows.some((row) => enterpriseNumber(row, "headcount matched") > 0) ? lastRefreshAt : null },
+    quarantinedRecords: rows.length - inputs.length,
+  })
+  const supplyLanes = (["FONO", "SP"] as const).map((supplyModel) => {
+    const laneRows = rows.filter((row) => (enterpriseValue(row, "demand id").toUpperCase().startsWith("SP-BOT") ? "SP" : "FONO") === supplyModel)
+    return Object.freeze({ supplyModel, stages: Object.freeze([
+      Object.freeze({ label: "Contracted demand", count: laneRows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount required"), 0) }),
+      Object.freeze({ label: "Operationally matched", count: laneRows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount matched"), 0) }),
+      Object.freeze({ label: "Independently verified", count: 0 }),
+      Object.freeze({ label: "Billing", count: 0 }),
+    ]) })
+  })
+  return Object.freeze({
+    mode: "Live read-only", fixtureLabel: "Normalized backend",
+    source: Object.freeze({ name: "Enterprise_Demand", asOf, lastRefreshAt, freshness: ageMinutes <= 300 ? "Fresh" : "Stale", synthetic: false }),
+    loopHealth, headline: loopHealthAnswer(loopHealth, `Close ${activeNode.readinessGap} independently verified Nests before ${activeNode.enterpriseName} arrives.`),
+    activeNode, priorityQueue, journeyPlan: buildJourneyPlan(activeNode, []), progress,
+    progressPercent: Math.round(progress.filter((stage) => stage.complete).length / progress.length * 100),
+    supplyLanes: Object.freeze(supplyLanes), exceptions,
+    despatchEscalations: Object.freeze(emitEnterpriseDemandDespatchEscalations(exceptions, asOf).map((record) => Object.freeze({ ...record, synthetic: false }))),
+    quarantinedContractCount: rows.length - inputs.length, protectedPriorities: Object.freeze([...SCOUT_PROTECTED_PRIORITY]),
+    policyRegistry: ENTERPRISE_DEMAND_POLICY_REGISTRY, blockedCapabilities: ENTERPRISE_DEMAND_BLOCKED_CAPABILITIES,
   })
 }
