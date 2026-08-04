@@ -47,7 +47,7 @@ export type HeartbeatAuditEntry = {
 export type HeartbeatSnapshot = {
   computed_at: string
   poll_interval_seconds: number
-  persistence: "illustrative-local-server"
+  persistence: "illustrative-local-server" | "governed-live"
   streams: EvaluatedHeartbeat[]
   alerts: EvaluatedHeartbeat[]
   action_log: HeartbeatAuditEntry[]

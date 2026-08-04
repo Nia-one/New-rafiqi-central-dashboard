@@ -8,6 +8,7 @@ import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildAllocationData } from "@/lib/allocation-data-live"
 import { buildLiveDespatchEscalations } from "@/lib/live-mappers/despatch"
+import { buildLiveHeartbeatSnapshot } from "@/lib/live-mappers/heartbeat"
 import {
   buildLiveMarginInputs,
   buildLiveSelfDriveSnapshot,
@@ -60,5 +61,6 @@ export default async function Page() {
   const controlledAutonomyPreview = liveSelfDriveData ? buildLiveControlledAutonomyPreview(liveSelfDriveData) : null
   const memberFeedbackModel = liveSelfDriveData ? buildLiveMemberFeedbackModel(liveSelfDriveData) : { items: [], responses: [] }
   const liveDespatchEscalations = liveOpsData ? buildLiveDespatchEscalations({ actionLog: liveOpsData.actionLog, incidentLog: liveOpsData.incidentLog, people: liveOpsData.people }) : []
-  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} memberFeedbackItems={memberFeedbackModel.items} memberNpsResponses={memberFeedbackModel.responses} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} />
+  const liveHeartbeatSnapshot = liveOpsData ? buildLiveHeartbeatSnapshot({ people: liveOpsData.people, actionLog: liveOpsData.actionLog, essentials: liveOpsData.essentials }) : null
+  return <NiaDashboard enterpriseDemandPreview={enterpriseDemandPreview} financeExpansionPreview={financeExpansionPreview} controlledAutonomyPreview={controlledAutonomyPreview} niaMarginsPreview={niaMarginsPreview} newAddsPreview={newAddsPreview} memberEngagementPreview={memberEngagementPreview} memberSavingsPreview={memberSavingsPreview} niaGrowthPreview={niaGrowthPreview} cashControlPreview={cashControlPreview} memberFeedbackItems={memberFeedbackModel.items} memberNpsResponses={memberFeedbackModel.responses} financeAllowed={financeAllowed} liveOpsData={liveOpsData} allocationData={allocationData} liveDespatchEscalations={liveDespatchEscalations} liveDespatchCommitments={liveOpsData?.executionActions ?? []} liveHeartbeatSnapshot={liveHeartbeatSnapshot} />
 }

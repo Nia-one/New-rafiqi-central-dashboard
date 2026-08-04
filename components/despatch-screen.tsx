@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { Activity, BellRing, Check, Clock3, Pause, Play, RefreshCw, ShieldCheck } from "lucide-react"
 import { HEARTBEAT_POLL_INTERVAL_SECONDS, type EvaluatedHeartbeat, type HeartbeatSnapshot } from "@/lib/heartbeat-control"
-import { heartbeatRules } from "@/lib/heartbeat-data"
-import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
+import { heartbeatRules } from "@/lib/heartbeat-rules"
 import { buildDespatchValidationQueue, type ExecutionAction } from "@/lib/execution-control"
 import type { LoopHealth } from "@/lib/operating-loop/loop-health"
 import type { DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
@@ -129,13 +128,15 @@ function SignalIdentity({ stream }: { stream: EvaluatedHeartbeat }) {
   return <div className="heartbeat-identity"><strong>{stream.name}</strong><span>{stream.role} · {stream.theatre} · {stream.location}</span></div>
 }
 
-export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; onValidateAction: (actionId: string) => void }) {
-  const heartbeatConnected = false
-  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>({
+const emptyHeartbeatSnapshot: HeartbeatSnapshot = {
     computed_at: new Date(0).toISOString(), poll_interval_seconds: HEARTBEAT_POLL_INTERVAL_SECONDS,
-    persistence: "illustrative-local-server", streams: [], alerts: [], action_log: [],
+    persistence: "governed-live", streams: [], alerts: [], action_log: [],
     summary: { active_streams: 0, signals_current: 0, active_breaches: 0, escalated: 0, outside_active_shift: 0 },
-  })
+}
+
+export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, heartbeatSnapshot = null, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; heartbeatSnapshot?: HeartbeatSnapshot | null; onValidateAction: (actionId: string) => void }) {
+  const heartbeatConnected = heartbeatSnapshot !== null
+  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>(heartbeatSnapshot ?? emptyHeartbeatSnapshot)
   const [paused, setPaused] = useState(false)
   const [polling, setPolling] = useState(false)
   const [acknowledgingId, setAcknowledgingId] = useState("")
@@ -143,6 +144,10 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   const [actionError, setActionError] = useState("")
   const [validatingId, setValidatingId] = useState("")
   const [validationMessage, setValidationMessage] = useState("")
+
+  useEffect(() => {
+    if (heartbeatSnapshot) setSnapshot(heartbeatSnapshot)
+  }, [heartbeatSnapshot])
 
   const poll = useCallback(async () => {
     setPolling(true)
@@ -173,7 +178,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   const openAlerts = heartbeatConnected ? snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id)) : []
   const highestAlert = openAlerts[0]
   const actionLog = snapshot.action_log
-  const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, EXECUTION_REPORT_AS_OF), [commitments])
+  const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, snapshot.computed_at), [commitments, snapshot.computed_at])
   const ownerItems: readonly DespatchOwnerItem[] = [
     ...escalations.map((record): DespatchOwnerItem => ({ kind: "escalation", id: record.escalationId, owner: record.ownerRole, tone: record.severity === "Critical" ? "critical" : record.severity === "Breach" ? "breach" : "attention", record })),
     ...openAlerts.map((record): DespatchOwnerItem => ({ kind: "heartbeat", id: record.id, owner: record.role, tone: record.status === "escalated" ? "critical" : "breach", record })),
@@ -269,7 +274,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </div>
     </section>
 
-    <p className="illustrative-note">Illustrative control data. Live roster, property-visit, gate-visit, and order feeds are not connected yet.</p>
+    <p className="illustrative-note">Governed live signals from the connected roster, action log, and qualifying order events.</p>
 
     {highestAlert ? <section className="heartbeat-priority" aria-live="assertive">
       <div className="heartbeat-priority-icon"><BellRing aria-hidden /></div>
@@ -317,7 +322,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </section>
 
       <section className="heartbeat-section heartbeat-audit">
-        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Illustrative server log · resets with preview</p></header>
+        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Derived from governed live signals</p></header>
         {actionError && <p className="heartbeat-action-error" role="alert">{actionError}</p>}
         <ol>{actionLog.map((entry) => <li key={entry.id}><span>{formatTime(entry.occurred_at)}</span><div><strong>{auditLabels[entry.action_type]}</strong><p>{entry.actor_id} · {entry.note}</p></div></li>)}</ol>
       </section>
