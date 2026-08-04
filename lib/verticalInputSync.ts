@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
 import { normalizeReportingMonth, reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
+import { canonicalizeBusinessReportTabs, repairBusinessReportFormulaReferences } from "./businessReportTabs";
 
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
@@ -63,6 +64,8 @@ async function replaceAllRows(target: string, records: Record<string, unknown>[]
 export async function syncVerticalInputs() {
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
+  await canonicalizeBusinessReportTabs(sheets, SOURCE_ID);
+  await repairBusinessReportFormulaReferences(sheets, SOURCE_ID);
   // Essentials is bot-owned. Keeping the manual summary out of this connector
   // prevents a later refresh from replacing bot orders, margin and inventory.
   const baseTabs = ["TEAM_OCCUPANCY", "TEAM_REQ_SP_SUPPLY"];
