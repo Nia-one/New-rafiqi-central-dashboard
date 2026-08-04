@@ -54,6 +54,17 @@ function liveRows(snapshot: unknown, key: string): readonly Record<string, unkno
   return Array.isArray(value) ? value.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object") : []
 }
 
+function LiveBackendTables({ title, groups }: { title: string; groups: readonly { label: string; rows: readonly Record<string, unknown>[] }[] }) {
+  const total = groups.reduce((count, group) => count + group.rows.length, 0)
+  return <DashboardSectionAccordion ariaLabel={`${title} live sections`} sections={[
+    { title: "Data status", summary: total ? `${total} normalized backend records` : "No verified records available" },
+    ...groups.map((group) => ({ title: group.label, summary: `${group.rows.length} records` })),
+  ]}><div className="decision-bar"><div><span>DATA STATUS</span><strong>{total ? `${title} is driven by normalized backend records.` : `${title} has no verified backend data; no synthetic values are shown.`}</strong></div><p>Missing source values remain blank.</p></div>{groups.map((group) => {
+    const columns = [...new Set(group.rows.flatMap((row) => Object.keys(row)))].filter((key) => !key.startsWith("__"))
+    return <section className="operating-section" key={group.label}><h2>{group.label}</h2>{group.rows.length ? <DataTable caption={group.label} columns={columns} rows={group.rows.map((row) => columns.map((key) => String(row[key] ?? "")))} /> : <p className="footer-note">No verified records are available in this backend tab.</p>}</section>
+  })}</DashboardSectionAccordion>
+}
+
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Shadow mode · synthetic fixture" },
   "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Shadow mode · synthetic fixture" },
@@ -401,10 +412,10 @@ export function NiaDashboard({ enterpriseDemandPreview = null, financeExpansionP
       {active === "Work" && <WorkScreen />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "essentialsDashboard"), cohorts: liveRows(liveOpsData, "essentialsCohorts"), inventory: liveRows(liveOpsData, "essentialsInventory") } : null} />}
       {active === "People" && <PeopleScreen commitments={commitments} liveData={liveOpsData ? { dashboard: liveRows(liveOpsData, "peopleDashboard"), performance: liveRows(liveOpsData, "peoplePerformance"), followThrough: liveRows(liveOpsData, "peopleFollowThrough"), roster: liveRows(liveOpsData, "people") } : null} />}
-      {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
+      {active === "Member Feedback" && (liveOpsData ? <LiveBackendTables title="Member NPS" groups={[{ label: "NPS dashboard", rows: liveRows(liveOpsData, "memberNpsDashboard") }, { label: "Member feedback", rows: liveRows(liveOpsData, "memberNpsFeedback") }, { label: "NPS responses", rows: liveRows(liveOpsData, "memberNpsResponses") }]} /> : <LiveBackendTables title="Member NPS" groups={[]} />)}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
       {active === "Despatch" && <DespatchScreen commitments={liveDespatchCommitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} onValidateAction={validateExecutionAction} />}
-      {active === "Economics" && <TableScreen tab={active} allocationFocus={allocationFocus} />}
+      {active === "Economics" && (liveOpsData ? <LiveBackendTables title="Economics" groups={[{ label: "Finance daily", rows: liveRows(liveOpsData, "finance") }, { label: "Studio master", rows: liveRows(liveOpsData, "studios") }]} /> : <LiveBackendTables title="Economics" groups={[]} />)}
       </LensProvider>}
       </div>
     </section></div>
