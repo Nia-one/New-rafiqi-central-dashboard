@@ -2,6 +2,8 @@
 .dev-server.out.log
 outputs/
 tmp/
+.tmp/
+tmp-business-report.xlsx
 ~$*.xlsx
 Testing User Guide.xlsx
 User Guid.docx
