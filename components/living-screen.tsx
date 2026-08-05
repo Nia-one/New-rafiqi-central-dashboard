@@ -8,57 +8,60 @@ import { LivingSupplyModelReport } from "@/components/living-supply-model-report
 import type { LivingSection } from "@/lib/dashboard-model"
 import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
 
-function PacingCard({ channel, actual, owner }: { channel: string; actual: number; owner: string }) {
-  const target = 2000, elapsed = 14, days = 31, left = days - elapsed
+function PacingCard({ channel, actual, target, owner }: { channel: string; actual: number; target: number; owner: string }) {
+  const elapsed = Math.max(1, new Date().getDate()), days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(), left = days - elapsed
   const runRate = Math.round(actual / elapsed * days), variance = runRate - target
-  return <article className="pacing-card"><span>{channel} · MONTH SO FAR</span><strong>{actual.toLocaleString("en-IN")} <small>/ 2,000 Members</small></strong><div><p><b>{left}</b> days left</p><p><b>{runRate.toLocaleString("en-IN")}</b> month-end estimate</p><p><b>{Math.abs(variance).toLocaleString("en-IN")}</b> {variance >= 0 ? "ahead" : "gap"} · {Math.round(Math.abs(variance)/target*100)}%</p></div><small>Owner: {owner} · based on the current daily pace</small></article>
+  return <article className="pacing-card"><span>{channel} · MONTH SO FAR</span><strong>{actual.toLocaleString("en-IN")} <small>/ {target.toLocaleString("en-IN")} Members</small></strong><div><p><b>{left}</b> days left</p><p><b>{runRate.toLocaleString("en-IN")}</b> month-end estimate</p><p><b>{Math.abs(variance).toLocaleString("en-IN")}</b> {variance >= 0 ? "ahead" : "gap"} · {target > 0 ? Math.round(Math.abs(variance)/target*100) : 0}%</p></div><small>Owner: {owner} · based on the current daily pace</small></article>
 }
 
-export function LivingScreen({ focus, allocationFocus, liveOpsData }: { focus?: LivingSection; allocationFocus?: string; liveOpsData?: unknown }) {
-  const live = buildLivingScreenData(liveOpsData ?? {})
+export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { focus?: LivingSection; allocationFocus?: string; liveOpsData?: any }) {
+  const live = buildLivingScreenData(liveOpsData)
+  const fonoTeam = { stages: live.fonoSupply }, fonoDemand = { stages: live.fonoDemand }, demandTeam = { stages: live.demandStages }, supplyTeam = { stages: live.supplyStages }
+  const fonoSupply = live.fonoSupply.map((item, index) => ({ stage: item.label, studios: index === 0 ? (liveOpsData?.studios ?? []).filter((row: any) => String(row["supply model"] ?? "").toUpperCase() === "FONO").length : 0, nests: item.mtd, conversion: item.mtdConversion, owner: live.metricOwner("fono_owner") }))
+  const fonoOccupancy = live.occupancyRows
+  const shramDemand = live.demandRows
+  const shramSupply = live.supplyRows
   const openDemandNodes = live.proximityNodes.filter(node => node.status !== "Matched")
-  const occupancyRows = live.occupancyRows
-  const demandRows = live.demandRows
-  const supplyRows = live.supplyRows
-  const fonoLeadTotal = live.fonoPipeline.stageCounts.reduce((total, item) => total + item.count, 0)
-  const fonoRequirementTotal = live.fonoPipeline.stageCounts.reduce((total, item) => total + item.requirement, 0)
-  const fonoStageRows = live.fonoPipeline.stageCounts.map((item) => [item.stage, String(item.count), item.requirement.toLocaleString("en-IN")])
-  const fonoOwnerRows = live.fonoPipeline.byOwner.map((item) => [item.owner, String(item.total), String(item.lead), String(item.contracting), String(item.contracted), String(item.dropped)])
-  const spStageRows = live.spPipeline.stageCounts.map((item) => [item.stage, String(item.count)])
-  const spOwnerRows = live.spPipeline.byOwner.map((item) => [item.owner, String(item.total), String(item.lead), String(item.contracting), String(item.contracted), String(item.dropped)])
   return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLabel="Living sections" sections={[
     { title: "Main point", summary: "Named demand should become occupied Nests." },
     { title: "Allocation context", summary: "Review the active allocation mismatch and evidence." },
     { title: "Supply model", summary: "FONO and Śram Park operating model comparison." },
-    { title: "Monthly pacing", summary: `FONO ${fonoRequirementTotal.toLocaleString("en-IN")} requirements · Śram Park ${demandRows.length.toLocaleString("en-IN")} leads.` },
-    { title: "FONO", summary: `${fonoLeadTotal.toLocaleString("en-IN")} leads · ${fonoRequirementTotal.toLocaleString("en-IN")} total requirement` },
-    { title: "Śram Park demand", summary: `${demandRows.length} factory demand records` },
+    { title: "Monthly pacing", summary: `FONO ${live.fonoOccupied.toLocaleString("en-IN")} · Śram Park ${live.demandMatched.toLocaleString("en-IN")} Members.` },
+    { title: "FONO", summary: `${live.fonoSupply[0]?.mtd ?? 0} contracted Nests are tracked this month.` },
+    { title: "Śram Park demand", summary: `${shramDemand.length} factory demand records` },
     { title: "Śram Park supply", summary: `${openDemandNodes.length} open demand nodes need nearby options` },
-    { title: "Living summary", summary: "Demand and occupied Nests are both 18% below plan." },
+    { title: "Existing occupancy", summary: `${live.existingOccupied.toLocaleString("en-IN")} occupied of ${live.existingContracted.toLocaleString("en-IN")} contracted Nests.` },
+    { title: "Living summary", summary: `${live.occupancyOccupied.toLocaleString("en-IN")} occupied of ${live.occupancyContracted.toLocaleString("en-IN")} contracted Nests.` },
   ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>Named demand should become occupied Nests.</strong></div><p>Compare both channels by Theatre, Studio, and activation date.</p></div><AllocationContextStrip mismatchId={allocationFocus} />
-    <LivingSupplyModelReport preview={null} />
-    <div className="pacing-grid"><PacingCard channel="FONO" actual={live.fonoOccupied} owner={live.metricOwner("fono_owner")} /><PacingCard channel="Śram Park" actual={live.demandMatched} owner={live.metricOwner("sp_owner")} /></div>
+    <LivingSupplyModelReport />
+    <div className="pacing-grid"><PacingCard channel="FONO" actual={live.fonoOccupied} target={live.fonoReady} owner={live.metricOwner("fono_owner")} /><PacingCard channel="Śram Park" actual={live.demandMatched} target={live.demandRequired} owner={live.metricOwner("shram_owner")} /></div>
     <section id="fono" className={`operating-section ${focus === "fono" ? "focused-section" : ""}`}>
       <p className="pillar-kicker">ACQUISITION CHANNEL 01</p>
       <h2>FONO (Franchise Owned, Nia Operated)</h2>
       <p className="section-intro">The Franchise Acquisition team opens Studios. Theatre ops fills Nests from the start.</p>
       <div className="channel-grid fono-channel-grid">
         <div className="fono-channel-chart semantic-supply">
-          <div className="fono-channel-heading"><h3>FONO requirements by acquisition stage.</h3><p className="chart-reads"><span>What this chart shows</span>Total required Nests in Lead, Contracting, Contracted, and Dropped stages.</p></div>
-          <TodayMtdFunnel stages={live.fonoRequirementStages} />
+          <div className="fono-channel-heading"><h3>{live.fonoSupply[0]?.mtd ?? 0} contracted Nests are moving through the FONO supply funnel.</h3><p className="chart-reads"><span>What this chart shows</span>This chart shows how Studios and Nests move through each FONO stage.</p></div>
+          <TodayMtdFunnel stages={fonoTeam.stages} />
         </div>
         <div className="fono-channel-chart semantic-demand">
-          <div className="fono-channel-heading"><h3>FONO lead records by acquisition stage.</h3><p className="chart-reads"><span>What this chart shows</span>Distinct FONO opportunities in Lead, Contracting, Contracted, and Dropped stages.</p></div>
-          <TodayMtdFunnel stages={live.fonoDemand} />
+          <div className="fono-channel-heading"><h3>FONO is turning open Nests into active Members.</h3><p className="chart-reads"><span>What this chart shows</span>This chart shows how named needs become active Members. The table shows each Studio's occupancy.</p></div>
+          <TodayMtdFunnel stages={fonoDemand.stages} />
         </div>
-        <DataTable className="compact-table" caption="FONO stage summary" columns={["STAGE","LEAD COUNT","TOTAL REQUIREMENT / NESTS"]} rows={fonoStageRows} />
-        <DataTable className="compact-table" caption="FONO stage summary by JCO / Acquirer" columns={["JCO / ACQUIRER","TOTAL","LEAD","CONTRACTING","CONTRACTED","DROPPED"]} rows={fonoOwnerRows} />
-        {!occupancyRows.length && <p className="footer-note">No governed FONO occupancy records are available.</p>}
-        <DataTable className="compact-table occupancy-table" caption="FONO Studio occupancy" columns={["STUDIO","THEATRE","AVAILABLE","OCCUPIED","OCCUPANCY","DAYS LIVE","THEATRE OPS OWNER"]} rows={occupancyRows} />
+        <ol className="fono-funnel" aria-label="FONO supply stages">{fonoSupply.map((item,index) => <li key={item.stage}><span className="fono-stage-rank">{String(index+1).padStart(2,"0")}</span><strong className="fono-stage-name">{item.stage}</strong><span><b>{item.studios}</b> Studios</span><span><b>{item.nests.toLocaleString("en-IN")}</b> Nests</span><span><b>{item.conversion === null ? "No data" : `${item.conversion}%`}</b> conversion</span><span className="fono-stage-owner"><b>{item.owner}</b> owner</span></li>)}</ol>
+        <DataTable className="compact-table occupancy-table" caption="FONO Studio occupancy" columns={["STUDIO","THEATRE","AVAILABLE","OCCUPIED","OCCUPANCY","DAYS LIVE","THEATRE OPS OWNER"]} rows={fonoOccupancy} />
       </div>
     </section>
-    <section id="demand" className={`operating-section semantic-demand ${focus === "demand" ? "focused-section" : ""}`}><p className="pillar-kicker">ŚRAM PARK · DEMAND</p><h2>Śram Park lead count by stage and JCO.</h2><p className="section-intro">Counts below are demand-bot lead records, not required headcount or FONO opportunities.</p><TodayMtdFunnel stages={live.demandStages} /><DataTable className="compact-table" caption="Śram Park lead count by stage" columns={["STAGE","LEAD COUNT"]} rows={spStageRows} /><DataTable className="compact-table" caption="Śram Park lead count by JCO" columns={["JCO","TOTAL","LEAD","CONTRACTING","CONTRACTED","DROPPED"]} rows={spOwnerRows} /><DataTable caption="Śram Park demand-bot records by factory" columns={["FACTORY","LEAD COUNT","THEATRE","ACTIVATION","JCO","LOGGED","STAGE"]} rows={demandRows} /></section>
-    <section id="supply" className={`operating-section semantic-supply ${focus === "supply" ? "focused-section" : ""}`}><p className="pillar-kicker">ŚRAM PARK · SUPPLY</p><h2>RM finds Nests for each need the JCO records.</h2><p className="section-intro">Use an option only if it is within 2km and found within 24 hours.</p><TodayMtdFunnel stages={live.supplyStages} /><DataTable caption="Śram Park supply options by factory" columns={["FACTORY","JCO","RELATIONSHIP MANAGER","OPTION","DISTANCE","RESPONSE","RULE"]} rows={supplyRows} /><div className="proximity-section"><header><div><h3>Open demand and its nearest SP options.</h3><p className="chart-reads"><span>What this chart shows</span>Pick an open demand node to see its supply options placed by distance. Needs-action demand is listed first.</p></div><p>Matched demand drops from this view.</p></header><DemandProximityWorkspace nodes={openDemandNodes} /></div></section>
-    <section id="reconciliation" className={`living-section ${focus === "reconciliation" ? "focused-section" : ""}`}><p className="pillar-kicker">LIVING SUMMARY</p><h2>{live.metricTemplate("living_summary", "Demand should become verified occupied Nests.")}</h2><p className="chart-reads"><span>What this chart shows</span>This chart follows demand to live capacity and then occupied Nests.</p><div className="reconciliation-strip"><article className="semantic-demand"><span>LIVE DEMAND</span><strong>{live.demandRequired}</strong><small>Sheet-derived governed demand</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article className="semantic-supply"><span>LIVE CAPACITY</span><strong>{live.fonoReady + live.spReady}</strong><small>Activation-ready Nests</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article><span>OCCUPIED NESTS</span><strong>{live.occupancyOccupied}</strong><small>{`${live.occupancyPercent}% of contracted`}</small></article></div></section>
+    <section id="demand" className={`operating-section semantic-demand ${focus === "demand" ? "focused-section" : ""}`}><p className="pillar-kicker">ŚRAM PARK · DEMAND</p><h2>JCO records each factory's need from the start.</h2><TodayMtdFunnel stages={demandTeam.stages} /><DataTable caption="Śram Park demand by factory" columns={["FACTORY","MEMBERS","THEATRE","ACTIVATION","JCO","LOGGED","AGING / MATCH"]} rows={shramDemand} /></section>
+    <section id="supply" className={`operating-section semantic-supply ${focus === "supply" ? "focused-section" : ""}`}><p className="pillar-kicker">ŚRAM PARK · SUPPLY</p><h2>RM finds Nests for each need the JCO records.</h2><p className="section-intro">Use an option only if it is within 2km and found within 24 hours.</p><TodayMtdFunnel stages={supplyTeam.stages} /><DataTable caption="Śram Park supply options by factory" columns={["FACTORY","JCO","RELATIONSHIP MANAGER","OPTION","DISTANCE","RESPONSE","RULE"]} rows={shramSupply} /><div className="proximity-section"><header><div><h3>Open demand and its nearest SP options.</h3><p className="chart-reads"><span>What this chart shows</span>Pick an open demand node to see its supply options placed by distance. Needs-action demand is listed first.</p></div><p>Matched demand drops from this view.</p></header><DemandProximityWorkspace nodes={openDemandNodes} /></div></section>
+    <section className="operating-section existing-occupancy-section">
+      <p className="pillar-kicker">EXISTING LIVING NETWORK</p>
+      <h2>{live.existingOccupied.toLocaleString("en-IN")} occupied of {live.existingContracted.toLocaleString("en-IN")} contracted Nests.</h2>
+      <p className="section-intro">Current occupancy of existing Studios, kept separate from the FONO acquisition funnel.</p>
+      <div className="reconciliation-strip"><article><span>CONTRACTED NESTS</span><strong>{live.existingContracted.toLocaleString("en-IN")}</strong><small>Existing Studio capacity</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article className="semantic-supply"><span>OCCUPIED NESTS</span><strong>{live.existingOccupied.toLocaleString("en-IN")}</strong><small>{live.existingOccupancyPercent}% occupancy</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article><span>VACANT NESTS</span><strong>{live.existingVacant.toLocaleString("en-IN")}</strong><small>Contracted minus occupied</small></article></div>
+      <DataTable caption="Existing occupancy by Theatre" columns={["THEATRE","STUDIOS","CONTRACTED","OCCUPIED","VACANT","OCCUPANCY"]} rows={live.existingByTheatre} />
+      <DataTable className="compact-table occupancy-table" caption="Existing occupancy by Studio" columns={["STUDIO","THEATRE","CONTRACTED","OCCUPIED","VACANT","OCCUPANCY","UPDATED"]} rows={live.existingOccupancyRows} />
+    </section>
+    <section id="reconciliation" className={`living-section ${focus === "reconciliation" ? "focused-section" : ""}`}><p className="pillar-kicker">LIVING SUMMARY</p><h2>{live.occupancyOccupied.toLocaleString("en-IN")} occupied of {live.occupancyContracted.toLocaleString("en-IN")} contracted Nests.</h2><p className="chart-reads"><span>What this chart shows</span>This chart follows demand to live capacity and then occupied Nests.</p><div className="reconciliation-strip"><article className="semantic-demand"><span>LIVE DEMAND</span><strong>{live.demandRequired}</strong><small>{live.demandMatched} matched</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article className="semantic-supply"><span>LIVE CAPACITY</span><strong>{live.fonoReady + live.spReady}</strong><small>Activation-ready Nests</small></article><i aria-hidden><ArrowRight /><ArrowDown /></i><article><span>OCCUPIED NESTS</span><strong>{live.occupancyOccupied}</strong><small>{live.occupancyPercent}% occupancy</small></article></div></section>
   </DashboardSectionAccordion>
 }

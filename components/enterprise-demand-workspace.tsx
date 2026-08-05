@@ -12,13 +12,14 @@ import {
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { LoopHealthStrip } from "@/components/loop-health-strip"
 import { actionStageFromStatus, type ActionSegmentKey, OperationalCard, OperationalCardStack } from "@/components/operational-card"
-import { ChartPanel, CompactDisclosure, ContextStrip, DecisionBand, MetricStrip, ReadonlyMetricRow, SegmentedControl } from "@/components/operating-ui"
+import { ChartPanel, CompactDisclosure, ContextStrip, ReadonlyMetricRow, SegmentedControl } from "@/components/operating-ui"
 import { TokenSelect } from "@/components/token-select"
 
 type Props = { preview: EnterpriseDemandLoopPreview }
 type SecondaryView = "nearby" | "activity" | "controls"
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
+const recoveryDateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", timeZone: "Asia/Kolkata" })
 
 function date(value: string) {
   return `${dateFormatter.format(new Date(value))} IST`
@@ -29,9 +30,35 @@ function percent(value: number, max: number) {
   return Math.min(Math.max((value / max) * 100, 0), 100)
 }
 
+function EnterpriseRecoverySummary({ preview, nextStep, actionableSteps, completedStages }: { preview: EnterpriseDemandLoopPreview; nextStep: JourneyStep | null; actionableSteps: number; completedStages: number }) {
+  const required = preview.activeNode.committedNests
+  const verified = preview.activeNode.verifiedReadyNests
+  const gap = preview.activeNode.readinessGap
+  const reserve = Math.min(nextStep?.capacityNests ?? 0, gap)
+  const open = Math.max(gap - reserve, 0)
+  const stagesOpen = Math.max(preview.progress.length - completedStages, 0)
+  const exceptions = preview.exceptions.length
+  const routeCandidate = (nextStep?.candidateName ?? "Recovery candidate").replace(/\bFONO\s+/i, "").replace(/\breserve\b/i, "Reserve")
+  const capacityStyle = { gridTemplateColumns: `${percent(verified, required)}% ${percent(gap, required)}%` }
+  const gapStyle = { gridTemplateColumns: `${percent(reserve, gap)}% ${percent(open, gap)}%` }
+  const nearbyStyle = { "--enterprise-nearby-recoverable": `${percent(reserve, preview.journeyPlan.ring1PotentialNests)}%` } as CSSProperties
+
+  return <section className="enterprise-recovery-summary" aria-labelledby="enterprise-recovery-title">
+    <header><h2 id="enterprise-recovery-title">{preview.activeNode.enterpriseName} <span aria-hidden>·</span> <time dateTime={preview.activeNode.arrivalAt}>{recoveryDateFormatter.format(new Date(preview.activeNode.arrivalAt))}</time></h2><ul className="ds-status-key enterprise-chart-key" aria-label="Chart key: dark blue means verified or clear; grey means vacant or action required"><li className="ds-status-key-item" data-state="verified"><i className="ds-status-key-swatch" aria-hidden /><span>Verified / clear</span></li><li className="ds-status-key-item" data-state="unresolved"><i className="ds-status-key-swatch" aria-hidden /><span>Vacant / action</span></li></ul></header>
+    <div className="enterprise-overview-charts">
+      <figure className="enterprise-overview-chart is-capacity"><figcaption>Capacity</figcaption><div className="ds-composition enterprise-capacity-composition" role="img" aria-label={`Capacity: ${required} Nests required, ${verified} verified and clear, ${gap} vacant and require action.`} style={capacityStyle}><span className="ds-composition-segment" data-state="verified"><strong>{verified}</strong><small>Filled</small></span><span className="ds-composition-segment" data-state="unresolved"><strong>{gap}</strong><small>Vacant</small></span></div><div className="enterprise-chart-scale" aria-hidden><span>0</span><b>{required}</b></div></figure>
+      <figure className="enterprise-overview-chart is-gap"><figcaption>Gap</figcaption><div className="ds-composition enterprise-gap-composition" role="img" aria-label={`Gap: ${gap} Nests require action; ${reserve} can come from ${nextStep?.candidateName ?? "the recovery candidate"}, and ${open} remain open.`} style={gapStyle}><span className="ds-composition-segment" data-state="neutral"><strong>{reserve}</strong><small>Reserve</small></span><span className="ds-composition-segment" data-state="unresolved"><strong>{open}</strong><small>Open</small></span></div><b className="enterprise-chart-total" aria-hidden>{gap}</b></figure>
+      <figure className="enterprise-overview-chart is-arrival"><figcaption>Arrival</figcaption><div className="enterprise-stage-blocks" role="img" aria-label={`Arrival: ${completedStages} of ${preview.progress.length} stages are clear; ${stagesOpen} require action.`}>{preview.progress.map((stage) => <i className={stage.complete ? "is-clear" : "is-action"} aria-hidden key={stage.stage} />)}</div><div className="enterprise-arrival-labels" aria-hidden><span><b>{completedStages}</b> clear</span><span><b>{stagesOpen}</b> to clear</span></div></figure>
+      <figure className="enterprise-overview-chart is-nearby"><figcaption>Nearby</figcaption><div className="enterprise-nearby-funnel" role="img" aria-label={`Nearby: ${preview.journeyPlan.ring1PotentialNests} Nests are identified but require action; ${reserve} Nests are the current recovery candidate and remain unverified.`} style={nearbyStyle}><span><strong>{preview.journeyPlan.ring1PotentialNests}</strong></span><i aria-hidden /><span><strong>{reserve}</strong></span></div></figure>
+      <figure className="enterprise-overview-chart is-work"><figcaption>Work</figcaption><div className="enterprise-work-blocks" role="img" aria-label={`Work: ${actionableSteps} governed actions and ${exceptions} exceptions remain open.`}><span>{Array.from({ length: actionableSteps }, (_, index) => <i aria-hidden key={`action-${index}`} />)}<strong>{actionableSteps}</strong><small>Do</small></span><span>{Array.from({ length: exceptions }, (_, index) => <i aria-hidden key={`exception-${index}`} />)}<strong>{exceptions}</strong><small>Fix</small></span></div></figure>
+    </div>
+    <div className="enterprise-recovery-route" role="note" aria-label={`${nextStep?.ownerActorId ?? preview.activeNode.ownerActorId} must confirm ${reserve} Nests from ${routeCandidate} now. ${open} Nests will remain open.`}><strong>{nextStep?.ownerActorId ?? preview.activeNode.ownerActorId}</strong><i aria-hidden /><strong>{routeCandidate}</strong><i aria-hidden /><b>{reserve}</b><span>Nests</span><time dateTime={nextStep?.dueAt}>Now</time></div>
+  </section>
+}
+
 function RingPlan({ steps }: { steps: readonly JourneyStep[] }) {
   return <div className="enterprise-ring-visual">
-    <svg viewBox="0 0 420 238" role="img" aria-label="Governed demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres">
+    <svg viewBox="0 0 420 238" role="img" aria-label="Synthetic demand-node plan with Ring 1 from zero to two kilometres and Ring 2 from two to five kilometres">
       <title>Enterprise plant at the centre; Ring 1 is exhausted before Ring 2.</title>
       <circle className="enterprise-ring-two" cx="210" cy="119" r="96" />
       <circle className="enterprise-ring-one" cx="210" cy="119" r="43" />
@@ -209,25 +236,7 @@ export function EnterpriseDemandWorkspace({ preview }: Props) {
       { title: "Supporting detail", summary: "Nearby supply · activity record · controls & audit", lens: "operate" },
       { title: "Proof & health", summary: `${preview.loopHealth.verification.verified} of ${preview.loopHealth.verification.claimed} outcomes confirmed` },
     ]}>
-    <div id="enterprise-demand-overview">
-      <DecisionBand
-        tone={lapsed ? "critical" : behind ? "attention" : "verified"}
-        title={nextStep ? `${lapsed ? "Recover the lapsed plan: " : ""}${nextStep.actionKind} ${nextStep.candidateName}` : "Hold for verified evidence"}
-        description={lapsed ? "The signed arrival has passed. Reconfirm the plan, complete the governed Ring 1 action and submit contract-matched proof." : "Complete the next governed action and submit contract-matched proof for independent verification."}
-        owner={nextStep?.ownerActorId ?? preview.activeNode.ownerActorId}
-        due={nextStep ? <><time dateTime={nextStep.dueAt}>{date(nextStep.dueAt)}</time>{lapsed ? " · overdue" : ""}</> : "Waiting for evidence"}
-        progress={`${completedStages} of ${preview.progress.length} stages cleared`}
-        progressValue={preview.progressPercent}
-        outcome={nextStep ? `${nextStep.capacityNests} Nests to independent verification` : `${preview.activeNode.readinessGap} Nest gap held open`}
-      />
-    <MetricStrip label="Enterprise Demand score" items={[
-      { label: "Verified capacity", value: `${preview.activeNode.verifiedReadyNests} / ${preview.activeNode.committedNests} Nests`, tone: behind ? "attention" : "verified" },
-      { label: "Remaining gap", value: `${preview.activeNode.readinessGap} Nests`, tone: behind ? "critical" : "verified" },
-      { label: "Arrival stages", value: `${completedStages} of ${preview.progress.length} cleared` },
-      { label: "Nearby identified", value: `${preview.journeyPlan.ring1PotentialNests} Nests`, note: "Not yet verified against the gap" },
-      { label: "Work queue", value: `${actionableSteps} actions · ${preview.exceptions.length} exceptions` },
-    ]} />
-    </div>
+    <div id="enterprise-demand-overview"><EnterpriseRecoverySummary preview={preview} nextStep={nextStep} actionableSteps={actionableSteps} completedStages={completedStages} /></div>
 
     <div className="enterprise-evidence-grid">
       <ChartPanel title="Verified capacity vs target" takeaway={`${preview.activeNode.readinessGap} Nests remain independently unverified.`} className="enterprise-capacity-panel">
@@ -242,9 +251,21 @@ export function EnterpriseDemandWorkspace({ preview }: Props) {
       {spLane ? <ChartPanel title="Śram Park conversion" takeaway="Contract, build, services and specification evidence clear in order." className="enterprise-funnel-panel"><div id="enterprise-demand-sp"><ChannelFunnel lane={spLane} /></div></ChartPanel> : null}
     </div>
 
-    <section className="enterprise-operations" id="enterprise-demand-actions" aria-labelledby="enterprise-actions-title">
-      <header><div><span>Today&apos;s work</span><h2 id="enterprise-actions-title">{actionableSteps} governed actions · {gatedSteps} gated</h2></div><ActionReadinessChart actionable={actionableSteps} gated={gatedSteps} /></header>
-      <div className="enterprise-operations-detail"><section><div className="enterprise-journey-segments">{journeyBySegment.map((group) => <section className="enterprise-action-group" data-action-segment={group.segment} key={group.segment}><header><h3>{JOURNEY_SEGMENT_LABELS[group.segment]}</h3><span>{group.entries.length}</span></header><OperationalCardStack label={`${JOURNEY_SEGMENT_LABELS[group.segment]} actions`}>{group.entries.map((entry) => renderStepCard(entry.step, entry.index))}</OperationalCardStack></section>)}</div></section></div>
+    <section className="enterprise-operations enterprise-work-board" id="enterprise-demand-actions" aria-labelledby="enterprise-actions-title">
+      <header><div><span>Work top to bottom</span><h2 id="enterprise-actions-title">{nextStep ? `1 · ${nextStep.actionKind} ${nextStep.candidateName}` : "Hold for verified evidence"}</h2></div><ul className="ds-status-key enterprise-work-summary" aria-label={`Chart key: dark blue means capacity that can cover the ${preview.activeNode.readinessGap}-Nest gap if confirmed; grey means capacity still vacant`}><li className="ds-status-key-item" data-state="available"><i className="ds-status-key-swatch" aria-hidden /><span>Can cover</span></li><li className="ds-status-key-item" data-state="unresolved"><i className="ds-status-key-swatch" aria-hidden /><span>Still vacant</span></li></ul></header>
+      <ol className="enterprise-work-queue" aria-label="Ordered Enterprise Demand work queue">{steps.map((step, index) => {
+        const later = step.state === "Ring 2 gated" || step.humanApprovalRequired
+        const canCover = Math.min(step.capacityNests, preview.activeNode.readinessGap)
+        const stillVacant = Math.max(preview.activeNode.readinessGap - canCover, 0)
+        const chartStyle = { gridTemplateColumns: `${percent(canCover, preview.activeNode.readinessGap)}% ${percent(stillVacant, preview.activeNode.readinessGap)}%` }
+        return <li className="enterprise-work-row" data-timing={later ? "later" : "now"} key={step.stepId}>
+          <div className="enterprise-work-rank" aria-label={`Priority ${index + 1}`}><b>{index + 1}</b><span>{later ? "Later" : "Now"}</span></div>
+          <div className="enterprise-work-action"><strong>{step.actionKind}</strong><span>{step.candidateName}</span></div>
+          <div className="ds-composition enterprise-work-row-chart" data-dashed={later ? "true" : undefined} role="img" aria-label={`${step.actionKind} ${step.candidateName}: ${step.capacityNests} Nests, ${later ? "planned later" : "ready now"}. If confirmed, this can cover ${canCover} of the ${preview.activeNode.readinessGap}-Nest gap; ${stillVacant} Nests remain vacant. Owned by ${step.ownerActorId}.`} style={chartStyle}><span className="ds-composition-segment" data-state="available"><strong>{canCover}</strong><small>Can cover</small></span><span className="ds-composition-segment" data-state="unresolved" data-zero={stillVacant === 0 ? "true" : undefined}><strong>{stillVacant}</strong><small>Still vacant</small></span></div>
+          <div className="enterprise-work-capacity"><strong>{step.capacityNests}</strong><span>Nests</span></div><div className="enterprise-work-owner"><span>Owner</span><strong>{step.ownerActorId}</strong></div>
+          {later ? <div className="enterprise-work-gate"><i aria-hidden /><strong>After Ring 1</strong></div> : <div className="enterprise-work-control"><TokenSelect ariaLabel={`Disposition for ${step.candidateName}`} value={selectedOutcomes[step.stepId] ?? "No answer"} options={ENTERPRISE_DEMAND_DISPOSITIONS} onChange={(outcome) => setSelectedOutcomes((current) => ({ ...current, [step.stepId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(step.stepId)}>Record outcome</button></div>}
+        </li>
+      })}</ol>
     </section>
 
     <section className="enterprise-exceptions" aria-label="Enterprise Demand exceptions"><header className="enterprise-support-heading"><div><span>Assigned support</span><h2>{preview.exceptions.length} exceptions</h2></div><ExceptionOwnerChart exceptions={preview.exceptions} /></header><OperationalCardStack label="All Enterprise Demand exceptions">{preview.exceptions.map((exception) => <OperationalCard key={exception.exceptionId} title={exception.issue} status={exception.progress} domain="Enterprise Demand" fields={[{ label: "Owner", value: exception.owner }, { label: "Due", value: <time dateTime={exception.dueAt}>{date(exception.dueAt)}</time> }]} progress="assigned" story={[{ label: "Why it matters", value: "The signed enterprise arrival cannot be counted as ready while this exception remains open." }, { label: "What Nia already did", value: `Created the exception and assigned ${exception.owner}.` }, { label: "What happens next", value: "Close the readiness gap and submit contract-matched proof for independent verification." }]} />)}</OperationalCardStack></section>
@@ -269,7 +290,7 @@ export function EnterpriseDemandWorkspace({ preview }: Props) {
 
     <div className="enterprise-proof">
       <LoopHealthStrip health={preview.loopHealth} id="enterprise-demand-health" />
-      <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{preview.source.name} · as of {date(preview.source.asOf)} · protected governed references only</span><Clock3 aria-hidden /><span>RafiQi Central may summarise later; Ops Control owns execution and verified closure.</span></footer>
+      <footer className="enterprise-source-note"><ShieldCheck aria-hidden /><span>{preview.source.name} · as of {date(preview.source.asOf)} · protected governed references only</span><Clock3 aria-hidden /><span>RafiQi Central summarises recorded data; Ops Control owns execution and verified closure.</span></footer>
     </div>
     </DashboardSectionAccordion>
   </div>

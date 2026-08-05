@@ -33,6 +33,40 @@ function num(value: any) {
 }
 
 /**
+ * Hourly source tabs are append-only.  Dashboard "current" measures must use
+ * one newest observation per entity; otherwise yesterday's occupancy is added
+ * to today's occupancy every time a user pastes a fresh daily snapshot.
+ */
+function latestRowsByKey(rows: Record<string, any>[], keyNames: string[]) {
+  const latest = new Map<string, { row: Record<string, any>; at: number; index: number }>();
+
+  rows.forEach((row, index) => {
+    const key = keyNames
+      .map((name) => String(row[name] ?? "").trim())
+      .find(Boolean);
+    if (!key) return;
+
+    const rawTimestamp = row["updated at"] ?? row["updated_at"] ?? row["reporting date"] ?? row["reporting month"];
+    const parsedTimestamp = Date.parse(String(rawTimestamp ?? ""));
+    const at = Number.isNaN(parsedTimestamp) ? Number.NEGATIVE_INFINITY : parsedTimestamp;
+    const prior = latest.get(key);
+    if (!prior || at > prior.at || (at === prior.at && index > prior.index)) {
+      latest.set(key, { row, at, index });
+    }
+  });
+
+  return [...latest.values()].sort((a, b) => a.index - b.index).map(({ row }) => row);
+}
+
+function latestLivingRows(rows: Record<string, any>[]) {
+  const keyed = rows.map((row) => ({
+    ...row,
+    "__living stream key": `${String(row["supply model"] ?? row["Supply Model"] ?? "").trim().toUpperCase()}::${String(row["studio id"] ?? row["Studio ID"] ?? row.studio ?? "").trim()}`,
+  }))
+  return latestRowsByKey(keyed, ["__living stream key"]).map(({ ["__living stream key"]: _key, ...row }) => row)
+}
+
+/**
  * Overview is a derived view.  Its reporting period must come from a source
  * row in the connected workbook, rather than from the machine running the
  * dashboard.  This accepts the timestamp column conventions used across the
@@ -307,21 +341,13 @@ console.log(data.evidenceLog?.slice(0, 5));
   const studios = toObjects(data.studioMaster);
   const theatres = toObjects(data.theatreMaster);
   const people = toObjects(data.peopleRoster);
-  const living = toObjects(data.livingHourly);
+  // Each supply model is a separate ledger. The same Studio can legitimately
+  // appear in FONO/SP and in the independent Existing Occupancy snapshot.
+  const living = latestLivingRows(toObjects(data.livingHourly));
   const livingDashboard = toObjects(data.livingDashboard);
 
 console.log("LIVING HOURLY SAMPLE");
 console.log(JSON.stringify(living.slice(0,5), null, 2));
-
-const occupiedNests = living.reduce(
-  (sum, row) =>
-    sum + num(first(row, [
-      "occupied nests",
-      "Occupied Nests",
-      "occupied",
-    ])),
-  0
-);
 
 const fonoOccupancyLive = living
   .filter((row) => first(row, [
@@ -353,13 +379,25 @@ const spRows = living.filter(
         "supply model",
         "Supply Model",
       ])
-    ).trim().toUpperCase() !== "FONO"
+    ).trim().toUpperCase() === "SP"
+);
+
+// Existing Occupancy is an independent operating snapshot. It must never be
+// treated as Shram Park or included in the FONO + SP Living comparison.
+const existingRows = living.filter(
+  (row) => String(first(row, ["supply model", "Supply Model"])).trim().toUpperCase() === "EXISTING"
+);
+const channelLiving = [...fonoRows, ...spRows];
+const occupiedNests = channelLiving.reduce(
+  (sum, row) => sum + num(first(row, ["occupied nests", "Occupied Nests", "occupied"])),
+  0
 );
 
 const livingSummary = {
   fono: summarizeLiving(fonoRows),
   sp: summarizeLiving(spRows),
-  combined: summarizeLiving(living),
+  combined: summarizeLiving(channelLiving),
+  existing: summarizeLiving(existingRows),
 };
 
   const work = toObjects(data.workHourly);
@@ -474,7 +512,7 @@ const plans = {
   // operational tabs instead of asking Operations to maintain a duplicate
   // Dashboard_Overview number for each one.
   const contractedActual = sumField(enterpriseDemand, ["headcount matched", "Headcount Matched"]);
-  const capacityActual = sumField(living, ["contracted nests", "Contracted Nests"]);
+  const capacityActual = sumField(channelLiving, ["contracted nests", "Contracted Nests"]);
   const activeActual = occupiedNests;
   const eligibleActual = sumField(essentials, ["eligible members", "Eligible Members"]);
   const buyersActual = sumField(essentials, ["buying members", "Buying Members"]);

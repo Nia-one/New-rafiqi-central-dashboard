@@ -4,7 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { normalizeReportingMonth, reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 import { canonicalizeBusinessReportTabs, repairBusinessReportFormulaReferences } from "./businessReportTabs";
 
-const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
+const SOURCE_ID = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const number = (v: unknown) => Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0;
@@ -36,7 +36,7 @@ async function replaceOwned(target: string, keyHeader: string, prefix: string, r
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
-  const rows = currentRows || (await sheets.spreadsheets.values.get({ spreadsheetId, range: `${target}!A:AZ` }).then((current) => (current.data.values || []) as unknown[][]));
+  const rows: unknown[][] = currentRows ?? await sheets.spreadsheets.values.get({ spreadsheetId, range: `${target}!A:AZ` }).then((current) => (current.data.values ?? []) as unknown[][]);
   const headers = (rows[0] || []).map(String);
   const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
   if (keyIndex < 0) throw new Error(`${target} is missing ${keyHeader}`);
@@ -64,13 +64,17 @@ async function replaceAllRows(target: string, records: Record<string, unknown>[]
 export async function syncVerticalInputs() {
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
-  await canonicalizeBusinessReportTabs(sheets, SOURCE_ID);
-  await repairBusinessReportFormulaReferences(sheets, SOURCE_ID);
+  const initialMetadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(sheetId,title,index,hidden)" });
+  const freshWorkbook = (initialMetadata.data.sheets || []).some((sheet) => sheet.properties?.title === "00_READ_ME");
+  if (!freshWorkbook) {
+    await canonicalizeBusinessReportTabs(sheets, SOURCE_ID);
+    await repairBusinessReportFormulaReferences(sheets, SOURCE_ID);
+  }
   // Essentials is bot-owned. Keeping the manual summary out of this connector
   // prevents a later refresh from replacing bot orders, margin and inventory.
   const baseTabs = ["TEAM_OCCUPANCY", "TEAM_REQ_SP_SUPPLY"];
   const reportBases = ["Studios", "Fono Funnel", "Essentials", "Flow", "CM Actions"];
-  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(sheetId,title,index,hidden)" });
+  const metadata = freshWorkbook ? initialMetadata : await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(sheetId,title,index,hidden)" });
   const available = (metadata.data.sheets || []).map((sheet) => sheet.properties!).filter((properties) => properties.title);
   const importedTitles = reportBases.flatMap((base) => available.filter((properties) => properties.title === base || properties.title?.startsWith(`${base} (`)).sort((a, b) => (b.index || 0) - (a.index || 0)).slice(0, 1).map((properties) => properties.title!));
   const tabs = [...baseTabs, ...importedTitles];
@@ -95,7 +99,7 @@ export async function syncVerticalInputs() {
   // Activation Ready Nests is the only field preserved from the user-input tab,
   // because that operational readiness value is not present in the report.
   let occupancySource = studioReport?.rows.length ? studioReport : teamOccupancy;
-  if (studioReport?.rows.length && teamOccupancy?.headers.length) {
+  if (!freshWorkbook && studioReport?.rows.length && teamOccupancy?.headers.length) {
     const sampleRows = teamOccupancy.rawRows.slice(teamOccupancy.headerIndex + 1).filter(isSampleRow);
     const existingByStudio = new Map(teamOccupancy.rows.map((row) => [norm(value(row, teamOccupancy.headers, "Studio Code")), row]));
     const reportDate = studioReport.rawRows?.[1]?.[1] || "";

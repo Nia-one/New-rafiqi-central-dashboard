@@ -84,6 +84,7 @@ export function CentralSidebar({
   onNavigate,
   onDecisionRoom,
   onLens,
+  onControlTower,
   onSignOut,
 }: {
   active: DashboardTab
@@ -99,6 +100,7 @@ export function CentralSidebar({
   onNavigate: (workspace: DashboardWorkspace, tab: DashboardTab) => void
   onDecisionRoom?: () => void
   onLens?: (lens: OperatingLens) => void
+  onControlTower?: () => void
   onSignOut: () => void
 }) {
   const workspaceItems = workspace === "self-drive"
@@ -120,6 +122,7 @@ export function CentralSidebar({
     </div> : null}
 
     <nav className="rail-navigation">
+      {onControlTower ? <><p>Console</p><button type="button" onClick={() => { onControlTower(); onClose() }}><Gauge aria-hidden /><span>Control Tower</span></button></> : null}
       <p>Workspaces</p>
       <button type="button" className={workspace === "self-drive" ? "active" : ""} onClick={() => { onWorkspace("self-drive"); onClose() }}><Gauge aria-hidden /><span>Self Drive</span></button>
       <button type="button" className={workspace === "self-learn" ? "active" : ""} onClick={() => { onWorkspace("self-learn"); onClose() }}><BrainCircuit aria-hidden /><span>Self Learn</span></button>

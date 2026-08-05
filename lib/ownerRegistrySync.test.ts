@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveRegistryOwner, verticalForObjective } from "./ownerRegistrySync";
 
-const base = { assignmentId: "A", scope: "All", theatre: "All", role: "Owner", responsibility: "", effectiveFrom: "", effectiveTo: "", status: "Active" };
+const base = { assignmentId: "A", scope: "All", theatre: "All", role: "Owner", responsibility: "", effectiveFrom: "", effectiveTo: "", status: "Active", reportingMonth: "" };
 const assignments = [
   { ...base, vertical: "Finance", ownerName: "Shrey" },
   { ...base, assignmentId: "B", vertical: "Essential Supply", ownerName: "Manikya Dahed" },

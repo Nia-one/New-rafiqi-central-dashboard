@@ -42,11 +42,14 @@ async function client(write = false) {
 }
 
 async function mirrorBotTables(valueRanges: unknown[][][]) {
-  const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID;
+  const spreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
   if (!spreadsheetId) throw new Error("GOOGLE_TEAM_INPUT_SHEET_ID is missing");
   const sheets = await client(true);
   const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
   const existing = new Map((metadata.data.sheets || []).map((sheet) => [sheet.properties?.title || "", sheet.properties?.sheetId]));
+  if (existing.has("00_READ_ME")) {
+    return { skipped: true, reason: "Fresh dashboard workbook keeps bot mirrors protected; bot data syncs directly to backend." };
+  }
   const missing = BOT_MIRRORS.filter(([, target]) => !existing.has(target));
   if (missing.length) {
     const added = await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: missing.map(([, title]) => ({ addSheet: { properties: { title } } })) } });

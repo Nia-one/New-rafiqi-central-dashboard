@@ -72,9 +72,9 @@ function filterTable(table: unknown[][], fields: string[], period: string) {
 
 export function filterDashboardDataByPeriod<T extends Record<string, any>>(data: T, period: string): T {
   if (period === "all") return data;
-  const filtered = { ...data };
+  const filtered: Record<string, any> = { ...data };
   for (const [key, fields] of Object.entries(PERIOD_FIELDS)) filtered[key] = filterTable(data[key] ?? [], fields, period);
-  return filtered;
+  return filtered as T;
 }
 
 export async function getDashboardData(period: string = "all") {

@@ -20,7 +20,7 @@ function date(value: string) {
 
 function DualGateMatrix({ preview }: Props) {
   const maxValue = Math.max(...preview.services.flatMap((service) => [service.memberSavingsInr, Math.max(0, service.niaMarginInr)]), 1)
-  return <div className={styles.matrix} role="img" aria-label="Paired bars comparing verified Member savings and Nia unit margin by synthetic service and Studio">
+  return <div className={styles.matrix} role="img" aria-label="Paired bars comparing verified Member savings and Nia unit margin by governed service and Studio">
     <div className={styles.matrixLegend}><span><i className={styles.savingsKey} />Verified Member saving</span><span><i className={styles.marginKey} />Verified Nia margin</span><small>₹ per fulfilled unit · prices hidden</small></div>
     <div className={styles.zeroRule}><span>Both values must be above ₹0</span></div>
     {preview.services.map((service) => <article className={styles.serviceRow} data-gate-status={service.status} key={service.serviceId}>
@@ -38,7 +38,6 @@ export function MemberSavingsWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])
-  const nextDueAt = preview.tasks[0]?.dueAt
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -67,8 +66,8 @@ export function MemberSavingsWorkspace({ preview }: Props) {
   ]}>
     <div className={styles.freshness} role="status">
       <AlertTriangle aria-hidden />
-      <strong>Governed source snapshot</strong>
-      <span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span>
+      <strong>{preview.source.freshness === "Current" ? "Governed live source" : "Source needs attention"}</strong>
+      <span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span>
       <b>{preview.quarantineCount} protected-input rows quarantined</b>
     </div>
 
@@ -113,11 +112,11 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     <section className={styles.measures} data-kpi-group aria-label="Four key numbers">
       {preview.measures.map((measure) => <article data-measure-id={measure.id} key={measure.id}><span>{measure.label}</span><strong>{measure.value}</strong><MeasureViz value={measure.value} target={measure.target} fallback={<b>{measure.target}</b>} /><small>{measure.detail}</small></article>)}
     </section>
-    <p className={styles.soWhat}>So what: 3 of 4 services clear both gates, so the single failing service is where recovery effort belongs, not a category-wide reprice.</p>
+    <p className={styles.soWhat}>So what: {preview.services.filter((service) => service.status === "Pass").length} of {preview.services.length} recorded services clear both gates; recovery stays limited to the {preview.services.filter((service) => service.status !== "Pass").length} recorded exception{preview.services.filter((service) => service.status !== "Pass").length === 1 ? "" : "s"}.</p>
 
     <div className={styles.primaryGrid}>
       <section className={styles.panel} aria-label="Savings and profit check">
-        <header><div><span>Savings and profit check</span><strong>1 service fails the margin test</strong></div><p>Confirmed outcomes · synthetic</p></header>
+        <header><div><span>Savings and profit check</span><strong>{preview.services.filter((service) => service.status !== "Pass").length} recorded service{preview.services.filter((service) => service.status !== "Pass").length === 1 ? "" : "s"} fail the margin test</strong></div><p>Governed source outcomes</p></header>
         <DualGateMatrix preview={preview} />
       </section>
 
@@ -147,7 +146,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
         <section><strong>Weekly savings-message inputs</strong>{preview.weeklyMessageInputs.map((input) => <dl key={input.serviceRef}><div><dt>Service</dt><dd>Protected service reference</dd></div><div><dt>Verified saving</dt><dd>{input.verifiedSavingsInr === null ? "Unavailable" : `₹${input.verifiedSavingsInr}`}</dd></div><div><dt>Freshness</dt><dd>{input.dataFreshness}</dd></div><div><dt>Mode</dt><dd>{input.mode} · sent {String(input.sent)}</dd></div></dl>)}</section>
         <section><strong>Shared learning-control inputs</strong>{preview.learningInputs.map((input) => <dl className={styles.learningGrid} key={input.action_id}><div><dt>Proposed change</dt><dd>{input.proposed_change}</dd></div><div><dt>Expected effect</dt><dd>{input.expected_effect}</dd></div><div><dt>Evidence</dt><dd>{input.evidence_cycles} cycles · n={input.sample_size} · {input.verification_rate_pct}% verified</dd></div><div><dt>Attribution</dt><dd>{input.attribution_grade} · {input.confounders.join(", ")}</dd></div><div><dt>Forecast error</dt><dd>{input.forecast_error_pct}%</dd></div><div><dt>Fresh / reversible</dt><dd>{String(input.critical_data_fresh)} / {String(input.reversible)}</dd></div><div><dt>Approved boundary</dt><dd>{String(input.inside_approved_boundary)} · reverses human decision {String(input.reverses_human_decision)}</dd></div><div><dt>Human controls</dt><dd>{input.affected_human_controlled_categories.join(", ") || "No category changed"}</dd></div><div><dt>Effects</dt><dd>{input.target_effect} {input.channel_effect} {input.cm_effect} {input.cash_effect}</dd></div><div><dt>Confidence / adoption</dt><dd>{input.production_confidence} · auto-adopt {String(input.auto_adopt)}</dd></div><div><dt>Rollback</dt><dd>{input.rollback_trigger}</dd></div></dl>)}</section>
         <section><strong>Append-only local shadow audit</strong>{audit.length > 0 ? <ol>{audit.map((entry) => <li key={entry.id}><CheckCircle2 aria-hidden /><span><b>{entry.outcome} · {entry.verification}</b>{entry.actionId} · {entry.route}</span><time dateTime={entry.at}>{date(entry.at)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
-        <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, assign and verify in synthetic shadow state. It cannot change price, contact a supplier or Member, sign a contract, move money, delist a service, call externally, write Production or adopt policy.</p></section>
+        <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, assign and verify governed records. It cannot change price, contact a supplier or Member, sign a contract, move money, delist a service, call externally, write Production or adopt policy.</p></section>
       </div>
     </details>
 
@@ -159,7 +158,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd>{nextDueAt ? <time dateTime={nextDueAt}>{date(nextDueAt)}</time> : "No open task"}</dd></div>
+        <div><dt>By</dt><dd>{preview.tasks[0]?.dueAt ? <time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time> : "No open action"}</dd></div>
       </dl>
     </section>
 

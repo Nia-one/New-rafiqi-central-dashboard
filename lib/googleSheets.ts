@@ -97,16 +97,22 @@ export async function batchGet(ranges: string[]) {
 }
 
 async function fetchBatch(ranges: string[], stale?: string[][][]) {
-  const client = await auth.getClient();
-  const tokenResponse = await client.getAccessToken();
-
-  const accessToken =
-    typeof tokenResponse === "string"
-      ? tokenResponse
-      : tokenResponse?.token;
+  let accessToken: string | null | undefined;
+  let lastNetworkError: unknown;
+  for (let attempt = 0; attempt < 3 && !accessToken; attempt++) {
+    try {
+      const client = await auth.getClient();
+      const tokenResponse = await client.getAccessToken();
+      accessToken = typeof tokenResponse === "string" ? tokenResponse : tokenResponse?.token;
+    } catch (error) {
+      lastNetworkError = error;
+      if (attempt < 2) await wait(500 * 2 ** attempt);
+    }
+  }
 
   if (!accessToken) {
-    throw new Error("Unable to obtain Google access token.");
+    if (stale) return stale;
+    throw lastNetworkError instanceof Error ? lastNetworkError : new Error("Unable to obtain Google access token.");
   }
 
   const params = new URLSearchParams();
@@ -122,9 +128,14 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
 
   let response: Response | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
-    response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
-    if (response.ok) break;
-    if (response.status !== 429 && response.status < 500) throw new Error(await response.text());
+    try {
+      response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+    } catch (error) {
+      lastNetworkError = error;
+      response = undefined;
+    }
+    if (response?.ok) break;
+    if (response && response.status !== 429 && response.status < 500) throw new Error(await response.text());
     if (attempt < 2) await wait(500 * 2 ** attempt);
   }
 
@@ -138,6 +149,7 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
       console.warn("Google Sheets quota unavailable and no snapshot exists; serving an empty safe snapshot.");
       return ranges.map(() => []);
     }
+    if (lastNetworkError instanceof Error) throw lastNetworkError;
     throw new Error(message || "Google Sheets batch read failed");
   }
 

@@ -64,8 +64,7 @@ export function CashControlWorkspace({ preview }: Props) {
 
   const cashProtected = preview.financialRails.find((rail) => rail.id === "cash")?.state === "Protected"
   const verdictLabel = cashProtected ? "Cash protected · destination needs approval" : "Cash at risk · destination needs approval"
-  const decisionDueAt = preview.tasks[0]?.dueAt ?? preview.source.asOf
-  const decisionDue = date(decisionDueAt)
+  const decisionDue = date(preview.tasks[0].dueAt)
 
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Cash and Control sections" sections={[
     { title: "Recommendation", summary: verdictLabel, status: cashProtected ? "good" : "bad" },
@@ -99,12 +98,12 @@ export function CashControlWorkspace({ preview }: Props) {
       <div className={styles.decisionAside}>
         <b className={styles.verdictPill} data-state={cashProtected ? "protected" : "at-risk"}>{verdictLabel}</b>
         <p className={styles.askInline}>Approve both today and the gap and cascade unlock; leave them pending and they stay locked.</p>
-        <dl className={styles.askMetaTop}><div><dt>Decision by</dt><dd><time dateTime={decisionDueAt}>{decisionDue}</time></dd></div></dl>
+        <dl className={styles.askMetaTop}><div><dt>Decision by</dt><dd><time dateTime={preview.tasks[0].dueAt}>{decisionDue}</time></dd></div></dl>
       </div>
     </section>
 
     <LoopHealthStrip health={preview.loopHealth} />
-    <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>Governed source snapshot</strong><span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span><b>All financial actions blocked</b></div>
+    <div className={styles.freshness} role="status"><AlertTriangle aria-hidden /><strong>Stale synthetic fixture</strong><span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span><b>All financial actions blocked</b></div>
 
     <section className={styles.taskBand} aria-labelledby="cash-control-heading">
       <div><span>{preview.fixtureLabel} · {preview.mode}</span><h2 id="cash-control-heading">{preview.headline}</h2><p>{preview.question}</p></div>
@@ -170,7 +169,7 @@ export function CashControlWorkspace({ preview }: Props) {
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={decisionDueAt}>{decisionDue}</time></dd></div>
+        <div><dt>By</dt><dd><time dateTime={preview.tasks[0].dueAt}>{decisionDue}</time></dd></div>
       </dl>
     </section>
 

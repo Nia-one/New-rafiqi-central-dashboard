@@ -1,11 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ArrowUpRight } from "lucide-react"
 import { buildRankedQueue, isNoData } from "@/lib/allocation-engine"
-import type { ActionLogEntry } from "@/lib/action-log"
+import { ACTION_LOG_REFERENCE_AT, seedActionLog, type ActionLogEntry } from "@/lib/action-log"
 import type { RankedMismatch } from "@/lib/allocation-types"
 import type { DashboardRoute } from "@/lib/dashboard-model"
+import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildExecutionReport, type ExecutionAction } from "@/lib/execution-control"
 import { formatInr } from "@/lib/ops-data"
 import { AllocationReviewPanel } from "./allocation-review-panel"
@@ -20,14 +21,32 @@ function cmLabel(mismatch: RankedMismatch) {
   return isNoData(mismatch.forwardCmAtRisk24h) ? "No data" : formatInr(mismatch.forwardCmAtRisk24h, true)
 }
 
-export function AllocationAttentionQueue({ allocationData, commitments, asOf, onShowExecution, onNavigate }: { allocationData?: { mismatchInputs?: import("@/lib/allocation-types").MismatchInput[] }; commitments: ExecutionAction[]; asOf?: string; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
-  const entries = useMemo<ActionLogEntry[]>(() => commitments.flatMap((action) => action.actionLog), [commitments])
+export function AllocationAttentionQueue({ commitments, onShowExecution, onNavigate }: { commitments: ExecutionAction[]; onShowExecution: () => void; onNavigate: (route: DashboardRoute, mismatchId: string) => void }) {
+  const [entries, setEntries] = useState<ActionLogEntry[]>(seedActionLog)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const context = useMemo(() => ({ actionLog: entries, now: Number.isFinite(Date.parse(asOf ?? "")) ? asOf : undefined }), [entries, asOf])
-  const queue = useMemo(() => buildRankedQueue(context, allocationData?.mismatchInputs), [context, allocationData])
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch("/api/action-log", { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("The action history could not be loaded.")
+        return response.json() as Promise<{ entries: ActionLogEntry[] }>
+      })
+      .then((body) => {
+        setEntries(body.entries)
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return
+        setError(reason instanceof Error ? reason.message : "The action history could not be loaded.")
+      })
+    return () => controller.abort()
+  }, [])
+
+  const context = useMemo(() => ({ actionLog: entries, now: ACTION_LOG_REFERENCE_AT }), [entries])
+  const queue = useMemo(() => buildRankedQueue(context), [context])
   const selected = queue.find((item) => item.id === selectedId) ?? null
-  const reportAsOf = Number.isFinite(Date.parse(asOf ?? "")) ? asOf! : new Date(0).toISOString()
-  const meetingCommitments = useMemo(() => buildExecutionReport(commitments, reportAsOf).actions.filter((action) => action.source === "meeting_commitment" && action.status !== "Verified" && action.status !== "Dismissed"), [commitments, reportAsOf])
+  const meetingCommitments = useMemo(() => buildExecutionReport(commitments, EXECUTION_REPORT_AS_OF).actions.filter((action) => action.source === "meeting_commitment" && action.status !== "Verified" && action.status !== "Dismissed"), [commitments])
 
   const top = queue.slice(0, 3)
   const rest = queue.slice(3)
@@ -72,6 +91,8 @@ export function AllocationAttentionQueue({ allocationData, commitments, asOf, on
           <span>{action.carryForward ? "Carry-forward" : action.result}</span>
         </li>)}</ol>
       </div> : null}
+
+      {error ? <p className="queue-read-error" role="status">{error}</p> : null}
 
       {rest.length > 0 && (
         <details className="more-constraints">

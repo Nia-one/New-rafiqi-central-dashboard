@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
-import { syncAllSources } from "@/lib/sourceSync";
+import { syncAllSources, syncLiveSources } from "@/lib/sourceSync";
 import { clearSheetCache } from "@/lib/googleSheets";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function GET() {
   try {
@@ -35,10 +36,11 @@ export async function POST(request: Request) {
   try {
     const url = new URL(request.url);
     const fullSync = url.searchParams.get("full") === "1";
-    const result = fullSync ? await syncAllSources({ force: true }) : null;
+    const liveSync = url.searchParams.get("live") === "1";
+    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : null;
     clearSheetCache();
     return NextResponse.json(
-      { success: true, mode: fullSync ? "full-sync" : "refresh", ...(result ?? {}) },
+      { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : "refresh", ...(result ?? {}) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

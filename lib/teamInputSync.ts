@@ -41,7 +41,7 @@ const aliases: Record<string, string> = {
 
 const normal = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
-const reportingMonthRequiredTabs = new Set(mappings.map(([source]) => source).filter((source) => source !== "TEAM_REQ_PEOPLE_ROSTER"));
+const reportingMonthRequiredTabs = new Set<string>(mappings.map(([source]) => source).filter((source) => source !== "TEAM_REQ_PEOPLE_ROSTER"));
 
 const dateOnlyTargetHeaders = new Set(["business date", "effective from", "effective to"]);
 const userDateTargetHeaders = new Set([
@@ -328,7 +328,7 @@ function aggregateFinanceSources(rows: Record<string, unknown>[], businessDate: 
 export async function syncTeamInputs() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
-  const sourceSpreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || spreadsheetId;
+  const sourceSpreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
   const credentials = googleServiceAccountCredentials();
   const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });

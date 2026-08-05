@@ -5,6 +5,7 @@ import test from "node:test"
 
 const root = process.cwd()
 const globals = readFileSync(join(root, "app/globals.css"), "utf8")
+const railStyles = readFileSync(join(root, "components/central-sidebar.css"), "utf8")
 const dashboard = readFileSync(join(root, "components/nia-dashboard.tsx"), "utf8")
 const operationalCard = readFileSync(join(root, "components/operational-card.tsx"), "utf8")
 const tokenSelect = readFileSync(join(root, "components/token-select.tsx"), "utf8")
@@ -20,7 +21,8 @@ test("the product-wide token contract is present at the global source", () => {
   for (const token of ["color-scheme: light", "--ink: #17191B", "--muted: #6E7378", "--faint: #90959A", "--border: #E1E3E5", "--surface: #FFFFFF", "--bg: #F7F7F8"]) assert.match(globals, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"))
   assert.match(globals, /--tracking-heading:\s*-\.012em/)
   assert.match(globals, /--weight-heading:\s*600/)
-  assert.match(globals, /\.central-rail[^}]+background:\s*#0(?:9090a|b0b0c)/)
+  assert.match(railStyles, /\.central-rail[^}]+background:\s*#ffffff/)
+  assert.match(railStyles, /\.rail-navigation button svg,[\s\S]*?color:\s*#111214/)
   assert.match(globals, /--nia-blue:\s*#303438/i, "legacy token alias must resolve to neutral charcoal, not blue")
 })
 

@@ -61,15 +61,14 @@ const liveBoundary = Object.freeze({
 
 export function buildLiveNewAddsPreview(snapshot: LiveSelfDriveSnapshot): NewAddsPreview | null {
   const status = buildLiveNewAddsFillStatus(snapshot)
-  if (!status.hasData) return null
   const proof = buildLiveNewAddsProof(snapshot)
   const actions = buildLiveNewAddsFillTasks(snapshot)
   return Object.freeze({
     mode: "Live read-only",
     fixtureLabel: "Governed live data",
     question: "Where must verified billing-live Members be added next?",
-    headline: `${status.gap} FONO Nests currently require verified billing-live fills.`,
-    source: { name: "Studios · Member Activation · Action Log", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: proof.loopHealth.state, synthetic: false },
+    headline: status.hasData ? `${status.gap} contracted FONO Nests currently require verified member adds.` : "No governed contracted/onboarded FONO rows are currently available.",
+    source: { name: "FONO Funnel · Member Activation · Action Log", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: proof.loopHealth.state, synthetic: false },
     taskSummary: { target: status.target, current: status.verified, gap: status.gap, owner: status.owner, progressPercent: status.progressPercent, verifiedResult: `${status.verified}/${status.target} billing-live` },
     measures: proof.measures,
     theatres: buildLiveNewAddsTheatreProgress(snapshot),
@@ -337,7 +336,10 @@ export function buildLiveFinanceExpansionPreview(snapshot: LiveSelfDriveSnapshot
 }
 
 export function buildLiveControlledAutonomyPreview(snapshot: LiveSelfDriveSnapshot): ControlledAutonomyPreview {
-  const records = snapshot.actions.map((row, index) => {
+  // Rows without a source submission id are legacy/manual residue with no
+  // auditable lineage. Do not expose them as live governed alarms.
+  const governedActions = snapshot.actions.filter((row) => text(row, "source submission id"))
+  const records = governedActions.map((row, index) => {
     const sourceState = text(row, "state").toLowerCase()
     const state = sourceState === "closed" || sourceState === "verified" ? "Closed" : sourceState === "reopened" ? "Reopened" : sourceState === "escalated" ? "Escalated" : "Detected"
     const actionId = text(row, "action id") || `action-${index + 1}`
@@ -346,7 +348,7 @@ export function buildLiveControlledAutonomyPreview(snapshot: LiveSelfDriveSnapsh
   const states = ["Detected", "Assigned through bot", "Chased", "Evidence collected", "Independently verified", "Closed", "Reopened", "Escalated"]
   const stateCoverage = states.map((state) => ({ state, count: records.filter((record) => record.state === state).length }))
   const approvalIds = new Set(snapshot.approvals.filter((row) => !["approved", "declined", "rejected"].includes(text(row, "decision").toLowerCase())).map((row) => text(row, "linked action id")).filter(Boolean))
-  const learningQueue = snapshot.learningHistory.map((row, index) => ({ recommendationId: text(row, "recommendation id") || `learning-${index + 1}`, proposedChange: text(row, "proposed change") || "Review recorded learning proposal", expectedEffect: text(row, "expected effect") || "Governed effect not recorded", authority: text(row, "authority", "owner") || "Human approver", evaluation: { requiredDisposition: text(row, "disposition").toLowerCase().includes("sign") ? "Human sign-off" : "Human review", materialityReasons: [text(row, "observed")].filter(Boolean), confidenceReasons: [text(row, "confidence")].filter(Boolean) } }))
+  const learningQueue = snapshot.learningHistory.map((row, index) => ({ recommendationId: text(row, "recommendation id") || `learning-${index + 1}`, domain: text(row, "domain") || "Operations", observed: text(row, "observed") || "Governed observation recorded", proposedChange: text(row, "proposed change") || "Review recorded learning proposal", expectedEffect: text(row, "expected effect") || "Governed effect not recorded", authority: text(row, "authority", "owner") || "Human approver", evaluation: { requiredDisposition: text(row, "disposition").toLowerCase().includes("sign") ? "Human sign-off" : "Human review", attributionLabel: text(row, "attribution") || "Observed", confidence: text(row, "confidence") || "Unconfirmed", materialityReasons: [text(row, "observed")].filter(Boolean), confidenceReasons: [text(row, "confidence")].filter(Boolean) } }))
   const claimed = records.length
   const verified = records.filter((record) => record.state === "Closed").length
   const reopened = records.filter((record) => record.state === "Reopened").length

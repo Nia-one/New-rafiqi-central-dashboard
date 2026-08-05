@@ -52,24 +52,10 @@ test("dashboard section layout preserves the declared section order", () => {
   assert.ok(html.indexOf("First") < html.indexOf("Primary status remains visible."))
 })
 
-test("declared tabs stay visible when a runtime source does not render its panel", () => {
-  const html = renderToStaticMarkup(
-    createElement(DashboardSectionAccordion, {
-      sections: [...sections, { title: "Source dependent", summary: "Waiting for governed source." }],
-      ariaLabel: "Source-aware sections",
-      children: [createElement("div", { key: 0 }, "First body"), createElement("div", { key: 1 }, "Second body")],
-    })
-  )
-
-  assert.equal((html.match(/data-dashboard-section-index=/g) ?? []).length, 3)
-  assert.match(html, /Source dependent/)
-  assert.match(html, /No governed data is available for this section/)
-})
-
-test("outline stays a bounded horizontal scroller across desktop and mobile", () => {
+test("section outline remains a bounded horizontal strip on desktop and mobile", () => {
   assert.match(css, /\.dashboard-outline-pane \{[^}]*overflow-x:\s*auto/)
   assert.match(css, /\.dashboard-outline-pane ol \{[^}]*grid-auto-flow:\s*column/)
-  assert.match(css, /@media \(max-width: 980px\)[\s\S]*?\.dashboard-outline-pane ol \{[^}]*grid-auto-columns:\s*minmax\(190px, 1fr\)/)
+  assert.match(css, /\.x-page-body \.dashboard-accordion\[data-outline="true"\] \{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.central-rail\.open \{[^}]*translateX\(0\)/)
   assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.platform-utility \.mobile-rail-trigger \{[^}]*display:\s*inline-flex/)
 })

@@ -50,6 +50,11 @@ export function MemberEngagementWorkspace({ preview }: Props) {
   const [selected, setSelected] = useState<Record<string, MemberEngagementShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberEngagementShadowOutcome>)
   const [tasks, setTasks] = useState<readonly MemberEngagementTask[]>(preview.tasks)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberEngagementShadowOutcome; verification: VerificationResult["status"]; route: string; at: string }[]>([])
+  const recovered = Number.parseFloat(String(preview.summary.current)) || 0
+  const recoveryTarget = Number.parseFloat(String(preview.summary.target)) || 0
+  const remainingRecoveries = Math.max(0, recoveryTarget - recovered)
+  const recoveryPercent = recoveryTarget > 0 ? Math.min(100, Math.round(recovered / recoveryTarget * 100)) : 0
+  const reopenedTasks = tasks.filter((task) => task.state === "Reopened").length
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -68,7 +73,7 @@ export function MemberEngagementWorkspace({ preview }: Props) {
     { title: "Members saved vs goal", summary: `${preview.summary.current} current · ${preview.summary.target} target` },
     { title: "Headline measures", summary: `${preview.measures.length} retention controls at a glance`, lens: "decide" },
     { title: "Retention implication", summary: "Verified exit-reason recovery is incomplete.", lens: "decide" },
-    { title: "Cohorts and recovery", summary: "January is 1 point below the approved floor.", lens: "decide" },
+    { title: "Cohorts and recovery", summary: `${preview.retentionCurves.length} governed cohort records`, lens: "decide" },
     { title: "Recovery implication", summary: "The remaining at-risk Members determine floor recovery.", lens: "decide" },
     { title: "Members needing action", summary: `${tasks.length} Member actions open`, lens: "operate" },
     { title: "Repeat issues", summary: `${preview.despatchEscalations.length} repeated issues need help` },
@@ -78,8 +83,8 @@ export function MemberEngagementWorkspace({ preview }: Props) {
   ]}>
     <div className={styles.freshness} role="status">
       <AlertTriangle aria-hidden />
-      <strong>Governed source snapshot</strong>
-      <span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span>
+      <strong>{preview.source.freshness === "Current" ? "Governed live source" : "Source needs attention"}</strong>
+      <span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span>
       <b>{preview.quarantinedCount} protected-input rows quarantined</b>
     </div>
 
@@ -90,7 +95,7 @@ export function MemberEngagementWorkspace({ preview }: Props) {
         <p>{preview.question}</p>
       </div>
       <div className={styles.ownerSummary}>
-        <b className={styles.verdictPill} data-state="behind">Below 65% floor · {preview.summary.gap} to recover</b>
+        <b className={styles.verdictPill} data-state="behind">{preview.summary.gap} to recover</b>
         <span>Current owner</span>
         <strong>{preview.summary.owner}</strong>
         <small>Role only · Member identity protected</small>
@@ -138,24 +143,24 @@ export function MemberEngagementWorkspace({ preview }: Props) {
         <small>{measure.detail}</small>
       </article>)}
     </section>
-    <p className={styles.soWhat}>So what: retention sits 1 pp under the floor because verified exit-reason recovery is incomplete, not because churn is broadly rising.</p>
+    <p className={styles.soWhat}>So what: the recorded retention measures are compared only with governed controls; missing observations or controls remain unconfirmed.</p>
 
     <div className={styles.primaryGrid}>
       <section className={styles.panel} aria-label="Who is staying, by group">
-        <header><div><span>Who is staying, by group</span><strong>January is 1 point below target</strong></div><p>Independent billing outcomes · synthetic</p></header>
+        <header><div><span>Who is staying, by group</span><strong>{preview.retentionCurves.length ? `${preview.retentionCurves.length} governed cohort records` : "No governed cohort records"}</strong></div><p>Recorded billing outcomes</p></header>
         <RetentionCurve preview={preview} />
       </section>
 
       <section className={`${styles.panel} ${styles.recoveryPanel}`} aria-label="Members won back">
-        <header><div><span>Members won back</span><strong>7 of 18 Members recovered</strong></div><p>Confirmed outcomes only</p></header>
+        <header><div><span>Members won back</span><strong>{recovered} of {recoveryTarget} Members recovered</strong></div><p>Confirmed outcomes only</p></header>
         <div className={styles.recoveryGauge}>
-          <svg viewBox="0 0 120 120" role="img" aria-label="7 of 18 at-risk Members have verified recovery"><circle className={styles.gaugeTrack} cx="60" cy="60" r="48" /><circle className={styles.gaugeValue} cx="60" cy="60" r="48" pathLength="100" strokeDasharray="39 61" /><text x="60" y="57" textAnchor="middle">7/18</text><text x="60" y="75" textAnchor="middle">verified</text></svg>
-          <dl><div><dt>Intervention assigned</dt><dd>14</dd></div><div><dt>Awaiting verification</dt><dd>4</dd></div><div><dt>Reopened</dt><dd>3</dd></div></dl>
+          <svg viewBox="0 0 120 120" role="img" aria-label={`${recovered} of ${recoveryTarget} at-risk Members have verified recovery`}><circle className={styles.gaugeTrack} cx="60" cy="60" r="48" /><circle className={styles.gaugeValue} cx="60" cy="60" r="48" pathLength="100" strokeDasharray={`${recoveryPercent} ${100 - recoveryPercent}`} /><text x="60" y="57" textAnchor="middle">{recovered}/{recoveryTarget}</text><text x="60" y="75" textAnchor="middle">verified</text></svg>
+          <dl><div><dt>Intervention assigned</dt><dd>{tasks.length}</dd></div><div><dt>Awaiting verification</dt><dd>{tasks.filter((task) => task.state !== "Verified" && task.state !== "Reopened").length}</dd></div><div><dt>Reopened</dt><dd>{reopenedTasks}</dd></div></dl>
         </div>
         <div className={styles.rule}><ShieldCheck aria-hidden /><span><strong>Closure rule</strong>Source signal recovered, a resolved request stays closed, or billing continuity is evidenced.</span></div>
       </section>
     </div>
-    <p className={styles.soWhat}>So what: 7 of 18 at-risk Members are verified-recovered, so the remaining 11 recoveries are what actually lifts the cohort back above the floor.</p>
+    <p className={styles.soWhat}>So what: {recovered} of {recoveryTarget} recorded at-risk Members are verified-recovered; {remainingRecoveries} remain before the recorded recovery target is met.</p>
 
     <section className={styles.workPanel} aria-label="Members needing action now">
       <header><div><span>Members needing action now</span><strong>{tasks.length} Member actions open</strong></div><p>Preview only</p></header>
@@ -184,11 +189,11 @@ export function MemberEngagementWorkspace({ preview }: Props) {
       <div className={styles.askCopy}>
         <span>Decision required</span>
         <strong>Recover the {preview.summary.gap} retention gap by verifying the remaining at-risk Member recoveries.</strong>
-        <p>Only independently verified recoveries count; accountability sits with {preview.summary.owner} until the Coromandel cohort is back above the 65% M6 floor.</p>
+        <p>Only independently verified recoveries count; accountability sits with {preview.summary.owner} until the recorded governed retention target is met.</p>
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd><time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time></dd></div>
+        <div><dt>By</dt><dd>{preview.tasks[0] ? <time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time> : "No governed due date"}</dd></div>
       </dl>
     </section>
 

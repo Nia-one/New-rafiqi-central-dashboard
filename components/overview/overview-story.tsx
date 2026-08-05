@@ -8,10 +8,11 @@ import { ExecutionControlPanel } from "./execution-control-panel"
 import { FlywheelOverview } from "./flywheel-overview"
 import { LoopHealthStrip } from "../loop-health-strip"
 import { DashboardSectionAccordion } from "../dashboard-section-accordion"
+import { LiveOverviewWorkspace, LiveSheetWorkspace } from "../live-sheet-workspace"
 
 export type OverviewMode = "reporting" | "execution"
 
-export function OverviewStory({ mode, commitments, loopHealth, liveOpsData, allocationData, onModeChange, onNavigate }: { mode: OverviewMode; commitments: ExecutionAction[]; loopHealth?: LoopHealth; liveOpsData?: any; allocationData?: any; onModeChange: (mode: OverviewMode) => void; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
+export function OverviewStory({ mode, commitments, loopHealth, liveOpsData = {}, onModeChange, onNavigate }: { mode: OverviewMode; commitments: ExecutionAction[]; loopHealth?: LoopHealth; liveOpsData?: any; onModeChange: (mode: OverviewMode) => void; onNavigate: (route: DashboardRoute, mismatchId?: string) => void }) {
   const modeCopy = mode === "reporting"
     ? { title: "Reporting & Insights", description: "What happened and what needs attention" }
     : { title: "Execution Control & Member Satisfaction", description: "What was done, by whom, with what proof" }
@@ -43,7 +44,7 @@ export function OverviewStory({ mode, commitments, loopHealth, liveOpsData, allo
     </div>
     {mode === "reporting"
       ? !loopHealth || loopHealth.overviewAnswerAllowed
-        ? <FlywheelOverview liveOpsData={liveOpsData} allocationData={allocationData} commitments={commitments} onShowExecution={() => onModeChange("execution")} onNavigate={onNavigate} />
+        ? <LiveOverviewWorkspace liveOpsData={liveOpsData} />
         : <section className="overview-trust-gate" role="status" aria-label="Overview unavailable until Loop Health is restored">
           <AlertTriangle aria-hidden />
           <p>PERFORMANCE VIEW PAUSED</p>
@@ -51,6 +52,6 @@ export function OverviewStory({ mode, commitments, loopHealth, liveOpsData, allo
           <span>{loopHealth?.reasons.join(" · ")}</span>
           <small>The flywheel stays hidden until critical feeds, clocks and independent verification are current.</small>
         </section>
-      : <ExecutionControlPanel commitments={commitments} asOf={String(liveOpsData?.fetchedAt ?? "")} onNavigate={onNavigate} />}
+      : <LiveSheetWorkspace kind="Actions" rows={liveOpsData?.actionLog ?? []} secondaryRows={liveOpsData?.evidenceLog ?? []} asOf={liveOpsData?.fetchedAt} />}
   </DashboardSectionAccordion>
 }

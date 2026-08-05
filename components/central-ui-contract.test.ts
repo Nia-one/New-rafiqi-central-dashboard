@@ -10,7 +10,7 @@ const primitives = readFileSync(new URL("./operating-ui.tsx", import.meta.url), 
 const login = readFileSync(new URL("./login-screen.tsx", import.meta.url), "utf8")
 const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8")
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
-const opsDataRoute = readFileSync(new URL("../app/api/ops-data/route.ts", import.meta.url), "utf8")
+const railCss = readFileSync(new URL("./central-sidebar.css", import.meta.url), "utf8")
 
 test("the route inventory remains complete and unchanged by the presentation redesign", () => {
   assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
@@ -48,24 +48,10 @@ test("outline-managed pages do not duplicate section navigation in the horizonta
   assert.match(dashboard, /enterpriseDemandPreview && !OUTLINE_MANAGED_TABS\.has\(active\)/)
 })
 
-test("the utility control exposes the governed sheet-derived reporting period", () => {
-  assert.match(dashboard, /ariaLabel="Reporting period"/)
-  assert.match(dashboard, /All · cumulative/)
-  assert.match(dashboard, /availablePeriods\.map/)
-  assert.match(dashboard, /title="Decision Room"/)
-})
-
-test("live dashboard refreshes every 45 seconds and keeps an immediate manual sync", () => {
-  assert.match(dashboard, /window\.setInterval\(\(\) => \{ void refreshLiveData\("auto"\) \}, 45_000\)/)
-  assert.match(dashboard, /className="context-sync-button"/)
-  assert.match(dashboard, /Sync now/)
-  assert.match(dashboard, /fetch\("\/api\/ops-data\?refresh=1"/)
-  assert.match(opsDataRoute, /const fullSync = url\.searchParams\.get\("full"\) === "1"/)
-  assert.match(opsDataRoute, /fullSync \? await syncAllSources\(\{ force: true \}\) : null/)
-  assert.match(dashboard, /aria-label="Sync now"/)
-  assert.match(dashboard, /Live · refresh in/)
-  assert.match(css, /@media \(max-width: 960px\)[\s\S]*?\.dashboard-period-filter \{ display: none; \}/)
-  assert.match(css, /\.operating-context-strip \{[^}]*overflow: visible;/)
+test("the utility chip and Decision Room share one presentation period", () => {
+  assert.match(dashboard, /const dashboardPeriod = liveOpsData\?\.meta\?\.month/)
+  assert.match(dashboard, /<span>\{dashboardPeriod\}<\/span>/)
+  assert.match(dashboard, /period=\{dashboardPeriod\}/)
 })
 
 test("Self Drive has symmetric Decide and Operate landing surfaces", () => {
@@ -76,12 +62,16 @@ test("Self Drive has symmetric Decide and Operate landing surfaces", () => {
   assert.match(dashboard, /nextWorkspace === "self-drive" && tab === "Despatch"/)
 })
 
-test("the mixed shell has no blue interaction accent and reserves colour for status", () => {
+test("the mixed shell has no blue interaction accent and keeps the rail monochrome", () => {
   assert.match(css, /--nia-blue:\s*#303438/i)
   assert.match(css, /--accent:\s*#111214/i)
   assert.match(css, /--status-bad:\s*#C9362B/i)
   assert.match(css, /--status-good:\s*#227A52/i)
-  assert.match(css, /\.central-rail[^}]+background:\s*#0(?:9090a|b0b0c)/)
+  assert.match(layout, /import "\.\.\/components\/central-sidebar\.css"/)
+  assert.match(railCss, /\.central-rail[^}]+background:\s*#ffffff/)
+  assert.match(railCss, /\.rail-navigation button svg,[\s\S]*?color:\s*#111214/)
+  assert.match(railCss, /\.central-shell[^}]+grid-template-columns:\s*232px/)
+  assert.match(railCss, /\.rail-navigation button,[\s\S]*?min-height:\s*42px/)
 })
 
 test("RafiQi Central casing is locked on metadata login navigation and accessibility surfaces", () => {

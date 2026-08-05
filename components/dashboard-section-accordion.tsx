@@ -70,24 +70,19 @@ export function DashboardSectionAccordion({
   ariaLabel?: string
 } & Omit<HTMLAttributes<HTMLDivElement>, "children" | "aria-label">) {
   const items = Children.toArray(children)
-  // A declared section is part of the page contract even when its live source
-  // has no panel to render yet. Keep its tab and canvas slot mounted so a
-  // conditional `null` can never silently remove navigation.
-  const slotCount = Math.max(items.length, sections.length)
-  const sourceIndexes = useMemo(() => Array.from({ length: slotCount }, (_, index) => index), [slotCount])
   const lens = useLens()
   const actionFirstTitles = new Set(["Decision required", "Decision status", "What needs doing next", "Recommendation", "Main point", "Learning summary", "Work data requirement", "Finance control status", "Connector status", "Do this now"])
   const actionIndex = sections.findIndex((section) => actionFirstTitles.has(section.title))
   const displayOrder = useMemo(() => {
     const ordered = actionIndex > 0
-      ? [actionIndex, ...sourceIndexes.filter((index) => index !== actionIndex)]
-      : sourceIndexes
+      ? [actionIndex, ...items.map((_, index) => index).filter((index) => index !== actionIndex)]
+      : items.map((_, index) => index)
     return ordered.filter((sourceIndex) => {
       const sectionLens = sections[sourceIndex]?.lens
       return lens === null || sectionLens === undefined || sectionLens === lens
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionIndex, lens, sections, sourceIndexes])
+  }, [actionIndex, items.length, lens, sections])
   const [focus, setFocus] = useState(0)
   const safeFocus = Math.min(focus, Math.max(displayOrder.length - 1, 0))
 
@@ -137,10 +132,7 @@ export function DashboardSectionAccordion({
             </span>
           </header>
           <div className="dashboard-accordion-panel" role="region" aria-labelledby={titleId}>
-            {child ?? <section className="dashboard-section-unavailable" role="status">
-              <strong>No governed data is available for this section.</strong>
-              <span>The component will populate automatically when its source is connected.</span>
-            </section>}
+            {child}
           </div>
         </section>
       })}

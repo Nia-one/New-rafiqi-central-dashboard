@@ -27,9 +27,9 @@ export function LearningHistoryWorkspace({ entries }: { entries: readonly Learni
       <strong>{entries.filter((entry) => needsApproval(entry.disposition)).length} awaiting approval</strong>
     </header>
     <div className="learning-history-list">
-      {entries.map((entry) => {
+      {entries.map((entry, index) => {
         const gate = needsApproval(entry.disposition)
-        return <article key={entry.domain} className="learning-card" data-gate={gate ? "sign-off" : "monitor"}>
+        return <article key={`${entry.domain}-${entry.proposedChange}-${index}`} className="learning-card" data-gate={gate ? "sign-off" : "monitor"}>
           <header>
             <strong>{dashboardDisplayLabel(entry.domain)}</strong>
             <span className="learning-card-disposition" data-tone={gate ? "action" : "neutral"}>{entry.disposition}</span>

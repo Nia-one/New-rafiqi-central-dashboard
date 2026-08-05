@@ -237,23 +237,33 @@ function averageFillTimeLabel(rows: readonly SheetRow[]) {
   return `${Math.round(hours / 24)} days`
 }
 
-function memberAddsSupplyModel(row: SheetRow): "FONO" | "SP" | null {
+function memberAddsSupplyModel(row: SheetRow): "FONO" | "SP" | "ENTERPRISE" | null {
   const demandId = text(row, "demand id").toUpperCase()
-  if (demandId.startsWith("OPS-RPT-FONO")) return "FONO"
-  if (demandId.startsWith("SP-BOT")) return "SP"
+  const enterpriseId = text(row, "enterprise id").toUpperCase()
+  const sourceSubmissionId = text(row, "source submission id").toUpperCase()
+  if (enterpriseId === "UI_SHRAMPARK_SUPPLY") return "SP"
+  if (enterpriseId === "UI_ENTERPRISE_SUPPLY") return "ENTERPRISE"
+  if (enterpriseId === "UI_FONO_SUPPLY") return "FONO"
+  if (demandId.startsWith("OPS-RPT-FONO")
+    || demandId.startsWith("FONO-TRACKER-")
+    || sourceSubmissionId.startsWith("FONO-TRACKER-")) return "FONO"
   return null
 }
 
 function isMemberAddsContractedStage(row: SheetRow) {
-  return /contract|onboard|live|signed|won/i.test(`${text(row, "status")} ${text(row, "certainty")}`)
+  // `Contracting` is pipeline demand, not completed supply. Match completed
+  // stages by whole word so it cannot inflate Member Adds.
+  return /\bcontracted\b|\bonboarded\b|\blive\b|\bwon\b/i.test(`${text(row, "status")} ${text(row, "certainty")}`)
 }
 
-/** Member Adds uses contracted/onboarded FONO Funnel and Shram Park records only. */
+/** Member Adds is the explicit actual-add count from FONO, Shrampark and
+ * Enterprise source rows. Existing Studio occupancy belongs only to Living. */
 function memberAddsSupplyRows(snapshot: LiveSelfDriveSnapshot): readonly SheetRow[] {
   return snapshot.enterpriseDemand.flatMap((row) => {
     const supplyModel = memberAddsSupplyModel(row)
     const contractedNests = number(row, "headcount required")
-    if (!supplyModel || !isMemberAddsContractedStage(row) || contractedNests <= 0) return []
+    const explicitMemberAdds = text(row, "role required").toLowerCase() === "member adds"
+    if (!supplyModel || !explicitMemberAdds || contractedNests <= 0) return []
     const occupiedNests = Math.min(contractedNests, Math.max(0, number(row, "headcount matched")))
     return [{
       ...row,
@@ -399,7 +409,7 @@ export function buildLiveNewAddsFillTasks(snapshot: LiveSelfDriveSnapshot): read
   }))
 }
 
-/** Member Adds is the contracted/onboarded FONO + SP Nest occupancy loop. */
+/** Member Adds is the explicit actual-add loop across FONO, Shrampark and Enterprise. */
 export function buildLiveNewAddsFillStatus(snapshot: LiveSelfDriveSnapshot): LiveNewAddsFillStatus {
   const theatres = buildLiveNewAddsTheatreProgress(snapshot)
   const openVacancies = theatres.reduce((sum, row) => sum + row.vacantNests, 0)
@@ -434,7 +444,9 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
   const occupancyStudioIds = new Set(supplyRows
     .map((row) => text(row, "studio id"))
     .filter(Boolean))
-  const quarantinedLivingRows = snapshot.enterpriseDemand.filter((row) => memberAddsSupplyModel(row) && (!isMemberAddsContractedStage(row) || number(row, "headcount required") <= 0)).length
+  // Lead/Contracting FONO rows are valid pipeline demand, merely out of scope
+  // for Member Adds. Quarantine only malformed completed-supply rows.
+  const quarantinedLivingRows = snapshot.enterpriseDemand.filter((row) => text(row, "role required").toLowerCase() === "member adds" && memberAddsSupplyModel(row) && number(row, "headcount required") <= 0).length
   const activations = verifiedBillingLiveActivations(snapshot, occupancyStudioIds)
   const evidence = uniqueRows(snapshot.evidence.filter((row) => actionIds.has(text(row, "linked id"))), ["evidence id"])
   const reopenedActions = tasks.filter((task) => task.state === "Reopened").length
@@ -461,13 +473,16 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
     return Number.isFinite(activatedAt) && Number.isFinite(verifiedAt) && verifiedAt >= activatedAt ? (verifiedAt - activatedAt) / 3_600_000 : NaN
   }).filter(Number.isFinite)
   const medianHours = median(durationHours)
+  const billingSlaPolicy = snapshot.policies.find((row) => {
+    const descriptor = `${text(row, "policy id")} ${text(row, "policy name")} ${text(row, "source note")}`.toLowerCase()
+    return /billing|activation|fill/.test(descriptor) && /sla|time|hour/.test(descriptor) && text(row, "status").toLowerCase() === "approved"
+  })
+  const billingSlaHours = number(billingSlaPolicy ?? {}, "policy value", "value")
   const averageCac = loadedCacRows.length ? Math.round(loadedCacRows.reduce((sum, value) => sum + value, 0) / loadedCacRows.length) : 0
   const medianPayback = median(paybackRows)
-  const occupancyUpdatedAt = latestRowTimestamp(
-    supplyRows,
-    ["updated at", "captured at", "heartbeat at"],
-    snapshot.asOf,
-  )
+  // FONO row dates are business-event dates; feed freshness is the time this
+  // dashboard snapshot successfully read the source.
+  const occupancyUpdatedAt = snapshot.asOf
   const billingUpdatedAt = latestRowTimestamp(
     activations,
     ["updated at", "verified at", "activated at"],
@@ -480,15 +495,15 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
   )
   const sourceSummary = sourceCounts.length ? sourceCounts.map((row) => `${row.label} ${row.value}`).join(" · ") : "Source not recorded"
   const measures: NewAddsPreview["measures"] = Object.freeze([
-    Object.freeze({ id: "verified-fills" as const, label: "FONO/SP occupancy", primary: `${status.gap} Nests vacant`, secondary: `${status.verified} of ${status.target} contracted/onboarded FONO + SP Nests occupied · ${status.progressPercent}% occupancy`, chart: Object.freeze({ kind: "progress" as const, value: status.verified, max: Math.max(1, status.target) }) }),
+    Object.freeze({ id: "verified-fills" as const, label: "Member adds", primary: `${status.gap} additions still open`, secondary: `${status.verified} of ${status.target} additions across FONO, Shrampark and Enterprise · ${status.progressPercent}%`, chart: Object.freeze({ kind: "progress" as const, value: status.verified, max: Math.max(1, status.target) }) }),
     Object.freeze({ id: "adds-by-source" as const, label: "Adds by source", primary: sourceSummary, secondary: sourceCounts.length ? "From Member_Activation" : "No acquisition-source field is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(sourceCounts) }) }),
     Object.freeze({ id: "cac-payback" as const, label: "Actual CAC & payback", primary: averageCac ? `₹${averageCac.toLocaleString("en-IN")} · ${medianPayback ? `${medianPayback} days` : "payback not recorded"}` : "No verified CAC", secondary: averageCac ? `${loadedCacRows.length} verified loaded-cost record${loadedCacRows.length === 1 ? "" : "s"}` : "No loaded acquisition cost is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(averageCac ? [Object.freeze({ label: "Verified CAC records", value: loadedCacRows.length })] : []) }) }),
-    Object.freeze({ id: "arrival-billing" as const, label: "Arrival to billing live", primary: durationHours.length ? `${medianHours < 1 ? Math.max(1, Math.round(medianHours * 60)) : Math.round(medianHours)} ${medianHours < 1 ? "minutes" : "hours"}` : "No verified duration", secondary: durationHours.length ? `Median · ${durationHours.filter((hours) => hours > 48).length} activations over 48h` : "Activated and verified timestamps required", chart: Object.freeze({ kind: "threshold" as const, value: medianHours, target: 48, unit: "h", goodWhenUnder: true }) }),
+    Object.freeze({ id: "arrival-billing" as const, label: "Arrival to billing live", primary: durationHours.length ? `${medianHours < 1 ? Math.max(1, Math.round(medianHours * 60)) : Math.round(medianHours)} ${medianHours < 1 ? "minutes" : "hours"}` : "No verified duration", secondary: durationHours.length ? billingSlaHours > 0 ? `Median · ${durationHours.filter((hours) => hours > billingSlaHours).length} activations over the approved ${billingSlaHours}h SLA` : "Median recorded; approved SLA not recorded" : "Activated and verified timestamps required", chart: Object.freeze({ kind: "threshold" as const, value: medianHours, target: billingSlaHours, unit: "h", goodWhenUnder: true }) }),
   ])
   const loopHealth = buildLoopHealth({
     asOf: snapshot.asOf,
     feeds: Object.freeze([
-      Object.freeze({ feedId: "LIVE-FONO-OCCUPANCY", label: "FONO membership and occupancy", lastUpdatedAt: occupancyUpdatedAt, cadenceMinutes: 60, critical: true, affectedClaims: Object.freeze(["Verified fills"]) }),
+      Object.freeze({ feedId: "LIVE-MEMBER-ADDS", label: "FONO, Shrampark and Enterprise member adds", lastUpdatedAt: occupancyUpdatedAt, cadenceMinutes: 60, critical: true, affectedClaims: Object.freeze(["Verified fills"]) }),
       Object.freeze({ feedId: "LIVE-BILLING-OUTCOMES", label: "Billing-live outcomes", lastUpdatedAt: billingUpdatedAt, cadenceMinutes: 60, critical: true, affectedClaims: Object.freeze(["Verified fills", "Arrival to billing live"]) }),
       Object.freeze({ feedId: "LIVE-ACTION-EVIDENCE", label: "Action and evidence controls", lastUpdatedAt: controlsUpdatedAt, cadenceMinutes: 240, critical: true, affectedClaims: Object.freeze(["Outcome checks", "CAC and payback"]) }),
     ]),
@@ -1031,6 +1046,12 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const contractedNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount required"), 0)
   const activationReadyNests = governedLiving.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
   const gapNests = Math.max(0, contractedNests - activationReadyNests)
+  const fonoRows = governedLiving.filter((row) => channel(row) === "FONO")
+  const spRows = governedLiving.filter((row) => channel(row) === "SP")
+  const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
+  const spReady = spRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
+  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const spContracted = spRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
   const growthAction = snapshot.actions.find((row) => {
     const identity = `${text(row, "action id")} ${text(row, "operating objective")}`.toLowerCase()
     return identity.includes("nia-growth") || identity.includes("nia growth")
@@ -1040,19 +1061,13 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const owner = String(snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned").trim()
   const progress = contractedNests > 0 ? `${Math.round(activationReadyNests / contractedNests * 100)}%` : "No data"
   const summary = Object.freeze({
-    target: `${contractedNests} required Nests`,
-    current: `${activationReadyNests} matched Nests`,
-    gap: `${gapNests} Nests`,
+    target: `FONO ${fonoContracted} demand · SP ${spContracted} leads`,
+    current: `FONO ${fonoReady} supply · SP ${spReady} won`,
+    gap: `FONO ${Math.max(0, fonoContracted - fonoReady)} gap · SP ${Math.max(0, spContracted - spReady)} open`,
     owner,
     progress,
-    verifiedResult: `${activationReadyNests} matched Nests from FONO and Shram Park demand`,
+    verifiedResult: "FONO Nest capacity and Shrampark lead counts kept separate",
   })
-  const fonoRows = governedLiving.filter((row) => channel(row) === "FONO")
-  const spRows = governedLiving.filter((row) => channel(row) === "SP")
-  const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
-  const spReady = spRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
-  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
-  const spContracted = spRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
   const readinessSlaPolicy = snapshot.policies.find((row) => {
     const descriptor = `${text(row, "policy id")} ${text(row, "policy name")} ${text(row, "name")} ${text(row, "source note")}`.toLowerCase()
     return /growth|capacity|readiness/.test(descriptor) && /sla|time/.test(descriptor) && text(row, "status").toLowerCase() === "approved"
@@ -1104,8 +1119,8 @@ export function buildLiveSelfDriveSnapshot(ops: any): LiveSelfDriveSnapshot {
       verifiedActivations: activations.filter((row) => text(row, "verification status").toLowerCase() === "verified").length,
       openIncidents: incidents.filter((row) => !["closed", "resolved"].includes(text(row, "state").toLowerCase())).length,
       openActions: actions.filter((row) => !["closed", "verified"].includes(text(row, "state").toLowerCase())).length,
-      readyNests: living.reduce((sum, row) => sum + number(row, "activation ready nests"), 0),
-      occupiedNests: living.reduce((sum, row) => sum + number(row, "occupied nests"), 0),
+      readyNests: living.filter((row) => ["FONO", "SP"].includes(text(row, "supply model").toUpperCase())).reduce((sum, row) => sum + number(row, "activation ready nests"), 0),
+      occupiedNests: living.filter((row) => ["FONO", "SP"].includes(text(row, "supply model").toUpperCase())).reduce((sum, row) => sum + number(row, "occupied nests"), 0),
       cm2Inr: finance.reduce((sum, row) => sum + number(row, "cm2 inr"), 0),
     },
   }
@@ -1201,8 +1216,8 @@ export function filterLiveSelfDriveSnapshot(snapshot: LiveSelfDriveSnapshot, fil
       verifiedActivations: activations.filter((row) => text(row, "verification status").toLowerCase() === "verified").length,
       openIncidents: incidents.filter((row) => !["closed", "resolved"].includes(text(row, "state").toLowerCase())).length,
       openActions: actions.filter((row) => !["closed", "verified"].includes(text(row, "state").toLowerCase())).length,
-      readyNests: living.reduce((sum, row) => sum + number(row, "activation ready nests"), 0),
-      occupiedNests: living.reduce((sum, row) => sum + number(row, "occupied nests"), 0),
+      readyNests: living.filter((row) => ["FONO", "SP"].includes(text(row, "supply model").toUpperCase())).reduce((sum, row) => sum + number(row, "activation ready nests"), 0),
+      occupiedNests: living.filter((row) => ["FONO", "SP"].includes(text(row, "supply model").toUpperCase())).reduce((sum, row) => sum + number(row, "occupied nests"), 0),
       cm2Inr: finance.reduce((sum, row) => sum + number(row, "cm2 inr"), 0),
     }),
   })
@@ -1212,13 +1227,22 @@ export function buildLiveMarginInputs(snapshot: LiveSelfDriveSnapshot): readonly
   return snapshot.living.flatMap((row) => {
     const studioId = text(row, "studio id")
     const sourceRowIdentity = text(row, "living hourly id") || studioId
+    const studio = snapshot.studios.find((entry) => text(entry, "studio id") === studioId) || {}
     const contractedNests = number(row, "contracted nests")
+      || number(studio, "contracted nests")
+      || number(studio, "capacity nests")
+      || number(studio, "total nests")
     const occupied = number(row, "occupied nests")
+    const rowSupplyModel = text(row, "supply model").toUpperCase()
+    const masterSupplyModel = text(studio, "supply model").toUpperCase()
+    const resolvedSupplyModel = rowSupplyModel === "EXISTING"
+      ? (["FONO", "SP"].includes(masterSupplyModel) ? masterSupplyModel : "")
+      : rowSupplyModel === "SP" ? "SP" : "FONO"
 
     // Margin diagnostics require a governed, internally consistent capacity
     // record. Do not invent or clamp capacity when a live Sheet row is
     // incomplete; exclude it until the source data is corrected.
-    if (!studioId || !sourceRowIdentity || contractedNests <= 0 || occupied < 0 || occupied > contractedNests) return []
+    if (!studioId || !sourceRowIdentity || !resolvedSupplyModel || contractedNests <= 0 || occupied < 0 || occupied > contractedNests) return []
 
     const finance = snapshot.finance.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}
     const billedLiving = number(row, "living billed inr")
@@ -1226,7 +1250,7 @@ export function buildLiveMarginInputs(snapshot: LiveSelfDriveSnapshot): readonly
     const essentialsBilled = number(snapshot.essentials.find((entry) => text(entry, "studio id") === text(row, "studio id")) || {}, "essentials billed inr")
     return [{
       studioId, studioName: studioId, theatreId: text(row, "theatre id"),
-      supplyModel: text(row, "supply model") === "SP" ? "SP" : "FONO",
+      supplyModel: resolvedSupplyModel as "FONO" | "SP",
       contractedNests, occupiedNests: occupied, rampDay: 30,
       billedLivingArpuInr: occupied ? billedLiving / occupied : 0,
       livingPartnerCostInr: 0, livingUtilitiesInr: 0,

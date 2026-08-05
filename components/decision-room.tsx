@@ -34,7 +34,8 @@ function lastNumber(value: string) {
 }
 
 function numberTotal(value: string) {
-  return (value.replaceAll(",", "").match(/-?\d+(?:\.\d+)?/g) ?? []).reduce((total, item) => total + Number(item), 0)
+  return (value.replaceAll(",", "").match(/-?\d+(?:\.\d+)?/g) ?? [])
+    .reduce((total, item) => total + Number(item), 0)
 }
 
 function positionPercent(current: number, target: number) {
@@ -69,7 +70,7 @@ export type DecisionRoomProps = {
   enterpriseDemandPreview: EnterpriseDemandLoopPreview | null
   cashControlPreview: CashControlPreview | null
   newAddsPreview: NewAddsPreview
-  memberEngagementPreview: MemberEngagementPreview
+  memberEngagementPreview: MemberEngagementPreview | null
   memberSavingsPreview: MemberSavingsPreview
   niaMarginsPreview: NiaMarginsPreview
   niaGrowthPreview: NiaGrowthPreview
@@ -125,7 +126,7 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
       escalations: newAddsPreview.despatchEscalations.length,
       position: positionPercent(newAddsPreview.taskSummary.current, newAddsPreview.taskSummary.target),
     },
-    {
+    ...(memberEngagementPreview ? [{
       tab: "Member Engagement" as const,
       label: "Member Engagement",
       headline: memberEngagementPreview.headline,
@@ -136,7 +137,7 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
       health: memberEngagementPreview.loopHealth,
       escalations: memberEngagementPreview.despatchEscalations.length,
       position: positionPercent(firstNumber(memberEngagementPreview.summary.current), firstNumber(memberEngagementPreview.summary.target)),
-    },
+    }] : []),
     {
       tab: "Member Savings" as const,
       label: "Member Savings",
@@ -147,19 +148,19 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
       owner: memberSavingsPreview.summary.owner,
       health: memberSavingsPreview.loopHealth,
       escalations: memberSavingsPreview.despatchEscalations.length,
-      position: positionPercent(firstNumber(memberSavingsPreview.summary.current), 4),
+      position: positionPercent(firstNumber(memberSavingsPreview.summary.current), firstNumber(memberSavingsPreview.summary.target)),
     },
     {
       tab: "Nia Margins" as const,
       label: "Nia Margins",
       headline: niaMarginsPreview.answer,
-      target: `₹${niaMarginsPreview.measures.fullUseTargetInr} full-use CM2`,
+      target: niaMarginsPreview.measures.fullUseTargetInr > 0 ? `₹${niaMarginsPreview.measures.fullUseTargetInr} full-use CM2` : "Approved target not recorded",
       current: `₹${Math.round(niaMarginsPreview.measures.fullUseCm2Inr)} today`,
-      gap: `${niaMarginsPreview.measures.negativeContributionStudios} negative Studios`,
+      gap: niaMarginsPreview.measures.fullUseTargetInr > 0 ? `${Math.max(0, niaMarginsPreview.measures.fullUseTargetInr - niaMarginsPreview.measures.fullUseCm2Inr)} per-unit gap` : "Cannot calculate without approved target",
       owner: "Nia Margins loop",
       health: niaMarginsPreview.loopHealth,
       escalations: niaMarginsPreview.despatchEscalations.length,
-      position: positionPercent(niaMarginsPreview.measures.fullUseCm2Inr, niaMarginsPreview.measures.fullUseTargetInr),
+      position: niaMarginsPreview.measures.fullUseTargetInr > 0 ? positionPercent(niaMarginsPreview.measures.fullUseCm2Inr, niaMarginsPreview.measures.fullUseTargetInr) : 0,
     },
     {
       tab: "Nia Growth" as const,
@@ -181,13 +182,12 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
     <ContextStrip label="Decision Room context" items={[
       { label: "Lens", value: "Decide · management view" },
       { label: "Period", value: period },
-      { label: "Loops behind", value: `${behindLoops.length} of ${loops.length}`, tone: behindLoops.length > 0 ? "attention" : "verified" },
-      { label: "Decisions waiting", value: `${pendingDecisions.length + signOffCount}`, tone: pendingDecisions.length + signOffCount > 0 ? "attention" : "verified" },
+      { label: "Loops behind", value: `${behindLoops.length} of ${loops.length}` },
+      { label: "Decisions waiting", value: `${pendingDecisions.length + signOffCount}` },
     ]} />
 
     {primaryDecision ? <DecisionBand
       label="Decide this now"
-      tone="attention"
       title={primaryDecision.decision}
       description={primaryDecision.impact}
       owner={primaryDecision.owner}
@@ -196,7 +196,6 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
       outcome="Nothing commits until this is approved or declined"
     /> : <DecisionBand
       label="Decide this now"
-      tone="verified"
       title="No decision is blocking the loops"
       description="Every open item is inside governed operator work. Review the loop scoreboard below for state and variance."
       owner="—"
@@ -206,18 +205,61 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
     />}
 
     <section className="decision-room-scoreboard" aria-label="Loop scoreboard">
-      <header><div><span>Loop scoreboard</span><h2>Where each loop stands</h2></div><p>Neutral comparisons from the governed view models. Open any loop to inspect its evidence.</p></header>
+      <header><div><span>Loop scoreboard</span><h2>Where each loop stands</h2></div><p>Neutral comparisons from the governed previews. Open any loop to inspect its evidence.</p></header>
+
       <div className="decision-room-chart-grid">
-        <figure className="decision-room-position-chart" aria-label="Current versus target by loop"><figcaption><strong>Current vs target</strong><span>Normalised to each loop&apos;s own target</span></figcaption><div className="decision-room-chart-axis" aria-hidden><span>0%</span><span>Target</span><span>200%</span></div><ol>{loops.map((loop) => <li key={loop.tab}><button type="button" onClick={() => onOpenLoop(loop.tab)} aria-label={`Inspect ${loop.label} evidence`}><span className="decision-room-chart-label"><strong>{loop.label}</strong><small>{Math.round(loop.position)}% of target</small></span><span className="decision-room-bullet" role="img" aria-label={`${loop.current}; target ${loop.target}`} style={{ "--decision-position": `${loop.position / 2}%` } as CSSProperties}><i /><b aria-hidden /></span><ChevronRight aria-hidden /></button></li>)}</ol></figure>
-        <figure className="decision-room-escalation-chart" aria-label="Escalations by loop"><figcaption><strong>Escalations</strong><span>{loops.reduce((total, loop) => total + loop.escalations, 0)} across all loops</span></figcaption><ol>{loops.map((loop) => <li key={loop.tab}><span>{loop.label}</span><i aria-hidden><b style={{ "--decision-escalations": `${loop.escalations / maximumEscalations * 100}%` } as CSSProperties} /></i><strong>{loop.escalations}</strong></li>)}</ol></figure>
+        <figure className="decision-room-position-chart" aria-label="Current versus target by loop">
+          <figcaption><strong>Current vs target</strong><span>Normalised to each loop&apos;s own target</span></figcaption>
+          <div className="decision-room-chart-axis" aria-hidden><span>0%</span><span>Target</span><span>200%</span></div>
+          <ol>
+            {loops.map((loop) => <li key={loop.tab}>
+              <button type="button" onClick={() => onOpenLoop(loop.tab)} aria-label={`Inspect ${loop.label} evidence`}>
+                <span className="decision-room-chart-label"><strong>{loop.label}</strong><small>{Math.round(loop.position)}% of target</small></span>
+                <span className="decision-room-bullet" role="img" aria-label={`${loop.current}; target ${loop.target}`} style={{ "--decision-position": `${loop.position / 2}%` } as CSSProperties}><i /><b aria-hidden /></span>
+                <ChevronRight aria-hidden />
+              </button>
+            </li>)}
+          </ol>
+        </figure>
+
+        <figure className="decision-room-escalation-chart" aria-label="Escalations by loop">
+          <figcaption><strong>Escalations</strong><span>{loops.reduce((total, loop) => total + loop.escalations, 0)} across all loops</span></figcaption>
+          <ol>
+            {loops.map((loop) => <li key={loop.tab}>
+              <span>{loop.label}</span>
+              <i aria-hidden><b style={{ "--decision-escalations": `${(loop.escalations / maximumEscalations) * 100}%` } as CSSProperties} /></i>
+              <strong>{loop.escalations}</strong>
+            </li>)}
+          </ol>
+        </figure>
       </div>
-      <div className="decision-room-evidence" aria-label="Loop evidence table"><div className="decision-room-evidence-head" aria-hidden><span>Loop</span><span>Current</span><span>Target</span><span>Gap</span><span /></div><ol>{loops.map((loop) => <li key={loop.tab}><button type="button" onClick={() => onOpenLoop(loop.tab)} aria-label={`Open ${loop.label}`}><span className="decision-room-loop"><strong>{loop.label}</strong><small>{loop.headline}</small></span><span><b>{loop.current}</b><small>Current</small></span><span><b>{loop.target}</b><small>Target</small></span><span><b>{loop.gap}</b><small>Gap</small></span><ChevronRight aria-hidden /></button></li>)}</ol></div>
+
+      <div className="decision-room-evidence" aria-label="Loop evidence table">
+        <div className="decision-room-evidence-head" aria-hidden><span>Loop</span><span>Current</span><span>Target</span><span>Gap</span><span /></div>
+        <ol>
+          {loops.map((loop) => <li key={loop.tab}>
+            <button type="button" onClick={() => onOpenLoop(loop.tab)} aria-label={`Open ${loop.label}`}>
+              <span className="decision-room-loop"><strong>{loop.label}</strong><small>{loop.headline}</small></span>
+              <span><b>{loop.current}</b><small>Current</small></span>
+              <span><b>{loop.target}</b><small>Target</small></span>
+              <span><b>{loop.gap}</b><small>Gap</small></span>
+              <ChevronRight aria-hidden />
+            </button>
+          </li>)}
+        </ol>
+      </div>
     </section>
 
     {pendingDecisions.length > 1 ? <section className="decision-room-queue" aria-label="Remaining decisions">
       <header><div><span>Also waiting</span><h2>{pendingDecisions.length - 1} more decision{pendingDecisions.length - 1 === 1 ? "" : "s"}</h2></div></header>
       <div className="decision-room-queue-head" aria-hidden><span>Decision</span><span>Loop</span><span>Owner</span><span>Context</span><span /></div>
-      <ol>{pendingDecisions.slice(1).map((decision) => <li key={decision.id}><button type="button" onClick={onOpenSignOff} aria-label={`Review ${decision.decision} in Your Sign-Off`}><strong>{decision.decision}</strong><span>{decision.loopLabel}</span><span>{decision.owner}</span><span>{decision.impact}</span><ChevronRight aria-hidden /></button></li>)}</ol>
+      <ol>
+        {pendingDecisions.slice(1).map((decision) => <li key={decision.id}>
+          <button type="button" onClick={onOpenSignOff} aria-label={`Review ${decision.decision} in Your Sign-Off`}>
+            <strong>{decision.decision}</strong><span>{decision.loopLabel}</span><span>{decision.owner}</span><span>{decision.impact}</span><ChevronRight aria-hidden />
+          </button>
+        </li>)}
+      </ol>
     </section> : null}
 
     <footer className="decision-room-footnote">

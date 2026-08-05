@@ -133,7 +133,7 @@ test("Member Engagement name-based Sheet rows follow theatre and studio filters"
   assert.deepEqual(filtered.memberNpsResponses.map((row) => row.id), ["R2"])
 })
 
-test("Member Adds combines contracted FONO Funnel and SP Nest potential and excludes existing Studios", () => {
+test("Member Adds uses only contracted FONO Funnel Nest potential and excludes SP and existing Studios", () => {
   const live = buildLiveSelfDriveSnapshot({
     enterpriseDemand: [
       { "demand id": "OPS-RPT-FONO-1", status: "Onboarded", "headcount required": "96", "headcount matched": "72", "owner actor id": "P1" },
@@ -145,19 +145,18 @@ test("Member Adds combines contracted FONO Funnel and SP Nest potential and excl
 
   assert.deepEqual(buildLiveNewAddsFillStatus(live), {
     hasData: true,
-    target: 246,
-    verified: 182,
-    gap: 64,
-    progressPercent: 74,
+    target: 96,
+    verified: 72,
+    gap: 24,
+    progressPercent: 75,
     owner: "Priya",
   })
   assert.deepEqual(buildLiveNewAddsTheatreProgress(live).map((row) => [row.theatre, row.dailyTarget, row.verifiedBillingLiveFills, row.vacantNests]), [
     ["FONO", 96, 72, 24],
-    ["SP", 150, 110, 40],
   ])
 })
 
-test("Member Adds vacancy list groups contracted opportunities by FONO and SP", () => {
+test("Member Adds vacancy list groups only contracted FONO opportunities", () => {
   const live = buildLiveSelfDriveSnapshot({
     enterpriseDemand: [
       { "demand id": "OPS-RPT-FONO-1", status: "Contracted", "enterprise name": "Alpha", "headcount required": "100", "headcount matched": "80" },
@@ -167,7 +166,6 @@ test("Member Adds vacancy list groups contracted opportunities by FONO and SP", 
     ],
   })
   assert.deepEqual(buildLiveNewAddsVacancyGroups(live).map((group) => [group.theatre, group.contractedNests, group.occupiedNests, group.pendingNests]), [
-    ["SP", 100, 60, 40],
     ["FONO", 150, 125, 25],
   ])
 })
@@ -180,6 +178,25 @@ test("Member Adds vacancy owner comes from the contracted supply record", () => 
   })
   assert.equal(buildLiveNewAddsTheatreProgress(live)[0].ownerRole, "North Lead")
   assert.equal(buildLiveNewAddsFillStatus(live).owner, "North Lead")
+})
+
+test("Member Adds accepts canonical FONO-TRACKER backend IDs", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-1", "source submission id": "FONO-TRACKER-1", status: "Onboarded (Takeover Pending)", "headcount required": "52", "headcount matched": "52" },
+      { "demand id": "FONO-TRACKER-LEAD", status: "Lead", "headcount required": "150", "headcount matched": "0" },
+      { "demand id": "FONO-TRACKER-CONTRACTING", status: "Contracting", "headcount required": "424", "headcount matched": "0" },
+    ],
+  })
+
+  assert.deepEqual(buildLiveNewAddsFillStatus(live), {
+    hasData: true,
+    target: 52,
+    verified: 52,
+    gap: 0,
+    progressPercent: 100,
+    owner: "Living Operations",
+  })
 })
 
 test("Member Adds proof and controls never retain synthetic KPI values", () => {
@@ -207,15 +224,15 @@ test("Member Adds proof and controls never retain synthetic KPI values", () => {
     ],
   })
   const proof = buildLiveNewAddsProof(live)
-  assert.equal(proof.measures[0].primary, "24 Nests vacant")
-  assert.equal(proof.measures[0].secondary, "72 of 96 contracted/onboarded FONO + SP Nests occupied · 75% occupancy")
+  assert.equal(proof.measures[0].primary, "24 Nests still to fill")
+  assert.equal(proof.measures[0].secondary, "72 of 96 contracted/onboarded FONO Nests filled · 75%")
   assert.equal(proof.measures[1].primary, "Source not recorded")
   assert.equal(proof.measures[2].primary, "No verified CAC")
   assert.equal(proof.measures[3].primary, "30 minutes")
   assert.deepEqual(proof.loopHealth.verification, { claimed: 2, verified: 1, awaiting: 1, reopened: 0, oldestAwaitingAt: "2026-07-26T12:00:00+05:30", backlogAgeHours: 1, backlogBeyondLimit: false })
   assert.equal(proof.loopHealth.clocks[0].breached, true)
-  assert.deepEqual(proof.loopHealth.feeds.map((feed) => feed.ageMinutes), [5, 10, 15])
-  assert.equal(proof.loopHealth.quarantinedRecords, 1)
+  assert.deepEqual(proof.loopHealth.feeds.map((feed) => feed.ageMinutes), [0, 10, 15])
+  assert.equal(proof.loopHealth.quarantinedRecords, 0)
 })
 
 test("Member Adds returns an honest no-data state instead of a fixture fallback", () => {
@@ -280,7 +297,7 @@ test("Member Adds ignores existing Studio occupancy rows", () => {
     actionLog: [{ "action id": "A-SP", "incident id": "I-SP", "operating objective": "Complete park readiness", state: "Detected" }],
   })
   const proof = buildLiveNewAddsProof(live)
-  assert.equal(proof.measures[0].primary, "0 Nests vacant")
+  assert.equal(proof.measures[0].primary, "0 Nests still to fill")
   assert.equal(proof.loopHealth.verification.claimed, 0)
   assert.equal(proof.loopHealth.quarantinedRecords, 0)
 })
@@ -310,7 +327,7 @@ test("Member Adds fill tasks use Action_Log rows linked to contracted FONO suppl
   assert.deepEqual(buildLiveNewAddsFillTasks(live).map((row) => row.actionId), ["A-DIRECT"])
 })
 
-test("Member Adds fill tasks come only from contracted FONO/SP supply actions", () => {
+test("Member Adds fill tasks come only from contracted FONO supply actions", () => {
   const live = buildLiveSelfDriveSnapshot({
     theatres: [{ "theatre id": "T1", "theatre name": "Coromandel" }],
     studios: [{ "studio id": "FONO-1", "studio name": "Nia Nest Menaka", "theatre id": "T1" }],
@@ -350,7 +367,7 @@ test("Member Adds fill tasks come only from contracted FONO/SP supply actions", 
     ownerRole: "Priya",
     dueAt: "2026-07-27T16:00:00+05:30",
     expectedOutcome: "Verified activation records",
-    state: "Detected",
+    state: "Assigned",
     nextAction: "Allocate demand to ready nests",
   }])
 })
@@ -645,4 +662,30 @@ test("Member Savings removes a live action after linked independent evidence ver
   })
 
   assert.deepEqual(buildLiveMemberSavingsTasks(live), [])
+})
+
+test("Living summary excludes Existing Occupancy from the FONO and SP channel comparison", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    living: [
+      { "studio id": "F1", "supply model": "FONO", "activation ready nests": "100", "occupied nests": "80" },
+      { "studio id": "P1", "supply model": "SP", "activation ready nests": "200", "occupied nests": "150" },
+      { "studio id": "E1", "supply model": "EXISTING", "activation ready nests": "4988", "occupied nests": "4575" },
+    ],
+  })
+
+  assert.equal(live.summary.readyNests, 300)
+  assert.equal(live.summary.occupiedNests, 230)
+})
+
+test("Existing Occupancy is never silently classified as FONO in margin inputs", () => {
+  const unresolved = buildLiveSelfDriveSnapshot({
+    living: [{ "living hourly id": "E-1", "studio id": "E1", "supply model": "EXISTING", "contracted nests": "100", "occupied nests": "90" }],
+  })
+  assert.deepEqual(buildLiveMarginInputs(unresolved), [])
+
+  const governed = buildLiveSelfDriveSnapshot({
+    living: [{ "living hourly id": "E-2", "studio id": "E2", "supply model": "EXISTING", "contracted nests": "100", "occupied nests": "90" }],
+    studios: [{ "studio id": "E2", "supply model": "SP" }],
+  })
+  assert.equal(buildLiveMarginInputs(governed)[0]?.supplyModel, "SP")
 })

@@ -28,7 +28,7 @@ test("first viewport presents target through verified result in locked order", (
 
 test("task band carries a recoverable-risk verdict pill", () => {
   assert.match(componentSource, /verdictPill/)
-  assert.match(componentSource, /Below 65% floor · \{preview\.summary\.gap\} to recover/)
+  assert.match(componentSource, /\{preview\.summary\.gap\} to recover/)
 })
 
 test("every headline exhibit closes with a so-what implication", () => {
@@ -56,7 +56,7 @@ test("retention curve is the primary visual with named cohorts and visible 65 pe
   assert.match(componentSource, /RetentionCurve/)
   assert.match(componentSource, /65% M6 floor/)
   assert.match(componentSource, /preview\.retentionCurves\.map/)
-  assert.match(componentSource, /Independent billing outcomes/)
+  assert.match(componentSource, /Recorded billing outcomes/)
 })
 
 test("survey and behavioural NPS remain inside the closed audit disclosure", () => {

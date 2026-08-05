@@ -45,9 +45,10 @@ function TaskSummary({ preview }: Props) {
 }
 
 function TheatreVisual({ preview }: Props) {
+  const belowTarget = preview.theatres.filter((theatre) => theatre.verifiedBillingLiveFills < theatre.dailyTarget).length
   return <section className={styles.theatrePanel} aria-label="Empty spots by location">
     <div className={styles.sectionHeader}>
-      <div><span>Empty spots by location</span><strong>Two Theatres are below today’s target.</strong></div>
+      <div><span>Empty spots by location</span><strong>{belowTarget ? `${belowTarget} governed channel${belowTarget === 1 ? " is" : "s are"} below the recorded target.` : "No governed channel is below the recorded target."}</strong></div>
       <p><i className={styles.fillKey} />Members billing <i className={styles.targetKey} />Today’s target</p>
     </div>
     <div className={styles.theatreCards}>
@@ -65,7 +66,7 @@ function TheatreVisual({ preview }: Props) {
           <dl className={styles.theatreStats}>
             <div><dt>Still needed</dt><dd>{remainingToday} <small>Members</small></dd></div>
             <div><dt>Vacant Nests</dt><dd>{theatre.vacantNests}</dd></div>
-            <div><dt>Average fill time</dt><dd>{theatre.daysToFill} <small>days</small></dd></div>
+            <div><dt>Average fill time</dt><dd>{theatre.averageFillTimeLabel}</dd></div>
           </dl>
         </article>
       })}
@@ -106,6 +107,7 @@ function MeasureChart({ chart }: { chart: NewAddsMeasureChart }) {
       </ul>
     </div>
   }
+  if (chart.target <= 0) return <div className={styles.miniChart}><div className={styles.chartScale}><b>No governed target</b><span>Record an approved policy before comparison.</span></div></div>
   const domain = Math.max(chart.value, chart.target) * 1.1
   const good = chart.goodWhenUnder ? chart.value <= chart.target : chart.value >= chart.target
   return <div className={styles.miniChart}>
@@ -159,7 +161,7 @@ export function NewAddsWorkspace({ preview }: Props) {
   return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-supply-model="FONO" ariaLabel="Member Adds sections" sections={[
     { title: "Fill status", summary: verdictLabel },
     { title: "Theatre progress", summary: `${current}/${target} verified · ${gap} still needed`, lens: "decide" },
-    { title: "Spots to fill", summary: `${tasks.length} fills awaiting verified billing`, lens: "operate" },
+    { title: "Spots to fill", summary: `${preview.taskSummary.gap} Nests awaiting verified billing`, lens: "operate" },
     { title: "Your sign-off", summary: `${openSignOff} blocked decision${openSignOff === 1 ? "" : "s"}`, lens: "decide" },
     { title: "Proof and controls", summary: `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes confirmed` },
     { title: "Decision required", summary: `${gap} verified fill${gap === 1 ? "" : "s"} to recover · owner ${owner}` },
@@ -173,10 +175,10 @@ export function NewAddsWorkspace({ preview }: Props) {
       </div>
       <div className={styles.questionGauge}>
         <Gauge progressPercent={progressPercent} current={current} target={target} gap={gap} />
-        <ul className={styles.gaugeLegend}>
-          <li data-key="verified"><i /><span>Verified</span><b>{current}</b></li>
-          <li data-key="gap"><i /><span>Gap</span><b>{gap}</b></li>
-          <li data-key="target"><i /><span>Target</span><b>{target}</b></li>
+        <ul className={`ds-status-key ${styles.gaugeLegend}`}>
+          <li className="ds-status-key-item" data-state="verified"><i className="ds-status-key-swatch" /><span>Verified</span><b>{current}</b></li>
+          <li className="ds-status-key-item" data-state="unresolved"><i className="ds-status-key-swatch" /><span>Gap</span><b>{gap}</b></li>
+          <li className="ds-status-key-item" data-state="neutral"><i className="ds-status-key-swatch" /><span>Target</span><b>{target}</b></li>
         </ul>
       </div>
     </section>
@@ -192,10 +194,10 @@ export function NewAddsWorkspace({ preview }: Props) {
       <p className={styles.stepLabel}><span>03</span>Spots to fill today · {owner}</p>
       <section className={styles.workPanel} aria-label="Spots to fill today">
         <div className={styles.sectionHeader}>
-          <div><span>Spots to fill today</span><strong>{tasks.length} fills awaiting verified billing</strong></div>
+          <div><span>Spots to fill today</span><strong>{preview.taskSummary.gap} Nests awaiting verified billing</strong></div>
           <p><MessageSquareDashed aria-hidden />WhatsApp stays shadow-only</p>
         </div>
-        <OperationalCardStack label="Member Adds governed fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · ${task.channel} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No external message or Production write</small></div></OperationalCard>)}</OperationalCardStack>
+        <OperationalCardStack label="Member Adds synthetic fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · ${task.channel} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>
       </section>
     </div>
 
@@ -245,6 +247,6 @@ export function NewAddsWorkspace({ preview }: Props) {
       </dl>
     </section>
 
-    <footer className={styles.footer} aria-label="Member Adds governed source status"><CheckCircle2 aria-hidden /><span>{preview.source.freshness} governed inputs · refresh {date(preview.source.lastRefreshAt)} · FONO only · {preview.quarantineCount} rows quarantined</span><ShieldCheck aria-hidden /><span>{displayLabel(preview.source.name)} · protected governed references · billing-live outcomes only</span><Clock3 aria-hidden /><span>{preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change</span><LockKeyhole aria-hidden /><span>No external action or Production write</span></footer>
+    <footer className={styles.footer} aria-label="Member Adds source status"><CheckCircle2 aria-hidden /><span>{preview.source.freshness} governed inputs · refresh {date(preview.source.lastRefreshAt)} · FONO + Shrampark + Enterprise · {preview.quarantineCount} rows quarantined</span><ShieldCheck aria-hidden /><span>{displayLabel(preview.source.name)} · protected governed references · verified additions only</span><Clock3 aria-hidden /><span>{preview.learningProjection.accepted.length} verified learning chain accepted · no policy auto-change</span><LockKeyhole aria-hidden /><span>No live WhatsApp, external action or Production write</span></footer>
   </DashboardSectionAccordion>
 }

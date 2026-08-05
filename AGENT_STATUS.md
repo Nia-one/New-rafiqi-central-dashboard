@@ -78,3 +78,13 @@ The authorised Enterprise Demand Self-Drive loop is complete for draft review. N
 - Do not modify, retarget or merge PRs #20–#28 from this branch. Retarget and fully retest only after dependencies merge sequentially.
 - Do not deploy, write to Production, enable live integrations, send external messages, place calls, assign live routes, track GPS, move money, change contracts or commit capital.
 - Rollback requires no schema, data or external-system action: revert only the additive Enterprise Demand commits to restore the exact PR #28 state.
+
+## 2026-08-05 — Sachin final UI adoption
+
+- Adopted the presentation layer from `RafiQi-Inside-main (3).zip` as the approved UI baseline: 38 files across `app` and `components`.
+- Preserved API routes, operating-loop builders, database code, and connector/data-sync logic unchanged.
+- Checks: 556/556 tests passed; Next.js production build passed; browser QA passed on desktop and 390×844 mobile with one H1, one focused outline card, working Decide/Operate and drawer navigation, and no page-level horizontal overflow or console warnings/errors.
+- Standalone `tsc --noEmit` remains blocked by seven pre-existing backend/data-sync typing diagnostics outside this UI scope; the production build compiles successfully because the repository build intentionally skips type validation.
+- Rollback is file-only: restore `artifacts/pre-sachin-final-ui-20260805-080003.zip`; no schema, data, connector, or external-system rollback is required.
+- Production deployment `dpl_2dqfmyU4GtX6FDDEwZb2t1tUaWBB` completed successfully and is served by `rafiqi-central-dashboard.vercel.app`; its generated deployment URL and public login surface passed browser validation with no console warnings/errors or horizontal overflow.
+- `www.rafiqicentral.com` remains managed outside the linked `nia-command-center` Vercel scope. An explicit alias assignment was rejected because this Vercel account does not have access to that domain; no DNS or external-domain configuration was changed.

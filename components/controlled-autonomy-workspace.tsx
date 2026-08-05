@@ -144,7 +144,7 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
         <p>The system detects, routes, chases, collects proof, verifies, closes, reopens and escalates routine work. A person appears only after repeated, independently verified non-performance survives data-quality and prior-intervention checks.</p>
       </div>
       <dl>
-        <div><dt>Source</dt><dd><Database aria-hidden />{preview.source.name}</dd></div>
+        <div><dt>Source</dt><dd><Database aria-hidden />Governed live records</dd></div>
         <div><dt>As of</dt><dd>{date(preview.source.asOf)}</dd></div>
         <div><dt>Execution</dt><dd><FileLock2 aria-hidden />Kill switch engaged</dd></div>
       </dl>
@@ -158,7 +158,7 @@ export function ControlledAutonomyWorkspace({ preview }: Props) {
     </section>
 
     <section className="closed-loop-panel autonomy-routine-loop" aria-labelledby="autonomy-routine-title">
-      <header><div><p className="section-kicker">Routine Recovery</p><h3 id="autonomy-routine-title">The system owns routine exceptions</h3></div><span>{preview.routineLoop.stateCoverage.length} governed routes</span></header>
+      <header><div><p className="section-kicker">Routine Recovery</p><h3 id="autonomy-routine-title">The system owns routine exceptions</h3></div><span>0 management interventions · governed routes</span></header>
       <ol className="autonomy-lifecycle" aria-label="Routine exception lifecycle">
         {preview.routineLoop.stateCoverage.map((item, index) => <li key={item.state}><span>{String(index + 1).padStart(2, "0")}</span><strong>{item.state}</strong><small>{item.count} governed {item.count === 1 ? "path" : "paths"}</small></li>)}
       </ol>

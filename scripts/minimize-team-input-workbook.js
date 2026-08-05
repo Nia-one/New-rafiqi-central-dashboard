@@ -6,8 +6,9 @@ const { google } = require("googleapis")
 const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU"
 const visibleTabs = new Set([
   "TEAM_DATA_ENTRY_HOME", "DATA_ENTRY_GUIDE", "TEAM_OCCUPANCY",
-  "TEAM_FONO_SUPPLY_DEMAND", "TEAM_ESSENTIALS_SUMMARY",
-  "TEAM_ESSENTIALS_INVENTORY", "TEAM_SHRAMPARK_DEMAND", "SELF_DRIVE_LEARN_GUIDE",
+  "TEAM_FONO_SUPPLY_DEMAND", "TEAM_FINANCE_DAILY", "TEAM_MEMBER_ACTIVATION",
+  "TEAM_REQ_SP_SUPPLY", "TEAM_MEMBER_FEEDBACK", "TEAM_REQ_PEOPLE_ROSTER",
+  "TEAM_LEARNING_HISTORY", "Fono Funnel", "SELF_DRIVE_LEARN_GUIDE",
 ])
 const formulaSpecs = {}
 const letter = (index) => { let n = index + 1, out = ""; while (n) { n--; out = String.fromCharCode(65 + n % 26) + out; n = Math.floor(n / 26) } return out }

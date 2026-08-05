@@ -46,11 +46,14 @@ const requiredSourceColumns = [
 ];
 
 async function mirrorShramParkSource(values: unknown[][]) {
-  const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID;
+  const spreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
   if (!spreadsheetId) throw new Error("GOOGLE_TEAM_INPUT_SHEET_ID is missing");
   const target = "TEAM_SHRAMPARK_DEMAND";
   const sheets = await sheetsClient(true);
   let metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title)" });
+  if (metadata.data.sheets?.some((item) => item.properties?.title === "00_READ_ME")) {
+    return { targetTab: target, rows: Math.max(0, values.length - 1), skipped: true };
+  }
   let sheet = metadata.data.sheets?.find((item) => item.properties?.title === target);
   if (!sheet) {
     const added = await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ addSheet: { properties: { title: target } } }] } });
@@ -96,16 +99,14 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
   const source = String(value(row, headers, "Source"));
   const joined = `${company} ${location} ${notes} ${source}`.toLowerCase();
   const obviousTest = /\b(test|fictional|simulator)\b/.test(joined);
-  const requirement = norm(value(row, headers, "Requirement"));
   const currentManpower = number(value(row, headers, "Current Manpower Count"));
-  const statedRequirement = number(value(row, headers, "Total Requirement")) || number(value(row, headers, "Male Requirement")) + number(value(row, headers, "Female Requirement"));
   // Requirement=N is still a valid Shram Park lead/visit, but current manpower
   // is client context and must never be presented as Rafiqi demand or matched
   // capacity. Only an explicit requirement contributes demand Nests.
-  const hasActiveRequirement = requirement === "y" || requirement === "yes";
-  const headcountRequired = hasActiveRequirement ? statedRequirement : 0;
-  const recordedMatched = number(value(row, headers, "Headcount Matched"));
-  const headcountMatched = hasActiveRequirement ? recordedMatched : 0;
+  // This source is a lead ledger. Dashboard demand is the count of qualified
+  // lead records, never the client's indicative manpower/Nest potential.
+  const headcountRequired = 1;
+  const headcountMatched = /won|contracted|agreement signed/i.test(String(value(row, headers, "Follow Up Action"))) ? 1 : 0;
   const latitude = number(value(row, headers, "Latitude"));
   const longitude = number(value(row, headers, "Longitude"));
   const activationRequiredAt = String(value(row, headers, "Activation Required At")).trim();
@@ -118,7 +119,6 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
   if (!location) errors.push("location_missing");
   if (!theatre) errors.push("theatre_missing");
   if (obviousTest) errors.push("test_or_fictional_row");
-  if (hasActiveRequirement && headcountRequired <= 0) errors.push("required_headcount_missing");
   if (!effectiveActivationAt || Number.isNaN(new Date(effectiveActivationAt).getTime())) errors.push("activation_required_at_missing");
   if (!latitude || latitude < -90 || latitude > 90) errors.push("latitude_missing_or_invalid");
   if (!longitude || longitude < -180 || longitude > 180) errors.push("longitude_missing_or_invalid");
@@ -139,7 +139,7 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     "plant name": location,
     latitude,
     longitude,
-    "role required": "Enterprise manpower",
+    "role required": "Shram Park lead",
     "skill required": String(value(row, headers, "Designation of POC")).trim(),
     shift: String(value(row, headers, "Time")).trim(),
     "headcount required": headcountRequired,
@@ -154,7 +154,7 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     "opened at": openedAt,
     "source submission id": submissionId,
     "updated at": openedAt,
-    [REPORTING_MONTH_HEADER]: reportingMonthFromDate(openedAt),
+    [REPORTING_MONTH_HEADER]: reportingMonthFromDate(openedAt) || "",
   };
   return { record, errors };
 }

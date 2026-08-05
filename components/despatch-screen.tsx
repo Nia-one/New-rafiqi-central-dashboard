@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { Activity, BellRing, Check, Clock3, Pause, Play, RefreshCw, ShieldCheck } from "lucide-react"
 import { HEARTBEAT_POLL_INTERVAL_SECONDS, type EvaluatedHeartbeat, type HeartbeatSnapshot } from "@/lib/heartbeat-control"
-import { heartbeatRules } from "@/lib/heartbeat-rules"
+import { heartbeatRules } from "@/lib/heartbeat-data"
+import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildDespatchValidationQueue, type ExecutionAction } from "@/lib/execution-control"
 import type { LoopHealth } from "@/lib/operating-loop/loop-health"
 import type { DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
@@ -105,21 +106,33 @@ function ownerGroupTone(items: readonly { tone: OperationalTone }[]): Operationa
 }
 
 function ownerItemSummary(item: DespatchOwnerItem) {
-  if (item.kind === "escalation") return {
-    issue: plainEscalationError(item.record), domain: dashboardDisplayLabel(item.record.domain),
-    timingLabel: "Due", timing: formatDateTime(item.record.dueAt), action: escalationAction(item.record), optic: escalationOptic(item.record),
+  if (item.kind === "escalation") {
+    return {
+      issue: plainEscalationError(item.record),
+      domain: dashboardDisplayLabel(item.record.domain),
+      timingLabel: "Due",
+      timing: formatDateTime(item.record.dueAt),
+      action: escalationAction(item.record),
+      optic: escalationOptic(item.record),
+    }
   }
   if (item.kind === "heartbeat") {
     const scale = Math.max(item.record.rule.threshold_minutes * 2, item.record.minutes_since_heartbeat)
     return {
-      issue: `${item.record.name} went silent`, domain: `${item.record.theatre} · ${item.record.location}`,
-      timingLabel: "Due", timing: "Now", action: "Check safety, then confirm",
+      issue: `${item.record.name} went silent`,
+      domain: `${item.record.theatre} · ${item.record.location}`,
+      timingLabel: "Due",
+      timing: "Now",
+      action: "Check safety, then confirm",
       optic: { label: `${item.record.minutes_since_heartbeat} min · limit ${item.record.rule.threshold_minutes}`, percent: item.record.minutes_since_heartbeat / scale * 100 },
     }
   }
   return {
-    issue: "Proof needs checking", domain: `${item.record.team} · ${item.record.theatre}`,
-    timingLabel: "Received", timing: formatDateTime(item.record.closedAt), action: "Validate submitted proof",
+    issue: "Proof needs checking",
+    domain: `${item.record.team} · ${item.record.theatre}`,
+    timingLabel: "Received",
+    timing: formatDateTime(item.record.closedAt),
+    action: "Validate submitted proof",
     optic: { label: `${item.record.evidence.length} proof submission${item.record.evidence.length === 1 ? "" : "s"}`, percent: 82 },
   }
 }
@@ -128,15 +141,8 @@ function SignalIdentity({ stream }: { stream: EvaluatedHeartbeat }) {
   return <div className="heartbeat-identity"><strong>{stream.name}</strong><span>{stream.role} · {stream.theatre} · {stream.location}</span></div>
 }
 
-const emptyHeartbeatSnapshot: HeartbeatSnapshot = {
-    computed_at: new Date(0).toISOString(), poll_interval_seconds: HEARTBEAT_POLL_INTERVAL_SECONDS,
-    persistence: "governed-live", streams: [], alerts: [], action_log: [],
-    summary: { active_streams: 0, signals_current: 0, active_breaches: 0, escalated: 0, outside_active_shift: 0 },
-}
-
-export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, heartbeatSnapshot = null, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; heartbeatSnapshot?: HeartbeatSnapshot | null; onValidateAction: (actionId: string) => void }) {
-  const heartbeatConnected = heartbeatSnapshot !== null
-  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>(heartbeatSnapshot ?? emptyHeartbeatSnapshot)
+export function DespatchScreen({ commitments, escalations = [], escalationTotal = 0, loopHealth, onValidateAction }: { commitments: ExecutionAction[]; escalations?: readonly DespatchEscalationRecord[]; escalationTotal?: number; loopHealth?: LoopHealth; onValidateAction: (actionId: string) => void }) {
+  const [snapshot, setSnapshot] = useState<HeartbeatSnapshot>({ computed_at: "", poll_interval_seconds: HEARTBEAT_POLL_INTERVAL_SECONDS, persistence: "governed-live", streams: [], alerts: [], action_log: [], summary: { active_streams: 0, signals_current: 0, active_breaches: 0, escalated: 0, outside_active_shift: 0 } })
   const [paused, setPaused] = useState(false)
   const [polling, setPolling] = useState(false)
   const [acknowledgingId, setAcknowledgingId] = useState("")
@@ -144,10 +150,6 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   const [actionError, setActionError] = useState("")
   const [validatingId, setValidatingId] = useState("")
   const [validationMessage, setValidationMessage] = useState("")
-
-  useEffect(() => {
-    if (heartbeatSnapshot) setSnapshot(heartbeatSnapshot)
-  }, [heartbeatSnapshot])
 
   const poll = useCallback(async () => {
     setPolling(true)
@@ -164,21 +166,20 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   }, [])
 
   useEffect(() => {
-    if (!heartbeatConnected) return
     void poll()
-  }, [heartbeatConnected, poll])
+  }, [poll])
 
   useEffect(() => {
-    if (!heartbeatConnected || paused) return
+    if (paused) return
     const timer = window.setInterval(() => void poll(), HEARTBEAT_POLL_INTERVAL_SECONDS * 1000)
     return () => window.clearInterval(timer)
-  }, [heartbeatConnected, paused, poll])
+  }, [paused, poll])
 
   const acknowledgedIds = useMemo(() => new Set(snapshot.action_log.filter((entry) => entry.action_type === "alert_acknowledged").map((entry) => entry.heartbeat_id)), [snapshot.action_log])
-  const openAlerts = heartbeatConnected ? snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id)) : []
+  const openAlerts = snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id))
   const highestAlert = openAlerts[0]
   const actionLog = snapshot.action_log
-  const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, snapshot.computed_at), [commitments, snapshot.computed_at])
+  const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, EXECUTION_REPORT_AS_OF), [commitments])
   const ownerItems: readonly DespatchOwnerItem[] = [
     ...escalations.map((record): DespatchOwnerItem => ({ kind: "escalation", id: record.escalationId, owner: record.ownerRole, tone: record.severity === "Critical" ? "critical" : record.severity === "Breach" ? "breach" : "attention", record })),
     ...openAlerts.map((record): DespatchOwnerItem => ({ kind: "heartbeat", id: record.id, owner: record.role, tone: record.status === "escalated" ? "critical" : "breach", record })),
@@ -234,36 +235,45 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
 
   return <div id="despatch-screen"><DashboardSectionAccordion className="despatch-screen" ariaLabel="Despatch sections" sections={[
     { title: "What needs doing next", summary: `${escalationTotal + openAlerts.length + validationQueue.length} active actions ordered by urgency` },
-    { title: "Loop health", summary: loopHealth ? `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` : "Cannot confirm · verification source unavailable" },
-    { title: "Who has gone quiet", summary: heartbeatConnected ? `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` : "No governed heartbeat source connected" },
+    ...(loopHealth ? [{ title: "Loop health", summary: `${loopHealth.state} · ${loopHealth.verification.verified}/${loopHealth.verification.claimed} verified` }] : []),
+    { title: "Who has gone quiet", summary: `${snapshot.summary.active_breaches} active breaches · ${snapshot.summary.escalated} escalated` },
   ]}>
     <section className="heartbeat-section despatch-escalation-section" aria-label="Operate action overview">
       {priority ? <div className="despatch-priority-line" role="status"><span>Start here</span><strong>{priority.owner}</strong><p>{ownerItemSummary(priority).action}</p><small>{ownerItemSummary(priority).issue}</small></div> : null}
+
       <div className="despatch-chart-grid">
-        <figure aria-label="Actions by owner"><figcaption><strong>Actions by owner</strong><span>{ownerClusters.length} owners waiting</span></figcaption><ol>{ownerClusters.map((cluster) => <li key={cluster.owner}><span>{cluster.owner}</span><i aria-hidden><b style={{ "--despatch-bar": `${cluster.items.length / maximumOwnerActions * 100}%` } as CSSProperties} /></i><strong>{cluster.items.length}</strong></li>)}</ol></figure>
-        <figure aria-label="Work type distribution"><figcaption><strong>Work needing response</strong><span>{ownerItems.length} visible actions</span></figcaption><ol>{workTypes.map((item) => <li key={item.label}><span>{item.label}</span><i aria-hidden><b style={{ "--despatch-bar": `${item.value / maximumWorkType * 100}%` } as CSSProperties} /></i><strong>{item.value}</strong></li>)}</ol></figure>
+        <figure aria-label="Actions by owner">
+          <figcaption><strong>Actions by owner</strong><span>{ownerClusters.length} owners waiting</span></figcaption>
+          <ol>{ownerClusters.map((cluster) => <li key={cluster.owner}><span>{cluster.owner}</span><i aria-hidden><b style={{ "--despatch-bar": `${cluster.items.length / maximumOwnerActions * 100}%` } as CSSProperties} /></i><strong>{cluster.items.length}</strong></li>)}</ol>
+        </figure>
+        <figure aria-label="Work type distribution">
+          <figcaption><strong>Work needing response</strong><span>{ownerItems.length} visible actions</span></figcaption>
+          <ol>{workTypes.map((item) => <li key={item.label}><span>{item.label}</span><i aria-hidden><b style={{ "--despatch-bar": `${item.value / maximumWorkType * 100}%` } as CSSProperties} /></i><strong>{item.value}</strong></li>)}</ol>
+        </figure>
       </div>
+
       <div className="despatch-action-queue" aria-label="Action queue">
         <div className="despatch-action-head" aria-hidden><span>Owner and issue</span><span>Comparison</span><span>Next action</span><span>Timing</span><span /></div>
-        <ol>{orderedItems.map((item) => { const summary = ownerItemSummary(item); return <li key={`${item.kind}-${item.id}`}><div className="despatch-action-row">
-          <span className="despatch-action-owner"><strong>{item.owner}</strong><small>{summary.issue} · {summary.domain}</small></span>
-          <span className="despatch-action-measure"><i aria-hidden><b style={{ "--despatch-bar": `${Math.min(100, summary.optic.percent)}%` } as CSSProperties} /></i><small>{summary.optic.label}</small></span>
-          <strong className="despatch-action-next">{summary.action}</strong><span className="despatch-action-time"><small>{summary.timingLabel}</small><strong>{summary.timing}</strong></span>
-          {item.kind === "heartbeat" ? <button onClick={() => void acknowledge(item.record.id)} disabled={acknowledgingId === item.record.id}>{acknowledgingId === item.record.id ? "Recording" : "Confirm"}</button> : item.kind === "verification" ? <button onClick={() => validateProof(item.record.id)} disabled={validatingId === item.record.id}>{validatingId === item.record.id ? "Validating" : "Validate"}</button> : <span aria-hidden />}
-        </div></li> })}</ol>
+        <ol>{orderedItems.map((item) => {
+          const summary = ownerItemSummary(item)
+          return <li key={`${item.kind}-${item.id}`}>
+            <div className="despatch-action-row">
+              <span className="despatch-action-owner"><strong>{item.owner}</strong><small>{summary.issue} · {summary.domain}</small></span>
+              <span className="despatch-action-measure"><i aria-hidden><b style={{ "--despatch-bar": `${Math.min(100, summary.optic.percent)}%` } as CSSProperties} /></i><small>{summary.optic.label}</small></span>
+              <strong className="despatch-action-next">{summary.action}</strong>
+              <span className="despatch-action-time"><small>{summary.timingLabel}</small><strong>{summary.timing}</strong></span>
+              {item.kind === "heartbeat" ? <button onClick={() => void acknowledge(item.record.id)} disabled={acknowledgingId === item.record.id}>{acknowledgingId === item.record.id ? "Recording" : "Confirm"}</button> : item.kind === "verification" ? <button onClick={() => validateProof(item.record.id)} disabled={validatingId === item.record.id}>{validatingId === item.record.id ? "Validating" : "Validate"}</button> : <span aria-hidden />}
+            </div>
+          </li>
+        })}</ol>
       </div>
       {ownerItems.length === 0 ? <div className="despatch-validation-empty"><ShieldCheck aria-hidden /><div><strong>No action needs attention.</strong><span>Nia will place new work here automatically.</span></div></div> : null}
       {validationMessage ? <p className="despatch-validation-message" role="status">{validationMessage}</p> : null}
     </section>
 
-    {loopHealth
-      ? <LoopHealthStrip health={loopHealth} />
-      : <section className="despatch-validation-empty" aria-label="Loop health unavailable">
-          <ShieldCheck aria-hidden />
-          <div><strong>Loop health cannot be confirmed.</strong><span>No governed verification source is connected.</span></div>
-        </section>}
+    {loopHealth ? <LoopHealthStrip health={loopHealth} /> : null}
 
-    {heartbeatConnected ? <details className="system-monitoring-details">
+    {snapshot.streams.length ? <details className="system-monitoring-details">
       <summary>Who has gone quiet</summary>
       <div className="system-monitoring-body">
     <section className="heartbeat-status-band" aria-label="Live check-in status">
@@ -273,8 +283,6 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
         <button onClick={() => setPaused((value) => !value)}>{paused ? <Play aria-hidden /> : <Pause aria-hidden />}{paused ? "Resume" : "Pause"}</button>
       </div>
     </section>
-
-    <p className="illustrative-note">Governed live signals from the connected roster, action log, and qualifying order events.</p>
 
     {highestAlert ? <section className="heartbeat-priority" aria-live="assertive">
       <div className="heartbeat-priority-icon"><BellRing aria-hidden /></div>
@@ -322,15 +330,12 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
       </section>
 
       <section className="heartbeat-section heartbeat-audit">
-        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Derived from governed live signals</p></header>
+        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Illustrative server log · resets with preview</p></header>
         {actionError && <p className="heartbeat-action-error" role="alert">{actionError}</p>}
         <ol>{actionLog.map((entry) => <li key={entry.id}><span>{formatTime(entry.occurred_at)}</span><div><strong>{auditLabels[entry.action_type]}</strong><p>{entry.actor_id} · {entry.note}</p></div></li>)}</ol>
       </section>
     </div>
       </div>
-    </details> : <section className="despatch-validation-empty" aria-label="Who has gone quiet unavailable">
-      <ShieldCheck aria-hidden />
-      <div><strong>No governed heartbeat source is connected.</strong><span>The section will populate automatically when live heartbeat signals are available.</span></div>
-    </section>}
+    </details> : <section className="despatch-validation-empty" aria-label="Heartbeat data status"><ShieldCheck aria-hidden /><div><strong>No governed heartbeat rows are connected.</strong><span>{pollError || "Add live roster and qualifying signal rows before heartbeat monitoring is displayed."}</span></div></section>}
   </DashboardSectionAccordion></div>
 }

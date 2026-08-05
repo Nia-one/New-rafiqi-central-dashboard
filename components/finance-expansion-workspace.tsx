@@ -47,7 +47,7 @@ export function FinanceExpansionWorkspace({ preview }: Props) {
         <p>Studio economics, policy versions, approvals and War Room decisions remain explicit. This Preview cannot move money, accept terms, release a Studio or write to Production.</p>
       </div>
       <dl>
-        <div><dt>Source</dt><dd><Database aria-hidden />{preview.source.name}</dd></div>
+        <div><dt>Source</dt><dd><Database aria-hidden />Synthetic finance fixture</dd></div>
         <div><dt>As of</dt><dd>{date(preview.source.asOf)}</dd></div>
         <div><dt>Approver</dt><dd><ShieldCheck aria-hidden />{preview.policies.financialApprover.value}</dd></div>
       </dl>
@@ -92,7 +92,7 @@ export function FinanceExpansionWorkspace({ preview }: Props) {
         <ol className="finance-friction-list">
           <li><span>Commercial agreement</span><strong>{selectedOption.activationFriction.commercialAgreementDays} days</strong></li><li><span>Compliance readiness</span><strong>{selectedOption.activationFriction.complianceReadinessDays} days</strong></li><li><span>Physical readiness</span><strong>{selectedOption.activationFriction.physicalReadinessDays} days</strong></li><li><span>Unresolved dependencies</span><strong>{selectedOption.activationFriction.unresolvedDependencyDays} days</strong></li>
         </ol>
-        <p className="lineage-note"><Database aria-hidden />Governed source · {selectedOption.source.rowIdentity}</p>
+        <p className="lineage-note"><Database aria-hidden />Synthetic · {selectedOption.source.rowIdentity}</p>
       </aside>
     </div>
 

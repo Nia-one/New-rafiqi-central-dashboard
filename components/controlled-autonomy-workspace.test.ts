@@ -49,10 +49,9 @@ test("action cards show two summary fields, plain-language story and progress", 
   assert.match(primary, /aria-valuenow="\d+"/)
 })
 
-test("Your Sign-Off and Learning history consume normalized backend records", () => {
+test("Your Sign-Off and Learning history consume the same evaluated queue", () => {
   assert.match(componentSource, /preview\.learningQueue/)
-  assert.match(dashboardSource, /liveRows\(liveOpsData, "learningHistory"\)/)
-  assert.match(dashboardSource, /title="Your Sign-Off"/)
+  assert.match(dashboardSource, /controlledAutonomyPreview\?\.learningQueue/)
   assert.doesNotMatch(componentSource, /SHADOW-FINANCE-HOLD|SHADOW-PEOPLE-REVIEW/)
 })
 

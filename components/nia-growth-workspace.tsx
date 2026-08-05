@@ -43,7 +43,6 @@ export function NiaGrowthWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; supplyModel: "FONO" | "SP"; outcome: ShadowOutcome; route: string; at: string }[]>([])
-  const nextDueAt = preview.tasks[0]?.dueAt
 
   function recordShadowOutcome(task: GrowthTaskPreview) {
     const outcome = selected[task.actionId] ?? "Unresolved"
@@ -81,8 +80,8 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     <LoopHealthStrip health={preview.loopHealth} />
     <div className={styles.freshness} role="status">
       <AlertTriangle aria-hidden />
-      <strong>Governed source snapshot</strong>
-      <span>Last refresh {date(preview.source.lastRefreshAt)} · no live connection</span>
+      <strong>{preview.source.freshness === "Current" ? "Governed live source" : "Source needs attention"}</strong>
+      <span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span>
       <b>{preview.quarantineCount} supply-model or protected-input rows quarantined</b>
     </div>
 
@@ -130,7 +129,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
         <section><strong>Versioned controls and pending approvals</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Status</th></tr></thead><tbody>{preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.name}</td><td>{policy.value === null ? "No value approved" : `${policy.value} ${policy.unit}`}</td><td>v{policy.version}</td><td>{policy.status}</td></tr>)}</tbody></table></div></section>
         <section><strong>Shared learning-control inputs</strong>{preview.learningInputs.map((input) => <dl className={styles.learningGrid} key={input.action_id}><div><dt>Channel / proposal</dt><dd>{input.supply_model} · {input.proposed_change}</dd></div><div><dt>Expected effect</dt><dd>{input.expected_effect}</dd></div><div><dt>Evidence</dt><dd>{input.evidence_cycles} cycles · n={input.sample_size} · {input.verification_rate_pct}% verified</dd></div><div><dt>Attribution</dt><dd>{input.attribution_grade} · {input.confounders.join(", ")}</dd></div><div><dt>Forecast error</dt><dd>{input.forecast_error_pct}%</dd></div><div><dt>Fresh / reversible</dt><dd>{String(input.critical_data_fresh)} / {String(input.reversible)}</dd></div><div><dt>Approved boundary</dt><dd>{String(input.inside_approved_boundary)} · reverses human decision {String(input.reverses_human_decision)}</dd></div><div><dt>Human controls</dt><dd>{input.affected_human_controlled_categories.join(", ") || "No category changed"}</dd></div><div><dt>Effects</dt><dd>{input.target_effect} {input.channel_effect} {input.cm_effect} {input.cash_effect}</dd></div><div><dt>Confidence / adoption</dt><dd>{input.production_confidence} · auto-adopt {String(input.auto_adopt)}</dd></div><div><dt>Rollback</dt><dd>{input.rollback_trigger}</dd></div></dl>)}</section>
         <section><strong>Append-only local shadow audit</strong>{audit.length > 0 ? <ol>{audit.map((entry) => <li key={entry.id}><CheckCircle2 aria-hidden /><span><b>{entry.supplyModel} · {entry.outcome}</b>{entry.actionId} · {entry.route}</span><time dateTime={entry.at}>{date(entry.at)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
-        <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, recommend, assign and verify in synthetic shadow state. It cannot contact anyone, sign a contract or lease, commit capex, release a Studio or park, move money, write Production or adopt policy.</p></section>
+        <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, recommend, assign and verify in the governed read-only view. It cannot contact anyone, sign a contract or lease, commit capex, release a Studio or park, move money, write Production or adopt policy.</p></section>
       </div>
     </details>
 
@@ -143,7 +142,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd>{nextDueAt ? <time dateTime={nextDueAt}>{date(nextDueAt)}</time> : "No open task"}</dd></div>
+        <div><dt>By</dt><dd>{preview.tasks[0]?.dueAt ? <time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time> : "No open action"}</dd></div>
       </dl>
     </section>
 

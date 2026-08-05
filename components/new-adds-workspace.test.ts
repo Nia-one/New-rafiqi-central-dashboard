@@ -62,7 +62,7 @@ test("shadow recovery is functional and no live side-effect path exists", () => 
   assert.doesNotMatch(componentSource, /recoverFillTask/)
   assert.match(componentSource, /setTasks\(\(current\) => current\.map/)
   assert.match(componentSource, /setAudit\(\(current\) => \[\.\.\.current, Object\.freeze/)
-  assert.match(componentSource, /No external message or Production write/)
+  assert.match(componentSource, /No message or Production write/)
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|use server|server action|navigator\.geolocation/)
 })
 
@@ -91,7 +91,7 @@ test("the visible R-0 strip and Despatch rows use the shared domain projection",
 })
 
 test("Member Adds is the visible label while internal New Adds contracts stay intact", () => {
-  for (const label of ["Today's target vs actual", "Member Adds governed source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
+  for (const label of ["Today's target vs actual", "Member Adds source status", "Data and check status", "Four key numbers", "Decisions blocking progress"]) assert.match(componentSource, new RegExp(label))
   assert.match(componentSource, /resolveNewAddsShadowOutcome/)
   assert.match(componentSource, /OperationalCardStack/)
   assert.doesNotMatch(componentSource, /aria-label="New Adds/)

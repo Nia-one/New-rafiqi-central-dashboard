@@ -18,11 +18,11 @@ function renderOverview(lastUpdatedAt: string) {
 test("Overview suppresses the green flywheel when Loop Health cannot confirm performance", () => {
   const html = renderOverview("2026-07-18T08:00:00.000Z")
   assert.match(html, /Cannot confirm performance yet/)
-  assert.doesNotMatch(html, /One system\. Three connected pillars\./)
+  assert.doesNotMatch(html, /One live snapshot links source pages to the master view\./)
 })
 
 test("Overview renders the flywheel when Loop Health allows the answer", () => {
   const html = renderOverview("2026-07-18T12:00:00.000Z")
-  assert.match(html, /One system\. Three connected pillars\./)
+  assert.match(html, /One live snapshot links source pages to the master view\./)
   assert.doesNotMatch(html, /Cannot confirm performance yet/)
 })

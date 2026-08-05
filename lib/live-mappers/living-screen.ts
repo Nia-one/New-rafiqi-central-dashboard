@@ -43,11 +43,25 @@ export function buildLivingScreenData(ops: any) {
   const fono = living.filter((row) => value(row, "supply model").toUpperCase() === "FONO")
   const sp = living.filter((row) => value(row, "supply model").toUpperCase() === "SP")
   const sum = (rows: Row[], key: string) => rows.reduce((total, row) => total + n(row[key]), 0)
-  const occupancySource = existing.length > 0 ? existing : fono
+  const latestExistingByStudio = new Map<string, Row>()
+  for (const row of existing) {
+    const studioId = value(row, "studio id")
+    if (!studioId) continue
+    const previous = latestExistingByStudio.get(studioId)
+    const rowTime = Date.parse(value(row, "updated at") || "1970-01-01")
+    const previousTime = Date.parse(value(previous, "updated at") || "1970-01-01")
+    if (!previous || rowTime >= previousTime) latestExistingByStudio.set(studioId, row)
+  }
+  const existingCurrent = [...latestExistingByStudio.values()]
+  // UI_Occupancy/EXISTING is its own governed ledger. It must remain separate
+  // from FONO and SP acquisition rows even when a Studio ID happens to match.
+  const governedFono = fono
+  const governedSp = sp
+  const occupancySource = [...governedFono, ...governedSp]
   const occupancyContracted = sum(occupancySource, "contracted nests")
   const occupancyOccupied = sum(occupancySource, "occupied nests")
-  const fonoReady = sum(fono, "activation ready nests")
-  const fonoOccupied = sum(fono, "occupied nests")
+  const fonoReady = sum(governedFono, "activation ready nests")
+  const fonoOccupied = sum(governedFono, "occupied nests")
   const fonoDemandRows = demand.filter((row) => demandChannel(row) === "FONO")
   const spDemandRows = demand.filter((row) => demandChannel(row) === "SP")
   const demandRequired = sum(spDemandRows, "headcount required")
@@ -73,7 +87,7 @@ export function buildLivingScreenData(ops: any) {
       .replaceAll("{openDemandNodes}", proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0).length.toLocaleString("en-IN"))
   }
 
-  const fonoSupply: FunnelStage[] = [stage("Contracted Nests", sum(fono, "contracted nests"), sum(fono, "contracted nests")), stage("Activation-ready Nests", fonoReady, fonoReady, sum(fono, "contracted nests")), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
+  const fonoSupply: FunnelStage[] = [stage("Contracted Nests", sum(governedFono, "contracted nests"), sum(governedFono, "contracted nests")), stage("Activation-ready Nests", fonoReady, fonoReady, sum(governedFono, "contracted nests")), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
   const fonoPipeline = groupedCounts(fonoDemandRows, (row) => person(value(row, "owner actor id")))
   const spPipeline = groupedCounts(spDemandRows, (row) => person(value(row, "owner actor id")))
   const fonoDemand: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
@@ -81,12 +95,25 @@ export function buildLivingScreenData(ops: any) {
   const demandStages: FunnelStage[] = spPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
   const supplyStages: FunnelStage[] = [stage("SP ready Nests", spReady, spReady), stage("SP occupied Nests", sum(sp, "occupied nests"), sum(sp, "occupied nests"), spReady)]
 
-  const occupancyRows = occupancySource.map((row) => {
+  const occupancyRows = governedFono.filter((row) => n(row["contracted nests"]) > 0).map((row) => {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
     const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
     return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied)), person(value(row, "owner actor id"))]
   })
+  const existingOccupancyRows = existingCurrent.filter((row) => n(row["contracted nests"]) > 0).map((row) => {
+    const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
+    const studioId = value(row, "studio id")
+    const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, displayDate(value(row, "updated at"))]
+  })
+  const existingByTheatre = [...new Set(existingCurrent.map((row) => value(row, "theatre id")).filter(Boolean))].map((theatreId) => {
+    const rows = existingCurrent.filter((row) => value(row, "theatre id") === theatreId)
+    const contracted = sum(rows, "contracted nests"); const occupied = sum(rows, "occupied nests")
+    return [theatreId, String(rows.length), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`]
+  })
+  const existingContracted = sum(existingCurrent, "contracted nests")
+  const existingOccupied = sum(existingCurrent, "occupied nests")
   const demandRows = spDemandRows.map((row) => [value(row, "plant name") || value(row, "enterprise name"), "1", value(row, "theatre id"), displayDate(value(row, "activation required at")), person(value(row, "owner actor id")), displayDate(value(row, "opened at")), stageBucket(row)])
   const supplyRows = studios.filter((row) => value(row, "supply model").toUpperCase() === "SP").map((row) => [value(row, "studio name") || value(row, "studio id"), metricText("jco") || "Unassigned", metricText("relationship_manager") || "Unassigned", value(row, "studio name") || value(row, "studio id"), `${metricNumber("distance_km")} km`, `${metricNumber("response_hours")}h`, value(row, "contract status") || value(row, "readiness status") || "No data"])
 
@@ -122,5 +149,5 @@ export function buildLivingScreenData(ops: any) {
     }
   })
 
-  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
+  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, existingOccupancyRows, existingByTheatre, existingContracted, existingOccupied, existingVacant: Math.max(0, existingContracted - existingOccupied), existingOccupancyPercent: percent(existingOccupied, existingContracted), demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
 }
