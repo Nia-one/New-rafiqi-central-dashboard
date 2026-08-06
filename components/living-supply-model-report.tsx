@@ -15,7 +15,7 @@ const modelLabel = (supplyModel: string) => MODEL_LABELS[supplyModel] ?? supplyM
 // with the counts kept alongside. Consolidating the four numeric columns into one keeps
 // the table inside its width, and the worst stage-to-stage drop is flagged so the leak is
 // obvious without reading every figure.
-function funnelCell(contracted: number, ready: number, occupied: number, paying: number) {
+function funnelCell(contracted: number, ready: number, occupied: number, paying: number | null) {
   const base = Math.max(1, contracted)
   const stages = [
     { key: "contracted", label: "Contracted", value: contracted },
@@ -26,22 +26,23 @@ function funnelCell(contracted: number, ready: number, occupied: number, paying:
   let leakIndex = -1
   let worstDrop = 0
   for (let i = 1; i < stages.length; i += 1) {
-    const drop = stages[i - 1].value - stages[i].value
+    if (stages[i - 1].value === null || stages[i].value === null) continue
+    const drop = (stages[i - 1].value ?? 0) - (stages[i].value ?? 0)
     if (drop > worstDrop) {
       worstDrop = drop
       leakIndex = i
     }
   }
-  const conversion = Math.round((paying / base) * 100)
-  const label = `Supply funnel: ${number(contracted)} contracted, ${number(ready)} ready, ${number(occupied)} occupied, ${number(paying)} paying. ${conversion}% contracted to paying.`
+  const conversion = paying === null ? null : Math.round((paying / base) * 100)
+  const label = `Supply funnel: ${number(contracted)} contracted, ${number(ready)} ready, ${number(occupied)} occupied, ${paying === null ? "paying not recorded" : `${number(paying)} paying`}. ${conversion === null ? "Contracted-to-paying conversion is not available." : `${conversion}% contracted to paying.`}`
   return (
     <td className="living-funnel">
       <span className="living-funnel-bars" role="img" aria-label={label}>
         {stages.map((stage, index) => (
           <span className="living-funnel-row" key={stage.key} data-leak={index === leakIndex ? "" : undefined}>
             <small>{stage.label}</small>
-            <i className="living-funnel-track"><b data-stage={stage.key} style={{ width: `${Math.round((stage.value / base) * 100)}%` }} /></i>
-            <strong>{number(stage.value)}</strong>
+            <i className="living-funnel-track"><b data-stage={stage.key} style={{ width: `${Math.round(((stage.value ?? 0) / base) * 100)}%` }} /></i>
+            <strong>{stage.value === null ? "No data" : number(stage.value)}</strong>
           </span>
         ))}
       </span>
@@ -72,15 +73,15 @@ export function LivingSupplyModelReport({ liveData, refreshedAt }: { liveData?: 
   const fixturePreview = buildLivingSupplyPreview()
   const unavailable = (id: string) => ({ value: null, state: "No data", definitionRef: id, sourceCoverage: "Live source coverage absent" })
   const channel = (supplyModel: "FONO" | "SP", contractedNests: number, activationReadyNests: number, occupiedNests: number, studioCount: number) => contractedNests > 0 ? ({
-    supplyModel, studioCount, contractedNests, activationReadyNests, occupiedNests, payingNests: occupiedNests,
+    supplyModel, studioCount, contractedNests, activationReadyNests, occupiedNests, payingNests: null,
     occupancy: { value: occupiedNests / contractedNests, state: "Available", definitionRef: "MET-LIVING-OCCUPANCY@v1", sourceCoverage: "Fono Funnel + Living_Hourly" },
     billedArpu: unavailable("MET-LIVING-BILLED-ARPU@v1"), collectionLeakage: unavailable("MET-LIVING-COLLECTION-LEAKAGE@v1"), cm1: unavailable("MET-LIVING-CM1@v1"), cm2: unavailable("MET-LIVING-CM2@v1"), sourceLineage: [],
   }) : null
   const liveFono = liveData ? channel("FONO", liveData.fonoSupply[0]?.mtd ?? 0, liveData.fonoReady ?? 0, liveData.fonoOccupied ?? 0, liveData.fonoStudioCount ?? 0) : null
   const liveSp = liveData ? channel("SP", Math.max(0, liveData.occupancyContracted - (liveData.fonoSupply[0]?.mtd ?? 0)), liveData.spReady ?? 0, liveData.demandMatched ?? 0, 0) : null
   const channels = [liveFono, liveSp].filter(Boolean) as any[]
-  const liveCombined = liveFono && liveSp ? ({ ...liveFono, supplyModel: "Combined", studioCount: liveFono.studioCount + liveSp.studioCount, contractedNests: liveFono.contractedNests + liveSp.contractedNests, activationReadyNests: liveFono.activationReadyNests + liveSp.activationReadyNests, occupiedNests: liveFono.occupiedNests + liveSp.occupiedNests, payingNests: liveFono.payingNests + liveSp.payingNests, occupancy: { ...liveFono.occupancy, value: (liveFono.occupiedNests + liveSp.occupiedNests) / Math.max(1, liveFono.contractedNests + liveSp.contractedNests), sourceCoverage: "FONO + SP" } }) : null
-  const preview: any = liveData ? { ...fixturePreview, routes: [], report: { mode: "Live read-only", refreshedAt: refreshedAt || new Date().toISOString(), channels, combined: liveCombined, fono: liveFono ? { franchiseeSourcedMembers: 0, niaFilledMembers: liveData.fonoOccupied ?? 0, vacantNestsAtCycleStart: Math.max(0, (liveData.fonoReady ?? 0) - (liveData.fonoOccupied ?? 0)), niaFillRate: unavailable("MET-FONO-NIA-FILL@v1") } : null, spParks: [] } } : fixturePreview
+  const liveCombined = liveFono && liveSp ? ({ ...liveFono, supplyModel: "Combined", studioCount: liveFono.studioCount + liveSp.studioCount, contractedNests: liveFono.contractedNests + liveSp.contractedNests, activationReadyNests: liveFono.activationReadyNests + liveSp.activationReadyNests, occupiedNests: liveFono.occupiedNests + liveSp.occupiedNests, payingNests: null, occupancy: { ...liveFono.occupancy, value: (liveFono.occupiedNests + liveSp.occupiedNests) / Math.max(1, liveFono.contractedNests + liveSp.contractedNests), sourceCoverage: "FONO + SP" } }) : null
+  const preview: any = liveData ? { ...fixturePreview, routes: [], report: { mode: "Live read-only", refreshedAt: refreshedAt || new Date().toISOString(), channels, combined: liveCombined, fono: liveFono ? { franchiseeSourcedMembers: 0, niaFilledMembers: 0, vacantNestsAtCycleStart: Math.max(0, (liveData.fonoReady ?? 0) - (liveData.fonoOccupied ?? 0)), niaFillRate: unavailable("MET-FONO-NIA-FILL@v1") } : null, spParks: [] } } : fixturePreview
   const { report, policies } = preview
   const combined = report.combined
   return <section className="living-supply-report" aria-labelledby="living-supply-report-title">
@@ -88,7 +89,7 @@ export function LivingSupplyModelReport({ liveData, refreshedAt }: { liveData?: 
       <div>
         <p className="section-kicker">LIVING REPORT · GOVERNED SUPPLY VIEW</p>
         <h2 id="living-supply-report-title">FONO first. Śram Park second. Then the combined Living view.</h2>
-        <p>Both channels refresh independently from Studio Master before any combined roll-up is allowed.</p>
+        <p>{liveData ? "Both channels refresh independently from their governed live sources before any combined roll-up is allowed." : "Both channels refresh independently from Studio Master before any combined roll-up is allowed."}</p>
       </div>
       <dl>
         <div><dt><RefreshCw /> Refresh</dt><dd>{new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(report.refreshedAt))}</dd></div>
@@ -147,7 +148,7 @@ export function LivingSupplyModelReport({ liveData, refreshedAt }: { liveData?: 
         <p>{event.route.blockingMilestone}</p>
         <small><Clock3 /> Escalate after {event.route.escalationAfterCycles} unresolved {event.route.escalationAfterCycles === 1 ? "cycle" : "cycles"} · {event.route.escalationOwner}</small>
       </article>)}
-      <aside><Database /><div><strong>Studio Master is authoritative.</strong><span>Missing or conflicting supply_model is quarantined. No name inference.</span><small>Lineage visible: Studio_Master rows 3, 5 (FONO) · 2, 4 (Śram Park). {policies.policyVersions.join(" · ")} · Provisional; {policies.calibrationNote}.</small></div></aside>
+      <aside><Database /><div><strong>{liveData ? "Fono Funnel and Living_Hourly are authoritative for this FONO view." : "Studio Master is authoritative."}</strong><span>{liveData ? "Stage After and Nests Potential govern demand/supply; Black enrichment columns govern Studio, readiness, occupancy, owner and evidence." : "Missing or conflicting supply_model is quarantined. No name inference."}</span><small>{liveData ? `${liveData.fonoStudioCount} governed FONO Studios · current backend refresh.` : `Lineage visible: Studio_Master rows 3, 5 (FONO) · 2, 4 (Śram Park). ${policies.policyVersions.join(" · ")} · Provisional; ${policies.calibrationNote}.`}</small></div></aside>
     </div>
   </section>
 }

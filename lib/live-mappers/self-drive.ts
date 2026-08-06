@@ -1108,8 +1108,10 @@ export function buildLiveSelfDriveSnapshot(ops: any): LiveSelfDriveSnapshot {
   const memberNpsFeedback = rows("memberNpsFeedback")
   const memberNpsResponses = rows("memberNpsResponses")
 
+  const suppliedAsOf = String(ops?.fetchedAt || ops?.meta?.updatedAt || "")
+  const asOf = Number.isFinite(Date.parse(suppliedAsOf)) ? new Date(suppliedAsOf).toISOString() : new Date().toISOString()
   return {
-    asOf: ops?.fetchedAt || ops?.meta?.updatedAt || new Date().toISOString(),
+    asOf,
     monthlyCMTarget: Number(ops?.monthlyCMTarget) || 0,
     enterpriseDemand, activations, incidents, actions, evidence, approvals, people, theatres, studios, living, work, essentials, finance, financeSource: finance, channels, learningHistory, dashboardContent,
     policies, memberNpsDashboard, memberNpsFeedback, memberNpsResponses,

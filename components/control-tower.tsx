@@ -157,7 +157,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const enterpriseStages: readonly (readonly [number, string, string, number])[] = enterpriseDemandPreview?.supplyLanes.flatMap((lane) => lane.stages.map((stage) => [stage.count, `${lane.supplyModel} ${stage.label}`, "Governed backend stage", 0] as const)) ?? []
   const memberStages: readonly (readonly [number, string, string, number])[] = [[Number(livePreviews.newAddsPreview.taskSummary.target) || 0, "Target fills", "Governed target", 0], [Number(livePreviews.newAddsPreview.taskSummary.current) || 0, "Verified billing-live", "Independent verification", Number(livePreviews.newAddsPreview.taskSummary.gap) || 0]]
   const viewFor = (consoleName: string) => {
-    const loopName = consoleName === "All consoles" ? "Nia growth" : consoleName === "Living" ? "living occupancy" : consoleName.toLowerCase()
+    const loopName = consoleName === "All consoles" ? "nia growth" : consoleName === "Living" ? "living occupancy" : consoleName.toLowerCase()
     const loop = loops.find((candidate) => candidate.name.toLowerCase() === loopName) ?? loops[0]
     const alarmConsole = consoleName === "All consoles" ? null : consoleName === "Member Adds" ? "New Adds" : consoleName
     const alarm = (alarmConsole ? alarms.find((candidate) => candidate[2].toLowerCase().includes(alarmConsole.toLowerCase())) : alarms[0])
