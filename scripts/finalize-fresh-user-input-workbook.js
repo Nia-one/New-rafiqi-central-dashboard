@@ -23,6 +23,10 @@ const uniqueTeamTabs = [
 ]
 const manualTabs = [...uiTabs, ...uniqueTeamTabs]
 const reportTabs = new Set(["Fono Funnel"])
+const fonoManualHeaders = new Set([
+  "studio id", "studio name", "location id", "studios count", "activation ready nests",
+  "member adds", "verifier", "remarks", "evidence ref", "last updated",
+])
 
 // Empty set means every populated header is user-entered except the red/system set below.
 const editableOverrides = new Map([
@@ -103,7 +107,7 @@ async function main() {
       const key = norm(value)
       const editable = override ? override.has(key) : !alwaysSystem.has(key)
       if (!editable) automatedColumns.push(column)
-      const reportInput = reportTabs.has(title)
+      const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(key)
       requests.push({ repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: header.index, endRowIndex: header.index + 1, startColumnIndex: column, endColumnIndex: column + 1 }, cell: {
         userEnteredFormat: { backgroundColor: reportInput ? YELLOW : editable ? BLACK : RED, textFormat: { foregroundColor: reportInput ? BLACK : WHITE, bold: true }, wrapStrategy: "WRAP" },
         note: reportInput ? "YELLOW = BUSINESS REPORT IMPORT. Import or replace the verified report tab." : editable ? "BLACK = USER INPUT. Fill this field; connected dashboard pages update after sync." : "RED = AUTOMATED / DERIVED. Do not edit.",
@@ -126,7 +130,7 @@ async function main() {
     const override = editableOverrides.get(title)
     header.values.forEach((field, index) => {
       const editable = override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
-      const reportInput = reportTabs.has(title)
+      const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(norm(field))
       guideRows.push([title, index + 1, field, reportInput ? "YELLOW — BUSINESS REPORT IMPORT" : editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", reportInput ? "Import or replace the verified Business Report value." : editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
     })
   }

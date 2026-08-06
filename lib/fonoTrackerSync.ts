@@ -4,8 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
 // The imported Business Report tab in the Fresh User Input workbook is the
-// single FONO authority. Do not read the separate Acquirer Tracker workbook:
-// doing so makes the visible input workbook disagree with the dashboard.
+// single FONO authority. A:I are imported; the Black columns enrich its rows.
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "1e54fm3oUeseNzsTFG8O4XweRnWVU2n8OvBc7MLOu6nE";
 const SOURCE_TAB = "Fono Funnel";
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
@@ -18,16 +17,16 @@ const SUPPLY_STAGES = new Set(["contracted", "onboarded-(takeover-pending)"]);
 
 const sourceDate = (value: unknown) => { const raw = String(value ?? "").trim(); if (!raw) return ""; const parsed = new Date(raw); return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString(); };
 
-async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, records: Record<string, unknown>[]) {
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: "Enterprise_Demand!A:AZ" });
+async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, tab: string, keyHeader: string, prefix: string, records: Record<string, unknown>[]) {
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${tab}!A:AZ` });
   const rows = (response.data.values || []) as unknown[][];
   const headers = (rows[0] || []).map(String);
-  const keyIndex = headers.findIndex((header) => norm(header) === "demand id");
-  if (keyIndex < 0) throw new Error("Enterprise_Demand is missing demand id");
-  const keep = rows.slice(1).filter((row) => !String(row[keyIndex] ?? "").startsWith("FONO-TRACKER-"));
+  const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
+  if (keyIndex < 0) throw new Error(`${tab} is missing ${keyHeader}`);
+  const keep = rows.slice(1).filter((row) => !String(row[keyIndex] ?? "").startsWith(prefix));
   const output = records.map((record) => headers.map((header) => record[header] ?? ""));
-  await sheets.spreadsheets.values.clear({ spreadsheetId, range: "Enterprise_Demand!A2:AZ" });
-  if (keep.length || output.length) await sheets.spreadsheets.values.update({ spreadsheetId, range: "Enterprise_Demand!A2", valueInputOption: "USER_ENTERED", requestBody: { values: [...keep, ...output] } });
+  await sheets.spreadsheets.values.clear({ spreadsheetId, range: `${tab}!A2:AZ` });
+  if (keep.length || output.length) await sheets.spreadsheets.values.update({ spreadsheetId, range: `${tab}!A2`, valueInputOption: "USER_ENTERED", requestBody: { values: [...keep, ...output] } });
   return output.length;
 }
 
@@ -45,6 +44,7 @@ export async function syncFonoTrackerData() {
   if (headerIndex < 0) throw new Error(`${SOURCE_TAB} is missing Date, Stage After or Nests Potential headers`);
   const headers = (values[headerIndex] || []).map(String);
   const sourceRows = values.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
+  const livingRecords: Record<string, unknown>[] = [];
   const records = sourceRows.flatMap((row) => {
     const after = String(cell(row, headers, "Stage After")).trim();
     const normalizedStage = normalizeStage(after);
@@ -56,20 +56,39 @@ export async function syncFonoTrackerData() {
     const theatre = String(cell(row, headers, "Theatre")).trim();
     const corridor = String(cell(row, headers, "Corridor")).trim();
     const prospect = String(cell(row, headers, "Prospect (PG / owner)")).trim();
+    const locationId = String(cell(row, headers, "Location_ID", "Location ID")).trim();
+    const studioId = String(cell(row, headers, "Studio_ID", "Studio ID")).trim() || locationId || stable("FONO-LOCATION", [theatre, corridor, prospect]);
+    const studioName = String(cell(row, headers, "Studio_Name", "Studio Name")).trim() || prospect || corridor || theatre;
+    const studiosCount = number(cell(row, headers, "Studios_Count", "Studios Count"));
+    const activationReady = number(cell(row, headers, "Activation_Ready_Nests", "Activation Ready Nests"));
+    const memberAdds = number(cell(row, headers, "Member_Adds", "Member Adds"));
+    const lastUpdated = sourceDate(cell(row, headers, "Last_Updated", "Last Updated")) || date;
+    const evidence = String(cell(row, headers, "Evidence_Ref", "Evidence Ref")).trim();
+    const remarks = String(cell(row, headers, "Remarks")).trim();
+    const verifier = String(cell(row, headers, "Verifier")).trim();
     const key = stable("FONO-TRACKER", [date, acquirer, theatre, corridor, prospect, after, nests]);
     const isSupply = SUPPLY_STAGES.has(normalizedStage);
+    if (isSupply) livingRecords.push({
+      "living hourly id": key.replace("FONO-TRACKER-", "FONO-TRACKER-LIVING-"), "studio id": studioId, "studio name": studioName,
+      "theatre id": theatre, "supply model": "FONO", "contracted nests": nests,
+      "activation ready nests": activationReady || nests, "occupied nests": memberAdds,
+      "occupancy ratio": nests ? memberAdds / nests : 0, "updated at": lastUpdated,
+      "source submission id": key, "source note": [locationId && `Location=${locationId}`, studiosCount && `Studios=${studiosCount}`, verifier && `Verifier=${verifier}`, remarks, evidence && `Evidence=${evidence}`].filter(Boolean).join(" | "),
+      [REPORTING_MONTH_HEADER]: reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "",
+    });
     return [{
       "demand id": key, "enterprise id": stable("FONO-PROSPECT", [prospect]), "enterprise name": prospect || "FONO prospect",
-      "plant id": stable("FONO-LOCATION", [theatre, corridor, prospect]), "plant name": corridor || theatre,
+      "plant id": studioId, "plant name": studioName,
       "role required": "Living supply", "headcount required": nests, "headcount matched": isSupply ? nests : 0,
       "headcount remaining": isSupply ? 0 : nests, certainty: after, status: after, "owner actor id": acquirer || "ACT-UNASSIGNED",
-      "opened at": date, "source submission id": key, "updated at": date, "theatre id": theatre,
-      "source note": `FONO Tracker · Demand=${nests} · Supply=${isSupply ? nests : 0}`,
+      "opened at": date, "source submission id": key, "updated at": lastUpdated, "theatre id": theatre,
+      "source note": `Business Report Fono Funnel | Demand=${nests} | Supply=${isSupply ? nests : 0}${evidence ? ` | Evidence=${evidence}` : ""}`,
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
     }];
   });
-  const written = await replaceOwned(sheets, backendId, records);
+  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", records);
+  const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
   return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,
     demandNests: records.reduce((sum, row) => sum + number(row["headcount required"]), 0), supplyNests: records.reduce((sum, row) => sum + number(row["headcount matched"]), 0),
-    gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), written };
+    gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), written, livingWritten };
 }
