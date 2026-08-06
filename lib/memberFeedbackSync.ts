@@ -108,7 +108,7 @@ async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadshee
 
 export async function syncMemberFeedback() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  const sourceSpreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
+  const sourceSpreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
   if (!spreadsheetId || !sourceSpreadsheetId) throw new Error("Google Sheet IDs are not configured");
   const auth = new google.auth.GoogleAuth({ credentials: googleServiceAccountCredentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });

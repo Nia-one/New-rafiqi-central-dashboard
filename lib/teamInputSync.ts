@@ -328,7 +328,14 @@ function aggregateFinanceSources(rows: Record<string, unknown>[], businessDate: 
 export async function syncTeamInputs() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
-  const sourceSpreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
+  const sourceSpreadsheetId = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
+  // The fresh workbook owns its dashboard-aligned UI_* inputs. Only inputs
+  // without a UI_* equivalent are read from its legacy-compatible TEAM_* tabs,
+  // preventing duplicate Finance, People, Action, Evidence and Approval rows.
+  const freshWorkbookSource = sourceSpreadsheetId === process.env.GOOGLE_TEAM_INPUT_SHEET_ID && !process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID;
+  const activeMappings = freshWorkbookSource
+    ? mappings.filter(([source]) => source === "TEAM_MEMBER_ACTIVATION" || source === "TEAM_LEARNING_HISTORY")
+    : mappings;
   const credentials = googleServiceAccountCredentials();
   const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
@@ -342,11 +349,11 @@ export async function syncTeamInputs() {
   // Fetch all mapped tabs in two batch requests. Calling values.get twice per
   // mapping exhausted the service-account per-minute read quota in production.
   const [mappedSources, mappedTargets] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: sourceSpreadsheetId, ranges: mappings.map(([source]) => `${source}!A:AZ`) }),
-    sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: mappings.map(([, target]) => `${target}!A:AZ`) }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId: sourceSpreadsheetId, ranges: activeMappings.map(([source]) => `${source}!A:AZ`) }),
+    sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: activeMappings.map(([, target]) => `${target}!A:AZ`) }),
   ]);
 
-  for (const [mappingIndex, [source, target]] of mappings.entries()) {
+  for (const [mappingIndex, [source, target]] of activeMappings.entries()) {
     const sourceRows = (mappedSources.data.valueRanges?.[mappingIndex]?.values || []) as unknown[][];
     const targetRows = (mappedTargets.data.valueRanges?.[mappingIndex]?.values || []) as unknown[][];
     if (targetRows.length === 0) {
