@@ -146,8 +146,10 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
       return stale;
     }
     if (response?.status === 429) {
-      console.warn("Google Sheets quota unavailable and no snapshot exists; serving an empty safe snapshot.");
-      return ranges.map(() => []);
+      // Never cache an all-empty batch as though it were a successful read.
+      // Doing so turns a temporary quota response into a full-dashboard outage
+      // for the cache lifetime and prevents the next request from recovering.
+      throw new Error("Google Sheets quota unavailable and no successful snapshot exists.");
     }
     if (lastNetworkError instanceof Error) throw lastNetworkError;
     throw new Error(message || "Google Sheets batch read failed");
