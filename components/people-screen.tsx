@@ -25,10 +25,13 @@ function LivePeopleCards({ rows, label }: { rows: readonly LiveRow[]; label: str
   if (!rows.length) return <p className="footer-note">No verified {label.toLowerCase()} records are available.</p>
   return <OperationalCardStack label={label}>{rows.map((row, index) => {
     const title = rowValue(row, "display name", "owner name", "owner", "actor id") || `Record ${index + 1}`
-    const team = rowValue(row, "team", "role", "vertical") || "Not recorded"
+    const team = rowValue(row, "accountability area", "lane", "team", "role") || "Not recorded"
     const status = rowValue(row, "status", "state", "performance status") || "Recorded"
     const fields = Object.entries(row).filter(([key]) => !key.startsWith("__") && !["display name", "owner name", "owner"].includes(key.toLowerCase())).slice(0, 6).map(([key, value]) => ({ label: key.replaceAll("_", " "), value: String(value ?? "") || "Not recorded" }))
-    return <OperationalCard key={`${title}-${index}`} title={title} domain={team} status={status} fields={fields} />
+    const attainment = Number(rowValue(row, "attainment pct", "attainment", "actual pct"))
+    const optic = Number.isFinite(attainment) ? { label: `${attainment}% attainment`, percent: Math.min(100, Math.max(0, attainment)) } : undefined
+    const action = /on plan|verified|closed/i.test(status) ? "No performance action required" : "Review performance and submit evidence"
+    return <OperationalCard key={`${title}-${index}`} title={title} domain={team} status={status} fields={fields} optic={optic} action={action} />
   })}</OperationalCardStack>
 }
 

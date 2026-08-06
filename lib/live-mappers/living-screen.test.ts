@@ -19,7 +19,7 @@ test("Living channel occupancy excludes the independent EXISTING snapshot", () =
   assert.deepEqual(result.existingOccupancyRows[0].slice(0, 6), ["Existing A", "North", "100", "80", "20", "80%"])
 })
 
-test("Living derives current FONO and SP channel totals from governed demand feeds when hourly has only EXISTING", () => {
+test("Living keeps SP demand separate from supply when hourly has no governed SP capacity", () => {
   const result = buildLivingScreenData({
     living: [{ "studio id": "Existing A", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 80 }],
     enterpriseDemand: [
@@ -32,8 +32,11 @@ test("Living derives current FONO and SP channel totals from governed demand fee
   assert.equal(result.fonoReady, 75)
   assert.equal(result.demandRequired, 20)
   assert.equal(result.demandMatched, 5)
-  assert.equal(result.occupancyContracted, 220)
-  assert.equal(result.occupancyOccupied, 80)
+  assert.equal(result.spContracted, 0)
+  assert.equal(result.spReady, 0)
+  assert.equal(result.spOccupied, 0)
+  assert.equal(result.occupancyContracted, 200)
+  assert.equal(result.occupancyOccupied, 75)
   assert.equal(result.existingContracted, 100)
 })
 
@@ -80,4 +83,22 @@ test("FONO Stage After uses Nests Potential and treats takeover-pending as contr
   assert.equal(result.fonoSupply[0].mtd, 887)
   assert.equal(result.fonoStudioCount, 1)
   assert.equal(result.occupancyRows[0][0], "Studio One")
+})
+
+test("Collections roll up company-wide but only join a Living channel by governed Studio ID", () => {
+  const result = buildLivingScreenData({
+    living: [
+      { "studio id": "FONO-1", "supply model": "FONO", "contracted nests": 10, "activation ready nests": 10, "occupied nests": 8 },
+      { "studio id": "EXISTING-1", "supply model": "EXISTING", "contracted nests": 20, "occupied nests": 15 },
+    ],
+    finance: [
+      { "finance daily id": "UI-COLL-1", "studio id": "FONO-1", "total billed inr": 1000, "total collected inr": 700, "current due inr": 300, "reconciliation status": "Partially Collected" },
+      { "finance daily id": "UI-COLL-2", "studio id": "EXISTING-1", "total billed inr": 2000, "total collected inr": 500, "current due inr": 1500, "reconciliation status": "Overdue" },
+      { "finance daily id": "UI-FIN-1", "studio id": "FONO-1", "total billed inr": 9999, "current due inr": 9999 },
+    ],
+  })
+
+  assert.deepEqual(result.collection, { rowCount: 2, billed: 3000, collected: 1200, due: 1800, openCount: 2, overdueCount: 1 })
+  assert.deepEqual(result.fonoCollection, { rowCount: 1, billed: 1000, collected: 700, due: 300, openCount: 1, overdueCount: 0 })
+  assert.equal(result.spCollection.rowCount, 0)
 })

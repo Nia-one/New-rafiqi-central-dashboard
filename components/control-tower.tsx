@@ -18,6 +18,7 @@ const consoleDefinitions = [
   { name: "Member Engagement", icon: HeartHandshake },
   { name: "Member Savings", icon: BadgeIndianRupee },
   { name: "Living", icon: Building2 },
+  { name: "Collections", icon: BadgeIndianRupee },
   { name: "Nia Margins", icon: ChartNoAxesCombined },
   { name: "Nia Growth", icon: TrendingUp },
 ] as const
@@ -113,6 +114,24 @@ const displayDate = (value: unknown) => {
   return `${day} ${month}, ${hour}:${minute} ${hour24 >= 12 ? "pm" : "am"}`
 }
 
+const sourceValue = (row: Record<string, any> | undefined, ...keys: string[]) => {
+  for (const key of keys) {
+    const normalized = key.toLowerCase().replaceAll("_", " ")
+    const match = Object.keys(row ?? {}).find((candidate) => candidate.toLowerCase().replaceAll("_", " ") === normalized)
+    if (match && String(row?.[match] ?? "").trim()) return String(row?.[match]).trim()
+  }
+  return ""
+}
+
+const sourceNumber = (row: Record<string, any> | undefined, ...keys: string[]) => {
+  const raw = sourceValue(row, ...keys)
+  if (!raw) return null
+  const parsed = Number(raw.replace(/[^0-9.-]/g, ""))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const metricValue = (value: number | null, unit = "") => value === null ? "Not recorded" : `${value.toLocaleString("en-IN")}${unit ? ` ${unit}` : ""}`
+
 export function buildControlTowerLivingLoop(liveOpsData: any) {
   const living = buildLivingScreenData(liveOpsData)
   return {
@@ -120,31 +139,55 @@ export function buildControlTowerLivingLoop(liveOpsData: any) {
     current: `${living.existingOccupied.toLocaleString("en-IN")} occupied`,
     target: `${living.existingContracted.toLocaleString("en-IN")} contracted`,
     gap: `${living.existingVacant.toLocaleString("en-IN")} vacant · ${living.existingOccupancyPercent}% occupancy`,
-    due: "Live monitoring",
+    due: living.collection.rowCount > 0
+      ? `₹${living.collection.due.toLocaleString("en-IN")} collection pending · ${living.collection.openCount} open`
+      : "Collections not recorded",
     verified: displayDate(liveOpsData?.meta?.updatedAt ?? liveOpsData?.fetchedAt),
+    collectionRows: living.collection.rowCount,
+    collectionBilled: living.collection.billed,
+    collectionCollected: living.collection.collected,
+    collectionDue: living.collection.due,
+    collectionOpen: living.collection.openCount,
+    collectionOverdue: living.collection.overdueCount,
   }
 }
 
 export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledAutonomyPreview, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, onOpenWorkspace }: ControlTowerProps) {
   const livePreviews = { enterpriseDemandPreview, controlledAutonomyPreview, niaMarginsPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview } as any
   const livingLoop = buildControlTowerLivingLoop(liveOpsData)
+  const collectionsLoop = livingLoop.collectionRows > 0
+    ? { name: "Collections", current: `₹${livingLoop.collectionCollected.toLocaleString("en-IN")} collected`, target: `₹${livingLoop.collectionBilled.toLocaleString("en-IN")} billed`, gap: `₹${livingLoop.collectionDue.toLocaleString("en-IN")} pending`, due: `${livingLoop.collectionOverdue} overdue · ${livingLoop.collectionOpen} open`, verified: livingLoop.verified }
+    : { name: "Collections", current: "No data", target: "No data", gap: "No recorded pending", due: "No collection input", verified: livingLoop.verified }
+  const enterpriseRows = (liveOpsData?.enterpriseWorkspaceDemand ?? []) as Record<string, unknown>[]
+  const enterpriseRequired = enterpriseRows.reduce((sum, row) => sum + (sourceNumber(row, "headcount required") ?? 0), 0)
+  const enterpriseMatched = enterpriseRows.reduce((sum, row) => sum + (sourceNumber(row, "headcount matched") ?? 0), 0)
+  const enterpriseGap = Math.max(0, enterpriseRequired - enterpriseMatched)
+  const enterpriseDue = enterpriseRows.map((row) => sourceValue(row, "activation required at")).filter(Boolean).sort()[0]
+  const enterpriseUpdated = enterpriseRows.map((row) => sourceValue(row, "updated at", "opened at")).filter(Boolean).sort().at(-1)
   const loops = [
-    enterpriseDemandPreview
-      ? { name: "Enterprise demand", current: `${Math.max(0, enterpriseDemandPreview.activeNode.committedNests - enterpriseDemandPreview.activeNode.readinessGap)} Nests`, target: `${enterpriseDemandPreview.activeNode.committedNests} Nests`, gap: `${enterpriseDemandPreview.activeNode.readinessGap} Nests`, due: displayDate(enterpriseDemandPreview.activeNode.arrivalAt), verified: displayDate(enterpriseDemandPreview.source.lastRefreshAt) }
-      : { name: "Enterprise demand", current: "No data", target: "No data", gap: "0 open", due: "No open action", verified: "Not recorded" },
+    enterpriseRows.length
+      ? { name: "Enterprise demand", current: `${enterpriseMatched} Nests matched`, target: `${enterpriseRequired} Nests required`, gap: `${enterpriseGap} Nests open`, due: enterpriseDue ? displayDate(enterpriseDue) : "Activation date not recorded", verified: enterpriseUpdated ? displayDate(enterpriseUpdated) : "Backend sheet" }
+      : enterpriseDemandPreview
+        ? { name: "Enterprise demand", current: `${Math.max(0, enterpriseDemandPreview.activeNode.committedNests - enterpriseDemandPreview.activeNode.readinessGap)} Nests`, target: `${enterpriseDemandPreview.activeNode.committedNests} Nests`, gap: `${enterpriseDemandPreview.activeNode.readinessGap} Nests`, due: displayDate(enterpriseDemandPreview.activeNode.arrivalAt), verified: displayDate(enterpriseDemandPreview.source.lastRefreshAt) }
+        : { name: "Enterprise demand", current: "No data", target: "No data", gap: "0 open", due: "No open action", verified: "Not recorded" },
     { name: "Member adds", current: String(livePreviews.newAddsPreview.taskSummary.current), target: String(livePreviews.newAddsPreview.taskSummary.target), gap: String(livePreviews.newAddsPreview.taskSummary.gap), due: livePreviews.newAddsPreview.actions[0]?.dueAt ? displayDate(livePreviews.newAddsPreview.actions[0].dueAt) : "No open action", verified: displayDate(livePreviews.newAddsPreview.source.lastRefreshAt) },
     memberEngagementPreview
       ? { name: "Member engagement", current: String(memberEngagementPreview.summary.current), target: String(memberEngagementPreview.summary.target), gap: String(memberEngagementPreview.summary.gap), due: memberEngagementPreview.tasks[0]?.dueAt ? displayDate(memberEngagementPreview.tasks[0].dueAt) : "No open action", verified: displayDate(memberEngagementPreview.source.lastRefreshAt) }
       : { name: "Member engagement", current: "No data", target: "No data", gap: "0 open", due: "No open action", verified: "Not recorded" },
     { name: "Member savings", current: String(livePreviews.memberSavingsPreview.summary.current), target: String(livePreviews.memberSavingsPreview.summary.target), gap: String(livePreviews.memberSavingsPreview.summary.gap), due: livePreviews.memberSavingsPreview.tasks[0]?.dueAt ? displayDate(livePreviews.memberSavingsPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.memberSavingsPreview.source.lastRefreshAt) },
     livingLoop,
+    collectionsLoop,
     { name: "Nia margins", current: `₹${niaMarginsPreview.measures.fullUseCm2Inr.toLocaleString("en-IN")}`, target: (niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded ? `₹${niaMarginsPreview.measures.fullUseTargetInr.toLocaleString("en-IN")}` : "Not recorded", gap: (niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded ? `₹${Math.max(0, niaMarginsPreview.measures.fullUseTargetInr - niaMarginsPreview.measures.fullUseCm2Inr).toLocaleString("en-IN")}` : "Not calculable", due: "No sheet action", verified: "Calculated from backend" },
     { name: "Nia growth", current: String(livePreviews.niaGrowthPreview.summary.current), target: String(livePreviews.niaGrowthPreview.summary.target), gap: String(livePreviews.niaGrowthPreview.summary.gap), due: livePreviews.niaGrowthPreview.tasks[0]?.dueAt ? displayDate(livePreviews.niaGrowthPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.niaGrowthPreview.source.lastRefreshAt), verifiedPercent: Number.parseInt(String(livePreviews.niaGrowthPreview.summary.progress), 10) || 0 },
   ]
   const governanceRecords = (controlledAutonomyPreview.routineLoop.records ?? []) as any[]
-  const alarms: readonly (readonly [string, string, string, string, string, string])[] = governanceRecords.map((record) => [
+  const governanceAlarms: readonly (readonly [string, string, string, string, string, string])[] = governanceRecords.map((record) => [
     String(record.title || record.exceptionId), String(record.exceptionId), String(record.domain || "Operations"), String(record.ownerActorId || "Unassigned"), "Governed clock", String(record.state || "Detected"),
   ])
+  const enterpriseAlarms: readonly (readonly [string, string, string, string, string, string])[] = (enterpriseDemandPreview?.exceptions ?? []).map((exception) => [
+    exception.issue, exception.exceptionId, "Enterprise Demand", exception.owner || "Unassigned", displayDate(exception.dueAt), "New",
+  ])
+  const alarms = [...governanceAlarms, ...enterpriseAlarms]
   const memberAddsOpenTheatres = newAddsPreview.theatres.filter((theatre) => theatre.vacantNests > 0).length
   const consoles = consoleDefinitions.map((definition) => ({
     ...definition,
@@ -152,22 +195,37 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
       ? alarms.length + memberAddsOpenTheatres
       : definition.name === "Member Adds"
         ? memberAddsOpenTheatres
+        : definition.name === "Enterprise Demand"
+          ? enterpriseRows.filter((row) => (sourceNumber(row, "headcount required") ?? 0) > (sourceNumber(row, "headcount matched") ?? 0)).length
         : alarms.filter((alarm) => alarm[2].toLowerCase().includes(definition.name.toLowerCase().replace("member adds", "new adds"))).length,
   }))
-  const enterpriseStages: readonly (readonly [number, string, string, number])[] = enterpriseDemandPreview?.supplyLanes.flatMap((lane) => lane.stages.map((stage) => [stage.count, `${lane.supplyModel} ${stage.label}`, "Governed backend stage", 0] as const)) ?? []
+  const enterpriseStages: readonly (readonly [number, string, string, number])[] = enterpriseDemandPreview?.supplyLanes.flatMap((lane) => lane.stages.filter((stage) => stage.count > 0).map((stage) => [stage.count, `${lane.supplyModel} ${stage.label}`, "Governed backend stage", 0] as const)) ?? []
   const memberStages: readonly (readonly [number, string, string, number])[] = [[Number(livePreviews.newAddsPreview.taskSummary.target) || 0, "Target fills", "Governed target", 0], [Number(livePreviews.newAddsPreview.taskSummary.current) || 0, "Verified billing-live", "Independent verification", Number(livePreviews.newAddsPreview.taskSummary.gap) || 0]]
   const viewFor = (consoleName: string) => {
     const loopName = consoleName === "All consoles" ? "nia growth" : consoleName === "Living" ? "living occupancy" : consoleName.toLowerCase()
     const loop = loops.find((candidate) => candidate.name.toLowerCase() === loopName) ?? loops[0]
     const alarmConsole = consoleName === "All consoles" ? null : consoleName === "Member Adds" ? "New Adds" : consoleName
     const alarm = (alarmConsole ? alarms.find((candidate) => candidate[2].toLowerCase().includes(alarmConsole.toLowerCase())) : alarms[0])
+    const action = (liveOpsData?.actionLog ?? []).find((row: Record<string, any>) => sourceValue(row, "action id") === alarm?.[1])
+    const linkedEvidence = (liveOpsData?.evidenceLog ?? []).filter((row: Record<string, any>) => sourceValue(row, "linked id") === alarm?.[1])
+    const linkedApproval = (liveOpsData?.approvalLog ?? []).find((row: Record<string, any>) => sourceValue(row, "linked action id") === alarm?.[1])
     const numericCurrent = Number(String(loop.current).replace(/[^0-9.-]/g, "")) || 0
     const numericTarget = Number(String(loop.target).replace(/[^0-9.-]/g, "")) || 0
     const memberAddsGap = consoleName === "Member Adds" ? Number(newAddsPreview.taskSummary.gap) || 0 : 0
+    const isOpenEnterpriseDemand = consoleName === "Enterprise Demand" && enterpriseGap > 0
     const verified = "verifiedPercent" in loop
-      ? Math.min(100, Math.max(0, loop.verifiedPercent))
+      ? Math.min(100, Math.max(0, Number(loop.verifiedPercent) || 0))
       : numericTarget > 0 ? Math.min(100, Math.round(numericCurrent / numericTarget * 100)) : 0
-    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 ? "Action required" : "No open alarm", prescription: alarm?.[1] || (memberAddsGap > 0 ? "Recover the FONO member-add gap" : "Continue governed monitoring"), owner: alarm?.[3] || (memberAddsGap > 0 ? newAddsPreview.taskSummary.owner : "Unassigned"), due: alarm?.[4] || loop.due, metric: loop.name, verified, current: loop.current, target: loop.target, by: loop.due, verifier: "Independent verifier", evidence: ["Protected source record", "Independent verification record"] }
+    const baseline = sourceNumber(action, "baseline value")
+    const target = sourceNumber(action, "target value")
+    const gap = baseline !== null && target !== null ? Math.max(0, target - baseline) : null
+    const unit = sourceValue(action, "expected metric").toLowerCase().includes("nest") ? "Nests" : ""
+    const evidence: string[] = linkedEvidence.length ? linkedEvidence.map((row: Record<string, any>) => sourceValue(row, "description", "evidence type") || "Protected evidence record") : [sourceValue(action, "required evidence") || "Protected source record"]
+    const due = sourceValue(action, "due at") ? displayDate(sourceValue(action, "due at")) : (alarm?.[4] || loop.due)
+    const prescription = sourceValue(action, "next action", "notes") || (memberAddsGap > 0 ? "Recover the FONO member-add gap" : isOpenEnterpriseDemand ? "Match confirmed Enterprise demand to governed Living supply" : "Continue governed monitoring")
+    const approvalDecision = sourceValue(linkedApproval, "decision") || "No approval recorded"
+    const approvalRole = sourceValue(linkedApproval, "approver role")
+    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : isOpenEnterpriseDemand ? `${enterpriseGap} confirmed Enterprise demand Nests await supply matching` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 || isOpenEnterpriseDemand ? "Action required" : "No open alarm", prescription, rootCause: isOpenEnterpriseDemand ? `${enterpriseRequired} Nests are required, ${enterpriseMatched} are matched, and ${enterpriseGap} remain open. No supply is inferred from demand.` : gap === null ? "The governed source does not contain enough values to calculate the gap." : `${metricValue(baseline, unit)} are recorded against ${metricValue(target, unit)} required, leaving a ${metricValue(gap, unit)} readiness gap.`, owner: sourceValue(action, "owner actor id") || alarm?.[3] || (memberAddsGap > 0 ? newAddsPreview.taskSummary.owner : isOpenEnterpriseDemand ? sourceValue(enterpriseRows[0], "owner actor id") || "Unassigned" : "Unassigned"), due, metric: sourceValue(action, "expected metric") || loop.name, verified, current: baseline === null ? loop.current : metricValue(baseline, unit), target: target === null ? loop.target : metricValue(target, unit), by: due, verifier: sourceValue(linkedEvidence.find((row: Record<string, any>) => sourceValue(row, "verified by")), "verified by") || sourceValue(action, "verified by") || governanceRecords.find((record) => record.exceptionId === alarm?.[1])?.verifierActorId || "Independent verifier pending", evidence, governedRoute: prescription, approval: approvalRole ? `${approvalDecision} · ${approvalRole}` : approvalDecision, escalation: isOpenEnterpriseDemand ? `Escalate to ${sourceValue(enterpriseRows[0], "owner actor id") || "the governed owner"} at the activation due time` : gap && gap > 0 ? `Escalate to ${approvalRole || sourceValue(action, "owner actor id") || "the governed owner"} at the due time` : "Continue governed monitoring" }
   }
   const [activeConsole, setActiveConsole] = useState("All consoles")
   const [held, setHeld] = useState(false)
@@ -175,15 +233,21 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const [refreshing, setRefreshing] = useState(false)
   const [focusedAlarm, setFocusedAlarm] = useState<string>(alarms[0]?.[0] ?? "")
   const [consoleEvents, setConsoleEvents] = useState<string[]>([])
+  const [alarmStates, setAlarmStates] = useState<Record<string, string>>({})
+  const [alarmEvents, setAlarmEvents] = useState<{ title: string; detail: string; at: string }[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
   useEffect(() => {
     if (!mounted) return
     let cancelled = false
+    const autoSyncIntervalMs = 2 * 60 * 60 * 1000
     const autoSync = async () => {
       const now = Date.now()
       const last = Number(window.sessionStorage.getItem("rafiqi-auto-sync-at") || 0)
-      if (now - last < 45_000) return
+      if (!last || now - last < autoSyncIntervalMs) {
+        if (!last) window.sessionStorage.setItem("rafiqi-auto-sync-at", String(now))
+        return
+      }
       window.sessionStorage.setItem("rafiqi-auto-sync-at", String(now))
       try {
         const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store" })
@@ -193,7 +257,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
       }
     }
     void autoSync()
-    const timer = window.setInterval(() => void autoSync(), 45_000)
+    const timer = window.setInterval(() => void autoSync(), autoSyncIntervalMs)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [mounted])
   const visibleLoops = useMemo(() => activeConsole === "All consoles" ? loops : loops.filter((loop) => loop.name.toLowerCase() === (activeConsole === "Living" ? "living occupancy" : activeConsole.toLowerCase())), [activeConsole])
@@ -201,6 +265,20 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const visibleAlarms = useMemo(() => view.alarmConsole === null ? alarms : alarms.filter((alarm) => alarm[2] === view.alarmConsole), [view])
   const approvalAlarms = (activeConsole === "All consoles" ? [alarms[0], alarms[1], alarms[2]] : activeConsole === "Enterprise Demand" ? [alarms[2]] : activeConsole === "Nia Growth" ? [alarms[0], alarms[1]] : []).filter((alarm): alarm is (typeof alarms)[number] => Boolean(alarm))
   const handedOver = (activeConsole === "All consoles" || activeConsole === "Nia Growth" ? [alarms[0], alarms[1]] : []).filter((alarm): alarm is (typeof alarms)[number] => Boolean(alarm))
+  const alarmState = (alarm: (typeof alarms)[number]) => alarmStates[alarm[1]] ?? alarm[5]
+  const moveAlarm = (alarm: (typeof alarms)[number], nextState: string, eventTitle: string) => {
+    setAlarmStates((current) => ({ ...current, [alarm[1]]: nextState }))
+    setFocusedAlarm(alarm[0])
+    setAlarmEvents((events) => [...events, { title: eventTitle, detail: alarm[0], at: new Date().toISOString() }].slice(-2))
+  }
+  const alarmControls = (alarm: (typeof alarms)[number]) => {
+    const state = alarmState(alarm)
+    if (state === "Closed") return <button type="button" onClick={() => moveAlarm(alarm, "New", "Alarm reopened")}><RotateCcw aria-hidden />Reopen</button>
+    if (state === "Escalated") return <button type="button" onClick={() => moveAlarm(alarm, "Assigned", "Alarm recalled")}><RotateCcw aria-hidden />Recall</button>
+    if (state === "Assigned") return <><button type="button" onClick={() => moveAlarm(alarm, "Evidence", "Alarm evidence requested")}><ShieldCheck aria-hidden />Evidence</button><button type="button" aria-label={`Escalate ${alarm[0]}`} onClick={() => moveAlarm(alarm, "Escalated", "Alarm escalated")}><Send aria-hidden /></button></>
+    if (state === "Evidence") return <><button type="button" onClick={() => moveAlarm(alarm, "Closed", "Alarm closed")}><CheckCircle2 aria-hidden />Close</button><button type="button" aria-label={`Escalate ${alarm[0]}`} onClick={() => moveAlarm(alarm, "Escalated", "Alarm escalated")}><Send aria-hidden /></button></>
+    return <><button type="button" onClick={() => moveAlarm(alarm, "Assigned", "Alarm assigned")}><UserCheck aria-hidden />Assign</button><button type="button" aria-label={`Escalate ${alarm[0]}`} onClick={() => moveAlarm(alarm, "Escalated", "Alarm escalated")}><Send aria-hidden /></button></>
+  }
   const refreshDashboard = async () => {
     if (refreshing) return
     setRefreshing(true)
@@ -223,7 +301,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     <aside className="tower-rail" aria-label="Control Tower consoles">
       <div className="tower-brand"><span>R</span><div><strong>RafiQi Central</strong><small>Control Tower</small></div></div>
       <section className="tower-state"><span className="tower-kicker">System state</span><strong>{held ? "HELD" : "MANNED"}</strong><small>{held ? "Execution routes frozen" : "Shadow routes under watch"}</small></section>
-      <nav className="tower-console-list" aria-label="Operating consoles"><p>Consoles</p>{consoles.map(({ name, open, icon: Icon }) => <button type="button" key={name} aria-current={activeConsole === name ? "page" : undefined} onClick={() => { setActiveConsole(name); setConsoleEvents((events) => [...events, name]) }}><Icon aria-hidden /><span><strong>{name}</strong><small>{open} open</small></span><i /></button>)}</nav>
+      <nav className="tower-console-list" aria-label="Operating consoles"><p>Consoles</p>{consoles.map(({ name, open, icon: Icon }) => <button type="button" key={name} aria-current={activeConsole === name ? "page" : undefined} onClick={() => { setActiveConsole(name); setConsoleEvents([name]) }}><Icon aria-hidden /><span><strong>{name}</strong><small>{open} open</small></span><i /></button>)}</nav>
       <section className="tower-hold"><span className="tower-kicker">Execution control</span><button className="tower-hold-button" type="button" aria-pressed={held} onClick={() => setHeld((value) => !value)}><Pause aria-hidden /><span><strong>{held ? "Release execution" : "Hold execution"}</strong><small>{held ? "Return routes to shadow watch" : "Freeze every running route"}</small></span></button></section>
     </aside>
 
@@ -239,7 +317,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
                 <div className="tower-fix-action"><span className="tower-kicker">Prescription</span><strong>{view.prescription}</strong><p><UserRound aria-hidden />{view.owner} · <Clock3 aria-hidden />{view.due}</p></div>
                 <div className="tower-metric"><span><strong>{view.metric}</strong><small>{view.verified}% verified</small></span><div className="tower-metric-bar"><i style={{ width: `${view.verified}%` }} /><span /></div><p className="tower-metric-key"><span data-state="verified"><i />{view.verified}% verified</span><span><i />{100 - view.verified}% still open</span></p><p className="tower-metric-values"><strong>{view.current}</strong><ArrowRight aria-hidden /><strong>{view.target}</strong><small>by {view.by}</small></p></div>
               </div>
-              <details className="tower-evidence"><summary>View evidence and recovery detail</summary><div className="tower-evidence-body"><div><span className="tower-kicker">Evidence to close</span>{view.evidence.map((item) => <p key={item}><CheckCircle2 aria-hidden />{item}</p>)}<p><ShieldCheck aria-hidden />Verifier · {view.verifier}</p></div><div className="tower-fix-options"><article data-chosen="true"><span>Governed route</span><strong>{view.title}</strong><small>Highest eligible route within the current control boundary.</small></article></div></div></details>
+              <details className="tower-evidence"><summary>View evidence and recovery detail</summary><div className="tower-evidence-body"><div><span className="tower-kicker">Root cause</span><p>{view.rootCause}</p><span className="tower-kicker">Evidence to close</span>{view.evidence.map((item) => <p key={item}><CheckCircle2 aria-hidden />{item}</p>)}<p><ShieldCheck aria-hidden />Verifier · {view.verifier}</p></div><div className="tower-fix-options"><article data-chosen="true"><span>Governed route</span><strong>{view.governedRoute}</strong><small>Highest eligible route within the current control boundary.</small></article></div></div><div className="tower-fix-boundary"><p><span>Approval</span><strong>{view.approval}</strong></p><p><span>Escalation</span><strong>{view.escalation}</strong></p></div></details>
             </section>
 
             <section className="tower-section" aria-label="Operating board"><header className="tower-section-heading"><div><span className="tower-kicker">Live control</span><h2>Operating board</h2></div><div className="tower-board-heading-meta"><p>{visibleLoops.length} {visibleLoops.length === 1 ? "loop" : "loops"} in view</p><ul className="tower-state-key" aria-label="Operating state key"><li>Verified current</li><li>Still open</li></ul></div></header><div className="tower-board">{visibleLoops.map((loop) => <article className="tower-board-tile" data-state="unconfirmed" key={loop.name}><button className="tower-tile-focus" type="button" aria-label={`Focus ${loop.name}`}><span>{loop.name}</span><ShieldAlert aria-hidden /></button><dl><div data-measure="verified"><dt>Verified current</dt><dd>{loop.current}</dd></div><div><dt>Target</dt><dd>{loop.target}</dd></div><div data-measure="unresolved"><dt>Still open</dt><dd>{loop.gap}</dd></div></dl><div className="tower-tile-meta"><span><Clock3 aria-hidden />Due · {loop.due}</span><span><ShieldCheck aria-hidden />Data updated · {loop.verified}</span></div><button className="tower-open-workspace" type="button" onClick={() => onOpenWorkspace?.(loop.name)}>Open workspace<ArrowUpRight aria-hidden /></button></article>)}</div></section>
@@ -247,7 +325,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
             {activeConsole === "All consoles" || activeConsole === "Enterprise Demand" ? <Funnel title="Enterprise demand funnel" weak="Site visit" stages={enterpriseStages} source="Enterprise_Demand governed rows" /> : null}
             {activeConsole === "All consoles" || activeConsole === "Member Adds" ? <Funnel title="Member-adds funnel" weak="Filled" stages={memberStages} source="FONO + Shrampark + Enterprise via Enterprise_Demand" /> : null}
 
-            <section className="tower-section" aria-label="Alarm queue"><header className="tower-section-heading"><div><span className="tower-kicker">Owned exceptions</span><h2>Alarm queue</h2></div><p>{visibleAlarms.length} records · source IDs retained</p></header><div className="tower-alarm-table" role="table" aria-label="Alarm queue"><div className="tower-alarm-head" role="row"><span>Alarm</span><span>Console</span><span>Owner / due</span><span>State</span><span>Next control</span></div>{visibleAlarms.map((alarm, index) => <div className="tower-alarm-row" role="row" data-focused={focusedAlarm === alarm[0]} key={`${alarm[0]}-${index}`}><button className="tower-alarm-title" type="button" aria-pressed={focusedAlarm === alarm[0]} onClick={() => setFocusedAlarm(alarm[0])}><i data-severity="breach" /><span><strong>{alarm[0]}</strong><small>{alarm[1]}</small></span></button><span className="tower-alarm-console">{alarm[2]}</span><span className="tower-alarm-owner"><strong>{alarm[3]}</strong><small>{alarm[4]}</small></span><span className="tower-lifecycle">{alarm[5]}</span><span className="tower-row-actions">{alarm[5] === "Escalated" ? <button type="button"><RotateCcw aria-hidden />Recall</button> : <><button type="button"><UserCheck aria-hidden />Assign</button><button type="button" aria-label={`Escalate ${alarm[0]}`}><Send aria-hidden /></button></>}</span></div>)}</div></section>
+            <section className="tower-section" aria-label="Alarm queue"><header className="tower-section-heading"><div><span className="tower-kicker">Owned exceptions</span><h2>Alarm queue</h2></div><p>{visibleAlarms.length} records · source IDs retained</p></header><div className="tower-alarm-table" role="table" aria-label="Alarm queue"><div className="tower-alarm-head" role="row"><span>Alarm</span><span>Console</span><span>Owner / due</span><span>State</span><span>Next control</span></div>{visibleAlarms.map((alarm, index) => <div className="tower-alarm-row" role="row" data-focused={focusedAlarm === alarm[0]} key={`${alarm[0]}-${index}`}><button className="tower-alarm-title" type="button" aria-pressed={focusedAlarm === alarm[0]} onClick={() => setFocusedAlarm(alarm[0])}><i data-severity="breach" /><span><strong>{alarm[0]}</strong><small>{alarm[1]}</small></span></button><span className="tower-alarm-console">{alarm[2]}</span><span className="tower-alarm-owner"><strong>{alarm[3]}</strong><small>{alarm[4]}</small></span><span className="tower-lifecycle">{alarmState(alarm)}</span><span className="tower-row-actions">{alarmControls(alarm)}</span></div>)}</div></section>
           </div>
           <aside className="tower-aside" aria-label="Human controls">
             <section><span className="tower-kicker">Approvals</span><h2>Waiting on a person</h2>
@@ -259,7 +337,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
             </section>
           </aside>
         </div>
-        <footer className="tower-log" aria-label="Append-only tower log"><div className="tower-log-title"><span className="tower-kicker">Append-only log</span><strong>{1 + consoleEvents.length} events</strong></div><ol><li><time>Ready</time><span>RafiQi Central</span><strong>Tower manned</strong><small>{alarms.length} governed alarms loaded from Action_Log records with source lineage</small></li>{consoleEvents.map((name, index) => <li key={`${name}-${index}`}><time>{new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>Nia operator</span><strong>Console focused</strong><small>{name}</small></li>)}</ol></footer>
+        <footer className="tower-log" aria-label="Append-only tower log"><div className="tower-log-title"><span className="tower-kicker">Append-only log</span><strong>{1 + consoleEvents.length + alarmEvents.length} events</strong></div><ol><li><time>Ready</time><span>RafiQi Central</span><strong>Tower manned</strong><small>{alarms.length} governed alarms loaded from Action_Log records with source lineage</small></li>{consoleEvents.map((name, index) => <li key={`${name}-${index}`}><time>{new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>Nia operator</span><strong>Console focused</strong><small>{name}</small></li>)}{alarmEvents.map((event, index) => <li key={`${event.at}-${index}`}><time>{new Date(event.at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time><span>Nia operator</span><strong>{event.title}</strong><small>{event.detail}</small></li>)}</ol></footer>
       </div>
     </div>
   </main>

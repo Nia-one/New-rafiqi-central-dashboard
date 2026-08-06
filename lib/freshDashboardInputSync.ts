@@ -8,6 +8,13 @@ const iso = (value: unknown) => { const parsed = new Date(String(value ?? "")); 
 const month = (value: unknown) => iso(value).slice(0, 7);
 type Table = { headers: string[]; rows: unknown[][] };
 const cell = (table: Table, row: unknown[], ...names: string[]) => { const wanted = new Set(names.map(norm)); const index = table.headers.findIndex((header) => wanted.has(norm(header))); return index < 0 ? "" : row[index] ?? ""; };
+const preferredCell = (table: Table, row: unknown[], ...names: string[]) => {
+  for (const name of names) {
+    const index = table.headers.findIndex((header) => norm(header) === norm(name));
+    if (index >= 0 && row[index] !== undefined && row[index] !== null && String(row[index]).trim() !== "") return row[index];
+  }
+  return "";
+};
 
 async function upsertOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, target: string, keyHeader: string, records: Record<string, unknown>[]) {
   if (!records.length) return 0;
@@ -58,20 +65,46 @@ export async function syncFreshDashboardInputs() {
     const ready = num(cell(table, row, "Verified_Ready_Nests")) || available;
     return { "living hourly id": cell(table, row, "Record_ID"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID") || cell(table, row, "Supply_Option_ID"), "supply model": name === "UI_Shrampark_Supply" ? "SP" : cell(table, row, "Supply_Model") || "ENTERPRISE", "contracted nests": available, "activation ready nests": ready, "occupied nests": 0, "occupancy ratio": 0, ...common(row, table) };
   }));
-  const demand = map("UI_Enterprise_Demand", (row, table) => ({ "demand id": cell(table, row, "Record_ID"), "enterprise id": cell(table, row, "Enterprise_ID") || `ENT-${cell(table, row, "Record_ID")}`, "enterprise name": cell(table, row, "Enterprise_Name", "Demand_Source"), "plant id": cell(table, row, "Plant_ID") || cell(table, row, "Studio_ID"), "plant name": cell(table, row, "Plant_Name", "Studio_Name"), "role required": cell(table, row, "Role_Required") || "Living supply", "skill required": cell(table, row, "Skill_Required"), shift: cell(table, row, "Shift"), "headcount required": num(cell(table, row, "Headcount_Required", "Required_Members")), "headcount matched": num(cell(table, row, "Headcount_Matched", "Matched_Members")), "activation required at": iso(cell(table, row, "Activation_Required_At", "Reporting_Date")), certainty: cell(table, row, "Certainty"), status: cell(table, row, "Status") || "Open", "owner actor id": cell(table, row, "Business_Owner"), "opened at": iso(cell(table, row, "Reporting_Date")), ...common(row, table) }));
+  const demand = map("UI_Enterprise_Demand", (row, table) => ({ "demand id": cell(table, row, "Record_ID"), "enterprise id": cell(table, row, "Enterprise_ID") || `ENT-${cell(table, row, "Record_ID")}`, "enterprise name": cell(table, row, "Enterprise_Name", "Demand_Source"), "plant id": cell(table, row, "Plant_ID") || cell(table, row, "Studio_ID"), "plant name": preferredCell(table, row, "Plant_Name", "Studio_Name"), "role required": cell(table, row, "Role_Required") || "Living supply", "skill required": cell(table, row, "Skill_Required"), shift: cell(table, row, "Shift"), "headcount required": num(cell(table, row, "Headcount_Required", "Required_Members")), "headcount matched": num(cell(table, row, "Headcount_Matched", "Matched_Members")), "activation required at": iso(preferredCell(table, row, "Activation_Required_At", "Reporting_Date")), certainty: cell(table, row, "Certainty"), status: cell(table, row, "Status") || "Open", "owner actor id": cell(table, row, "Business_Owner"), "opened at": iso(cell(table, row, "Reporting_Date")), ...common(row, table) }));
   const memberAdds = supplyTabs.flatMap((name) => map(name, (row, table) => {
     const recordId = String(cell(table, row, "Record_ID"));
     const required = num(cell(table, row, "Nests_Count", "Available_Nests", "Verified_Ready_Nests"));
     return { "demand id": `MEMBER-ADDS-${recordId}`, "enterprise id": name, "enterprise name": name === "UI_Shrampark_Supply" ? "Shrampark" : "Enterprise", "plant id": cell(table, row, "Studio_ID", "Supply_Option_ID"), "plant name": cell(table, row, "Studio_Name", "Factory_Name"), "role required": "Member Adds", "headcount required": required, "headcount matched": num(cell(table, row, "Member_Adds")), "activation required at": iso(cell(table, row, "Reporting_Date")), certainty: "Live input", status: cell(table, row, "Status") || "Live", "owner actor id": cell(table, row, "Business_Owner"), "opened at": iso(cell(table, row, "Reporting_Date")), ...common(row, table) };
   }));
   const finance = map("UI_Finance", (row, table) => ({ "finance daily id": cell(table, row, "Record_ID"), "business date": cell(table, row, "Reporting_Date"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), "total billed inr": num(cell(table, row, "Billed_Cash_INR")), "total collected inr": num(cell(table, row, "Collected_Cash_INR")), "opex mtd inr": num(cell(table, row, "Opex_INR")), "cm1 inr": num(cell(table, row, "Revenue_INR")) - num(cell(table, row, "Direct_Cost_INR")), "cm2 inr": num(cell(table, row, "Revenue_INR")) - num(cell(table, row, "Direct_Cost_INR")) - num(cell(table, row, "Opex_INR")), "living cm2 inr": num(cell(table, row, "Living_CM_INR")), "work cm2 inr": num(cell(table, row, "Work_CM_INR")), "essentials cm2 inr": num(cell(table, row, "Essentials_CM_INR")), notes: cell(table, row, "Remarks"), ...common(row, table) }));
-  const collections = map("UI_Collections", (row, table) => ({ "finance daily id": cell(table, row, "Record_ID"), "business date": cell(table, row, "Reporting_Date"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), "total billed inr": num(cell(table, row, "Billed_INR")), "total collected inr": num(cell(table, row, "Collected_INR")), "current due inr": Math.max(0, num(cell(table, row, "Billed_INR")) - num(cell(table, row, "Collected_INR"))), "reconciliation status": cell(table, row, "Status"), notes: cell(table, row, "Remarks"), ...common(row, table) }));
-  const people = map("UI_People", (row, table) => ({ "actor id": cell(table, row, "Record_ID"), "display name": cell(table, row, "Person_Name"), role: cell(table, row, "Role"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), "active shift": cell(table, row, "Status"), ...common(row, table) }));
+  const collections = map("UI_Collections", (row, table) => ({
+    "finance daily id": cell(table, row, "Record_ID"),
+    "business date": cell(table, row, "Reporting_Date"),
+    "theatre name": cell(table, row, "Theatre_Name"),
+    "theatre id": cell(table, row, "Theatre_ID"),
+    "studio id": cell(table, row, "Studio_ID"),
+    "studio name": cell(table, row, "Studio_Name"),
+    location: cell(table, row, "Location"),
+    "business owner": cell(table, row, "Business_Owner"),
+    "invoice id": cell(table, row, "Invoice_ID"),
+    "customer or member ref": cell(table, row, "Customer_or_Member_Ref"),
+    "total billed inr": num(cell(table, row, "Billed_INR")),
+    "total collected inr": num(cell(table, row, "Collected_INR")),
+    "current due inr": Math.max(0, num(cell(table, row, "Billed_INR")) - num(cell(table, row, "Collected_INR"))),
+    "due date": cell(table, row, "Due_Date"),
+    "finance reviewer": cell(table, row, "Finance_Reviewer"),
+    "reconciliation status": cell(table, row, "Status"),
+    notes: cell(table, row, "Remarks"),
+    "evidence ref": cell(table, row, "Evidence_Ref"),
+    ...common(row, table),
+  }));
+  const people = map("UI_People", (row, table) => ({ "actor id": cell(table, row, "Record_ID"), "display name": cell(table, row, "Person_Name"), role: cell(table, row, "Role"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), "active shift": norm(cell(table, row, "Status")) === "inactive" ? "Inactive" : "Active", ...common(row, table) }));
+  const peoplePerformance = map("UI_People", (row, table) => {
+    const target = num(cell(table, row, "Target"));
+    const actual = num(cell(table, row, "Actual"));
+    const accountabilityArea = cell(table, row, "Accountability_Area", "Supply_Model", "Vertical");
+    return { "actor id": cell(table, row, "Record_ID"), "display name": cell(table, row, "Person_Name"), team: cell(table, row, "Team"), lane: accountabilityArea, status: cell(table, row, "Status"), "attainment pct": target > 0 ? Math.round(actual / target * 100) : 0, "review due": cell(table, row, "Review_Due_Date"), "reporting status": "Reporting", target, actual, "accountability area": accountabilityArea, "accountability scope": cell(table, row, "Accountability_Scope"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), role: cell(table, row, "Role"), "evidence ref": cell(table, row, "Evidence_Ref"), ...common(row, table) };
+  });
   const actions = map("UI_Actions", (row, table) => ({ "action id": cell(table, row, "Record_ID"), "operating objective": cell(table, row, "Operating_Objective"), "expected metric": cell(table, row, "Expected_Metric"), "baseline value": cell(table, row, "Baseline_Value"), "target value": cell(table, row, "Target_Value"), "owner actor id": cell(table, row, "Action_Owner", "Business_Owner"), "due at": cell(table, row, "Due_At"), "required evidence": cell(table, row, "Required_Evidence"), "approval tier": cell(table, row, "Approval_Tier"), state: cell(table, row, "State", "Status"), "studio id": cell(table, row, "Studio_ID"), ...common(row, table) }));
   const approvals = map("UI_Approvals", (row, table) => ({ "approval id": cell(table, row, "Record_ID"), "linked action id": cell(table, row, "Linked_Action_ID"), "decision type": cell(table, row, "Decision_Type"), "amount inr": num(cell(table, row, "Amount_INR")), "current terms": cell(table, row, "Current_Terms"), "proposed terms": cell(table, row, "Proposed_Terms"), "business reason": cell(table, row, "Business_Reason"), "expected result": cell(table, row, "Expected_Result"), "approver actor id": cell(table, row, "Approver"), decision: cell(table, row, "Decision"), "decision reason": cell(table, row, "Decision_Reason"), "decided at": cell(table, row, "Decided_At"), ...common(row, table) }));
   const evidence = map("UI_Evidence", (row, table) => ({ "evidence id": cell(table, row, "Record_ID"), "linked type": "Action", "linked id": cell(table, row, "Linked_Action_ID"), "evidence type": cell(table, row, "Evidence_Type"), "protected url": cell(table, row, "Source_Reference", "Evidence_Ref"), "uploaded by actor id": cell(table, row, "Uploaded_By"), "uploaded at": cell(table, row, "Captured_At"), "verification status": cell(table, row, "Verification_Status"), notes: cell(table, row, "Remarks"), ...common(row, table) }));
   const targets = map("UI_Targets", (row, table) => ({ "policy id": cell(table, row, "Record_ID"), "policy name": `${cell(table, row, "Mode")} · ${cell(table, row, "Page")} · ${cell(table, row, "KPI_Name")}`, "policy value": cell(table, row, "Target_Value"), unit: cell(table, row, "Unit"), "effective from": cell(table, row, "Effective_From"), "approved by": cell(table, row, "Approver"), status: cell(table, row, "Status"), "source note": cell(table, row, "Remarks"), ...common(row, table) }));
-  const specs = [["Living_Hourly", "living hourly id", [...occupancy, ...supply]], ["Enterprise_Demand", "demand id", [...demand, ...memberAdds]], ["Finance_Daily", "finance daily id", [...finance, ...collections]], ["People_Roster", "actor id", people], ["Action_Log", "action id", actions], ["Approval_Log", "approval id", approvals], ["Evidence_Log", "evidence id", evidence], ["Policy_Registry", "policy id", targets]] as const;
+  const specs = [["Living_Hourly", "living hourly id", [...occupancy, ...supply]], ["Enterprise_Demand", "demand id", [...demand, ...memberAdds]], ["Finance_Daily", "finance daily id", [...finance, ...collections]], ["People_Roster", "actor id", people], ["People_Performance", "actor id", peoplePerformance], ["Action_Log", "action id", actions], ["Approval_Log", "approval id", approvals], ["Evidence_Log", "evidence id", evidence], ["Policy_Registry", "policy id", targets]] as const;
   const written: Record<string, number> = {}; for (const [target, key, records] of specs) written[target] = await upsertOwned(sheets, backendId, target, key, records);
   return { sourceSpreadsheetId: SOURCE_ID, liveRows: [...tables.values()].reduce((sum, table) => sum + table.rows.length, 0), written };
 }

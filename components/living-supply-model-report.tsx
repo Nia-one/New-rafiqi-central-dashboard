@@ -72,15 +72,21 @@ function Readiness({ state }: { state: string }) {
 export function LivingSupplyModelReport({ liveData, refreshedAt }: { liveData?: any; refreshedAt?: string }) {
   const fixturePreview = buildLivingSupplyPreview()
   const unavailable = (id: string) => ({ value: null, state: "No data", definitionRef: id, sourceCoverage: "Live source coverage absent" })
-  const channel = (supplyModel: "FONO" | "SP", contractedNests: number, activationReadyNests: number, occupiedNests: number, studioCount: number) => contractedNests > 0 ? ({
+  const channel = (supplyModel: "FONO" | "SP", contractedNests: number, activationReadyNests: number, occupiedNests: number, studioCount: number, collections: any, showEmpty = false) => contractedNests > 0 || showEmpty ? ({
     supplyModel, studioCount, contractedNests, activationReadyNests, occupiedNests, payingNests: null,
-    occupancy: { value: occupiedNests / contractedNests, state: "Available", definitionRef: "MET-LIVING-OCCUPANCY@v1", sourceCoverage: "Fono Funnel + Living_Hourly" },
-    billedArpu: unavailable("MET-LIVING-BILLED-ARPU@v1"), collectionLeakage: unavailable("MET-LIVING-COLLECTION-LEAKAGE@v1"), cm1: unavailable("MET-LIVING-CM1@v1"), cm2: unavailable("MET-LIVING-CM2@v1"), sourceLineage: [],
+    occupancy: contractedNests > 0 ? { value: occupiedNests / contractedNests, state: "Available", definitionRef: "MET-LIVING-OCCUPANCY@v1", sourceCoverage: "Fono Funnel + Living_Hourly" } : unavailable("MET-LIVING-OCCUPANCY@v1"),
+    billedArpu: collections?.rowCount > 0 && occupiedNests > 0 ? { value: collections.billed / occupiedNests, state: "Available", definitionRef: "MET-LIVING-BILLED-ARPU@v1", sourceCoverage: "UI_Collections + Living_Hourly" } : unavailable("MET-LIVING-BILLED-ARPU@v1"),
+    collectionLeakage: collections?.rowCount > 0 ? { value: collections.due, state: "Available", definitionRef: "MET-LIVING-COLLECTION-LEAKAGE@v1", sourceCoverage: "UI_Collections" } : unavailable("MET-LIVING-COLLECTION-LEAKAGE@v1"),
+    cm1: unavailable("MET-LIVING-CM1@v1"), cm2: unavailable("MET-LIVING-CM2@v1"), sourceLineage: [],
   }) : null
-  const liveFono = liveData ? channel("FONO", liveData.fonoSupply[0]?.mtd ?? 0, liveData.fonoReady ?? 0, liveData.fonoOccupied ?? 0, liveData.fonoStudioCount ?? 0) : null
-  const liveSp = liveData ? channel("SP", Math.max(0, liveData.occupancyContracted - (liveData.fonoSupply[0]?.mtd ?? 0)), liveData.spReady ?? 0, liveData.demandMatched ?? 0, 0) : null
+  const liveFono = liveData ? channel("FONO", liveData.fonoSupply[0]?.mtd ?? 0, liveData.fonoReady ?? 0, liveData.fonoOccupied ?? 0, liveData.fonoStudioCount ?? 0, liveData.fonoCollection) : null
+  const liveSp = liveData ? channel("SP", liveData.spContracted ?? 0, liveData.spReady ?? 0, liveData.spOccupied ?? 0, liveData.spStudioCount ?? 0, liveData.spCollection, true) : null
   const channels = [liveFono, liveSp].filter(Boolean) as any[]
-  const liveCombined = liveFono && liveSp ? ({ ...liveFono, supplyModel: "Combined", studioCount: liveFono.studioCount + liveSp.studioCount, contractedNests: liveFono.contractedNests + liveSp.contractedNests, activationReadyNests: liveFono.activationReadyNests + liveSp.activationReadyNests, occupiedNests: liveFono.occupiedNests + liveSp.occupiedNests, payingNests: null, occupancy: { ...liveFono.occupancy, value: (liveFono.occupiedNests + liveSp.occupiedNests) / Math.max(1, liveFono.contractedNests + liveSp.contractedNests), sourceCoverage: "FONO + SP" } }) : null
+  const liveCombined = liveFono && liveSp && liveSp.contractedNests > 0 ? (() => {
+    const occupied = liveFono.occupiedNests + liveSp.occupiedNests
+    const combinedCollections = { rowCount: (liveData.fonoCollection?.rowCount ?? 0) + (liveData.spCollection?.rowCount ?? 0), billed: (liveData.fonoCollection?.billed ?? 0) + (liveData.spCollection?.billed ?? 0), due: (liveData.fonoCollection?.due ?? 0) + (liveData.spCollection?.due ?? 0) }
+    return { ...liveFono, supplyModel: "Combined", studioCount: liveFono.studioCount + liveSp.studioCount, contractedNests: liveFono.contractedNests + liveSp.contractedNests, activationReadyNests: liveFono.activationReadyNests + liveSp.activationReadyNests, occupiedNests: occupied, payingNests: null, occupancy: { ...liveFono.occupancy, value: occupied / Math.max(1, liveFono.contractedNests + liveSp.contractedNests), sourceCoverage: "FONO + SP" }, billedArpu: combinedCollections.rowCount > 0 && occupied > 0 ? { value: combinedCollections.billed / occupied, state: "Available", definitionRef: "MET-LIVING-BILLED-ARPU@v1", sourceCoverage: "UI_Collections + Living_Hourly" } : unavailable("MET-LIVING-BILLED-ARPU@v1"), collectionLeakage: combinedCollections.rowCount > 0 ? { value: combinedCollections.due, state: "Available", definitionRef: "MET-LIVING-COLLECTION-LEAKAGE@v1", sourceCoverage: "UI_Collections" } : unavailable("MET-LIVING-COLLECTION-LEAKAGE@v1") }
+  })() : null
   const preview: any = liveData ? { ...fixturePreview, routes: [], report: { mode: "Live read-only", refreshedAt: refreshedAt || new Date().toISOString(), channels, combined: liveCombined, fono: liveFono ? { franchiseeSourcedMembers: 0, niaFilledMembers: 0, vacantNestsAtCycleStart: Math.max(0, (liveData.fonoReady ?? 0) - (liveData.fonoOccupied ?? 0)), niaFillRate: unavailable("MET-FONO-NIA-FILL@v1") } : null, spParks: [] } } : fixturePreview
   const { report, policies } = preview
   const combined = report.combined

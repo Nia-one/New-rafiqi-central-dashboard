@@ -81,6 +81,7 @@ export type EnterpriseContractInput = {
   readiness: readonly ReadinessCapacityInput[]
   previousSnapshot?: { committedNests: number; arrivalAt: string }
   updatedAt: string
+  demandStatus?: string
 }
 
 export type ReadinessBySupply = Readonly<Record<SupplyModel, number>>
@@ -107,6 +108,7 @@ export type EnterpriseDemandNode = {
   state: "Open" | "Reopened"
   reopenReasons: readonly string[]
   updatedAt: string
+  demandStatus: string
 }
 
 export type DemandNodeDecision =
@@ -324,6 +326,7 @@ export function createOrUpdateDemandNode(input: EnterpriseContractInput, at = EN
     state: input.previousSnapshot && reopenReasons.length > 0 ? "Reopened" as const : "Open" as const,
     reopenReasons: Object.freeze(reopenReasons),
     updatedAt: input.updatedAt,
+    demandStatus: input.demandStatus || "Signed",
   })
   return Object.freeze({ disposition: "Admitted" as const, node, reasons: Object.freeze([]) })
 }
@@ -694,8 +697,10 @@ export function buildLiveEnterpriseDemandLoopPreview(rows: readonly EnterpriseSh
     const arrivalAt = enterpriseValue(row, "activation required at")
     const required = enterpriseNumber(row, "headcount required")
     const status = enterpriseValue(row, "status")
-    if (!demandId || !enterpriseName || !plantName || !arrivalAt || !Number.isFinite(Date.parse(arrivalAt)) || required <= 0 || !/contract|signed|won|onboard|live/i.test(status)) return []
-    const supplyModel: SupplyModel = demandId.toUpperCase().startsWith("SP-BOT") ? "SP" : "FONO"
+    const demandStatus = enterpriseValue(row, "certainty") || status
+    if (!demandId || !enterpriseName || !plantName || !arrivalAt || !Number.isFinite(Date.parse(arrivalAt)) || required <= 0 || !/under discussion|confirmed|open|contract|signed|won|onboard|live/i.test(`${status} ${demandStatus}`)) return []
+    const recordedSupplyModel = enterpriseValue(row, "supply model").toUpperCase()
+    const supplyModel: SupplyModel = recordedSupplyModel === "SP" ? "SP" : "FONO"
     return [{
       nodeId: demandId, contractId: demandId, contractStatus: "Signed" as const, enterpriseName, plantName,
       plantReference: `protected://enterprise-plant/${demandId}`, committedNests: required,
@@ -703,6 +708,7 @@ export function buildLiveEnterpriseDemandLoopPreview(rows: readonly EnterpriseSh
       arrivalAt, ownerActorId: enterpriseValue(row, "owner actor id") || "Unassigned", priorMissedFollowUps: 0,
       dailyPlan: { plannedStops: 0, completedStops: 0, missedStopsCarried: 0 }, readiness: [],
       updatedAt: enterpriseValue(row, "updated at") || enterpriseValue(row, "opened at") || asOf,
+      demandStatus,
     }]
   })
   const decisions = inputs.map((input) => createOrUpdateDemandNode(input, asOf))
@@ -721,7 +727,16 @@ export function buildLiveEnterpriseDemandLoopPreview(rows: readonly EnterpriseSh
     quarantinedRecords: rows.length - inputs.length,
   })
   const supplyLanes = (["FONO", "SP"] as const).map((supplyModel) => {
-    const laneRows = rows.filter((row) => (enterpriseValue(row, "demand id").toUpperCase().startsWith("SP-BOT") ? "SP" : "FONO") === supplyModel)
+    const laneRows = rows.filter((row) => {
+      const explicit = enterpriseValue(row, "supply model").toUpperCase()
+      const status = enterpriseValue(row, "status")
+      const classified = explicit === "FONO" || explicit === "SP"
+        ? explicit
+        : /under discussion|confirmed|open/i.test(status)
+          ? ""
+          : enterpriseValue(row, "demand id").toUpperCase().startsWith("SP-BOT") ? "SP" : "FONO"
+      return classified === supplyModel
+    })
     return Object.freeze({ supplyModel, stages: Object.freeze([
       Object.freeze({ label: "Contracted demand", count: laneRows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount required"), 0) }),
       Object.freeze({ label: "Operationally matched", count: laneRows.reduce((sum, row) => sum + enterpriseNumber(row, "headcount matched"), 0) }),

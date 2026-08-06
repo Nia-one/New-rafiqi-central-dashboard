@@ -10,8 +10,8 @@ import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
 
 function PacingCard({ channel, actual, target, owner }: { channel: string; actual: number; target: number; owner: string }) {
   const elapsed = Math.max(1, new Date().getDate()), days = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate(), left = days - elapsed
-  const runRate = Math.round(actual / elapsed * days), variance = runRate - target
-  return <article className="pacing-card"><span>{channel} · MONTH SO FAR</span><strong>{actual.toLocaleString("en-IN")} <small>/ {target.toLocaleString("en-IN")} Members</small></strong><div><p><b>{left}</b> days left</p><p><b>{runRate.toLocaleString("en-IN")}</b> month-end estimate</p><p><b>{Math.abs(variance).toLocaleString("en-IN")}</b> {variance >= 0 ? "ahead" : "gap"} · {target > 0 ? Math.round(Math.abs(variance)/target*100) : 0}%</p></div><small>Owner: {owner} · based on the current daily pace</small></article>
+  const remaining = Math.max(0, target - actual), completion = target > 0 ? Math.round(actual / target * 100) : 0
+  return <article className="pacing-card"><span>{channel} · CURRENT POSITION</span><strong>{actual.toLocaleString("en-IN")} <small>/ {target.toLocaleString("en-IN")} Members</small></strong><div><p><b>{left}</b> days left</p><p><b>{remaining.toLocaleString("en-IN")}</b> remaining</p><p><b>{completion}%</b> complete</p></div><small>Owner: {owner} · governed current-state readback</small></article>
 }
 
 export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { focus?: LivingSection; allocationFocus?: string; liveOpsData?: any }) {
@@ -50,7 +50,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { foc
           <TodayMtdFunnel stages={fonoDemand.stages} />
         </div>
         <ol className="fono-funnel" aria-label="FONO supply stages">{fonoSupply.map((item,index) => <li key={item.stage}><span className="fono-stage-rank">{String(index+1).padStart(2,"0")}</span><strong className="fono-stage-name">{item.stage}</strong><span><b>{item.studios}</b> Studios</span><span><b>{item.nests.toLocaleString("en-IN")}</b> Nests</span><span><b>{item.conversion === null ? "No data" : `${item.conversion}%`}</b> conversion</span><span className="fono-stage-owner"><b>{item.owner}</b> owner</span></li>)}</ol>
-        <DataTable className="compact-table occupancy-table" caption="FONO Studio occupancy" columns={["STUDIO","THEATRE","AVAILABLE","OCCUPIED","OCCUPANCY","DAYS LIVE","THEATRE OPS OWNER"]} rows={fonoOccupancy} />
+        <DataTable className="compact-table occupancy-table" caption="FONO Studio occupancy" columns={["STUDIO","THEATRE","AVAILABLE","OCCUPIED","OCCUPANCY","VACANT NESTS","THEATRE OPS OWNER"]} rows={fonoOccupancy} />
       </div>
     </section>
     <section id="demand" className={`operating-section semantic-demand ${focus === "demand" ? "focused-section" : ""}`}><p className="pillar-kicker">ŚRAM PARK · DEMAND</p><h2>JCO records each factory's need from the start.</h2><TodayMtdFunnel stages={demandTeam.stages} /><DataTable caption="Śram Park demand by factory" columns={["FACTORY","MEMBERS","THEATRE","ACTIVATION","JCO","LOGGED","AGING / MATCH"]} rows={shramDemand} /></section>

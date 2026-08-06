@@ -16,6 +16,7 @@ const workspaceTabs: Record<string, DashboardTab> = {
   "Member savings": "Member Savings",
   "Living": "Living",
   "Living occupancy": "Living",
+  "Collections": "Economics",
   "Nia margins": "Nia Margins",
   "Nia growth": "Nia Growth",
 }
