@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import test from "node:test"
 import { buildLivingScreenData } from "./living-screen"
 
-test("Living occupancy is sourced from EXISTING Studios and excludes FONO/SP", () => {
+test("Living channel occupancy excludes the independent EXISTING snapshot", () => {
   const result = buildLivingScreenData({
     living: [
       { "studio id": "Existing A", "theatre id": "North", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 80 },
@@ -10,10 +10,31 @@ test("Living occupancy is sourced from EXISTING Studios and excludes FONO/SP", (
     ],
   })
 
-  assert.equal(result.occupancyContracted, 100)
+  assert.equal(result.occupancyContracted, 50)
+  assert.equal(result.occupancyOccupied, 20)
+  assert.equal(result.occupancyPercent, 40)
+  assert.equal(result.existingContracted, 100)
+  assert.equal(result.existingOccupied, 80)
+  assert.deepEqual(result.occupancyRows[0].slice(0, 6), ["FONO A", "North", "50", "20", "40%", "30"])
+  assert.deepEqual(result.existingOccupancyRows[0].slice(0, 6), ["Existing A", "North", "100", "80", "20", "80%"])
+})
+
+test("Living derives current FONO and SP channel totals from governed demand feeds when hourly has only EXISTING", () => {
+  const result = buildLivingScreenData({
+    living: [{ "studio id": "Existing A", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 80 }],
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-1", "headcount required": 200, "headcount matched": 75 },
+      { "demand id": "SP-BOT-1", "headcount required": 20, "headcount matched": 5 },
+    ],
+  })
+
+  assert.equal(result.fonoSupply[0].mtd, 200)
+  assert.equal(result.fonoReady, 75)
+  assert.equal(result.demandRequired, 20)
+  assert.equal(result.demandMatched, 5)
+  assert.equal(result.occupancyContracted, 220)
   assert.equal(result.occupancyOccupied, 80)
-  assert.equal(result.occupancyPercent, 80)
-  assert.deepEqual(result.occupancyRows[0].slice(0, 6), ["Existing A", "North", "100", "80", "80%", "20"])
+  assert.equal(result.existingContracted, 100)
 })
 
 test("FONO and Śram Park demand pipelines remain independent", () => {

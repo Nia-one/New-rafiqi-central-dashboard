@@ -26,11 +26,23 @@ function liveNumber(row: LiveRow | undefined, ...keys: string[]) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export function EssentialsScreen({ allocationFocus, liveData = null }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
+export function EssentialsScreen({ allocationFocus, liveData = null }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; hourly?: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
   if (liveData !== undefined) {
-    const dashboard = liveData?.dashboard ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
+    const dashboard = liveData?.dashboard ?? [], hourly = liveData?.hourly ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
     const firstDashboard = dashboard[0], firstInventory = inventory[0]
-    const headlineFields = firstDashboard ? Object.entries(firstDashboard).filter(([key]) => !key.startsWith("__")).slice(0, 6) : []
+    const metric = (key: string) => dashboard.find((row) => String(liveValue(row, "key") ?? "") === key)
+    const metricText = (key: string, fallback = "") => String(liveValue(metric(key), "value text") ?? fallback)
+    const metricDisplay = (key: string, fallback = "—") => String(liveValue(metric(key), "value text", "value number") ?? fallback)
+    const hourlySum = (key: string) => hourly.reduce((sum, row) => sum + liveNumber(row, key), 0)
+    const journey = [
+      ["essentials_headline_eligible_label", "Eligible Members", metricDisplay("essentials_headline_eligible", hourlySum("eligible members").toLocaleString("en-IN")), "essentials_headline_eligible_note"],
+      ["essentials_headline_attach_label", "Attach rate", metricDisplay("essentials_headline_attach", hourlySum("eligible members") ? `${Math.round(hourlySum("buying members") / hourlySum("eligible members") * 100)}%` : "—"), "essentials_headline_attach_note"],
+      ["essentials_headline_gmv_label", "GMV", metricDisplay("essentials_headline_gmv", `₹${hourlySum("essentials billed inr").toLocaleString("en-IN")}`), "essentials_headline_gmv_note"],
+      ["essentials_headline_arpu_label", "ARPU", metricDisplay("essentials_headline_arpu"), "essentials_headline_arpu_note"],
+      ["essentials_headline_cm_label", "CM", metricDisplay("essentials_headline_cm", `₹${hourlySum("nia margin inr").toLocaleString("en-IN")}`), "essentials_headline_cm_note"],
+      ["essentials_headline_savings_label", "Member savings", metricDisplay("essentials_headline_savings", `₹${hourlySum("member savings inr").toLocaleString("en-IN")}`), "essentials_headline_savings_note"],
+      ["essentials_headline_wc_label", "Working capital", metricDisplay("essentials_headline_wc"), "essentials_headline_wc_note"],
+    ] as const
     const selling = inventory.reduce((sum, row) => sum + liveNumber(row, "selling price", "selling", "gmv inr"), 0)
     const mrp = inventory.reduce((sum, row) => sum + liveNumber(row, "mrp", "list price"), 0)
     const savingsPct = mrp > 0 ? Math.round((mrp - selling) / mrp * 1_000) / 10 : 0
@@ -45,9 +57,9 @@ export function EssentialsScreen({ allocationFocus, liveData = null }: { allocat
       { title: "Savings and pricing", summary: mrp ? `${savingsPct}% recorded Member savings` : "No governed pricing values available" },
       { title: "Money in stock", summary: ownedCapital ? `₹${ownedCapital.toLocaleString("en-IN")} recorded inventory capital` : "No governed inventory-capital value" },
     ]}>
-      <div className="decision-bar"><div><span>MAIN POINT</span><strong>{liveData ? "Member buying, supply, savings and stock are driven by governed Essentials records." : "Essentials data is unavailable; no synthetic values are shown."}</strong></div><p>Orders and inventory remain bot-owned. Missing records stay missing.</p></div>
+      <div className="decision-bar"><div><span>{metricText("essentials_main_kicker", "MAIN POINT")}</span><strong>{metricText("essentials_main_headline", "Member buying, supply, savings and stock are driven by governed Essentials records.")}</strong></div><p>{metricText("essentials_main_explanation", "Orders and inventory remain bot-owned. Missing records stay missing.")}</p></div>
       <AllocationContextStrip mismatchId={allocationFocus} />
-      <section><p className="pillar-kicker">MEMBER BUYING JOURNEY</p>{headlineFields.length ? <div className="essentials-spine">{headlineFields.map(([label, value], index) => <article key={label}><span>{String(index + 1).padStart(2, "0")} · {label.replaceAll("_", " ")}</span><strong>{String(value ?? "")}</strong><small>Governed Essentials dashboard</small></article>)}</div> : <p className="footer-note">No verified buying-journey records are available.</p>}</section>
+      <section><p className="pillar-kicker">{metricText("essentials_journey_kicker", "MEMBER BUYING JOURNEY")}</p><div className="essentials-spine">{journey.map(([labelKey, fallbackLabel, display, noteKey], index) => <article key={labelKey}><span>{String(index + 1).padStart(2, "0")} · {metricText(labelKey, fallbackLabel)}</span><strong>{display}</strong><small>{metricText(noteKey, "Governed Essentials data")}</small></article>)}</div></section>
       <section className="operating-section semantic-demand"><header><p className="pillar-kicker">DEMAND · MARKETING TEAM</p><h2>Purchases by Member group</h2><p>Repeat purchases remain grouped by the governed cohort rows.</p></header><LiveTable title="Essentials purchases and repeat purchases by Member group" rows={cohorts} /></section>
       <section className="operating-section semantic-supply"><header><p className="pillar-kicker">SUPPLY · EAE / MERCHANDISING</p><h2>Stock and Member savings by Studio and product</h2><p>Recorded list price and selling price drive Member savings.</p></header><LiveTable title="Essentials stock by Studio and SKU" rows={inventory} /></section>
       <section className="two-panel-grid"><article className="analysis-card"><p className="pillar-kicker">LIST PRICE &amp; SAVINGS</p><h2>{mrp ? `Members save ${savingsPct}% on recorded value.` : "No governed pricing value is available."}</h2><dl><div><dt>Recorded MRP</dt><dd>{mrp ? `₹${mrp.toLocaleString("en-IN")}` : "Not recorded"}</dd></div><div><dt>Recorded selling value</dt><dd>{selling ? `₹${selling.toLocaleString("en-IN")}` : "Not recorded"}</dd></div></dl></article><article className="analysis-card tension-card"><p className="pillar-kicker">PRICING CONTROL</p><h2>Only recorded bot pricing is evaluated.</h2><p>Missing buy price, selling price or Member-saving values remain unavailable and are never inferred.</p></article></section>

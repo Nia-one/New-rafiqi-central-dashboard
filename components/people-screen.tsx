@@ -35,12 +35,15 @@ function LivePeopleCards({ rows, label }: { rows: readonly LiveRow[]; label: str
 export function PeopleScreen({ commitments, liveData = null }: { commitments: ExecutionAction[]; liveData?: { dashboard: readonly LiveRow[]; performance: readonly LiveRow[]; followThrough: readonly LiveRow[]; roster: readonly LiveRow[] } | null }) {
   if (liveData !== undefined) {
     const dashboard = liveData?.dashboard ?? [], performance = liveData?.performance ?? [], followThroughRows = liveData?.followThrough ?? []
-    const headline = dashboard[0] ? Object.entries(dashboard[0]).filter(([key]) => !key.startsWith("__")).slice(0, 7) : []
+    const metric = (key: string) => dashboard.find((row) => rowValue(row, "key") === key)
+    const metricText = (key: string, fallback = "") => rowValue(metric(key) ?? {}, "value text") || fallback
+    const metricDisplay = (key: string, fallback = "—") => rowValue(metric(key) ?? {}, "value text", "value number") || fallback
+    const headlineKeys = ["employees", "on_plan", "behind", "critical", "median_attainment", "reviews_due", "not_reporting"]
     const demandRows = performance.filter((row) => /demand|marketing|sales|jco/i.test(rowValue(row, "team", "role", "vertical")))
     const supplyRows = performance.filter((row) => !demandRows.includes(row))
     return <div className="pillar-screen people-screen">
-      <div className="decision-bar"><div><span>MAIN POINT</span><strong>{liveData ? "People performance and follow-through are driven by governed roster and execution records." : "People data is unavailable; no illustrative staff values are shown."}</strong></div><p>Missing values remain missing; no staff performance is inferred.</p></div>
-      <section className="people-headline" data-kpi-group>{headline.length ? headline.map(([label, value]) => <article key={label}><span>{label.replaceAll("_", " ")}</span><strong>{String(value ?? "")}</strong><small>Governed People dashboard</small></article>) : <article><span>DATA STATUS</span><strong>—</strong><small>No verified summary records</small></article>}</section>
+      <div className="decision-bar"><div><span>{metricText("people_main_kicker", "MAIN POINT")}</span><strong>{metricText("people_main_headline", "People performance and follow-through are driven by governed records.")}</strong></div><p>{metricText("people_main_detail", "Missing values remain missing; no staff performance is inferred.")}</p></div>
+      <section className="people-headline" data-kpi-group>{headlineKeys.map((key) => <article key={key}><span>{metricText(`people_headline_${key}_label`, key.replaceAll("_", " "))}</span><strong>{metricDisplay(`people_headline_${key}`)}</strong><small>{metricText(`people_headline_${key}_note`, "Governed People dashboard")}</small></article>)}</section>
       <section className="people-follow-through" aria-labelledby="people-follow-through-title"><header><div><p className="pillar-kicker">EXECUTION CONTROL</p><h2 id="people-follow-through-title">Follow-through by person</h2></div><p>Closure and verified result remain separate.</p></header><LivePeopleCards rows={followThroughRows} label="Person follow-through leaderboard" /></section>
       <div className="people-columns"><section><p className="pillar-kicker">DEMAND</p><h2>Find demand and turn it into contracts.</h2><LivePeopleCards rows={demandRows} label="Demand people performance" /></section><section><p className="pillar-kicker">SUPPLY</p><h2>Find Nests, activate Members, and deliver orders.</h2><LivePeopleCards rows={supplyRows} label="Supply people performance" /></section></div>
     </div>

@@ -13,7 +13,12 @@ function stage(label: string, today: number, mtd: number, previous: number | nul
   return { label, today, mtd, todayConversion: previous && previous > 0 ? percent(today, previous) : null, mtdConversion: previous && previous > 0 ? percent(mtd, previous) : null, delta: "Live Sheet" }
 }
 
-const demandChannel = (row: Row) => value(row, "demand id").toUpperCase().startsWith("OPS-RPT-FONO") ? "FONO" : value(row, "demand id").toUpperCase().startsWith("SP-BOT-") ? "SP" : "OTHER"
+const demandChannel = (row: Row) => {
+  const identity = `${value(row, "demand id")} ${value(row, "source submission id")} ${value(row, "enterprise id")}`.toUpperCase()
+  if (identity.includes("SP-BOT") || identity.includes("UI_SHRAMPARK_SUPPLY")) return "SP"
+  if (identity.includes("FONO") || identity.includes("UI_FONO_SUPPLY")) return "FONO"
+  return "OTHER"
+}
 const stageBucket = (row: Row) => {
   const state = `${value(row, "status")} ${value(row, "certainty")}`.toLowerCase()
   if (/drop|lost|reject|cancel/.test(state)) return "Dropped"
@@ -57,16 +62,21 @@ export function buildLivingScreenData(ops: any) {
   // from FONO and SP acquisition rows even when a Studio ID happens to match.
   const governedFono = fono
   const governedSp = sp
-  const occupancySource = [...governedFono, ...governedSp]
-  const occupancyContracted = sum(occupancySource, "contracted nests")
-  const occupancyOccupied = sum(occupancySource, "occupied nests")
-  const fonoReady = sum(governedFono, "activation ready nests")
-  const fonoOccupied = sum(governedFono, "occupied nests")
   const fonoDemandRows = demand.filter((row) => demandChannel(row) === "FONO")
   const spDemandRows = demand.filter((row) => demandChannel(row) === "SP")
+  // Current channel supply is governed by the FONO/SP demand feeds. Living
+  // Hourly currently contains only the independent EXISTING snapshot, so use
+  // an explicit channel row there when present and otherwise the channel feed.
+  const fonoContracted = governedFono.length ? sum(governedFono, "contracted nests") : sum(fonoDemandRows, "headcount required")
+  const fonoReady = governedFono.length ? sum(governedFono, "activation ready nests") : sum(fonoDemandRows, "headcount matched")
+  const fonoOccupied = governedFono.length ? sum(governedFono, "occupied nests") : sum(fonoDemandRows, "headcount matched")
   const demandRequired = sum(spDemandRows, "headcount required")
   const demandMatched = sum(spDemandRows, "headcount matched")
-  const spReady = sum(sp, "activation ready nests")
+  const spContracted = governedSp.length ? sum(governedSp, "contracted nests") : demandRequired
+  const spReady = governedSp.length ? sum(governedSp, "activation ready nests") : demandMatched
+  const spOccupied = governedSp.length ? sum(governedSp, "occupied nests") : demandMatched
+  const occupancyContracted = fonoContracted + spContracted
+  const occupancyOccupied = fonoOccupied + spOccupied
   const dashboardMetric = (key: string) => dashboard.find((row) => value(row, "key") === key)
   const metricNumber = (key: string) => n(dashboardMetric(key)?.["value number"])
   const metricOwner = (key: string) => person(value(dashboardMetric(key), "owner actor id"))
@@ -87,13 +97,13 @@ export function buildLivingScreenData(ops: any) {
       .replaceAll("{openDemandNodes}", proximityNodes.filter((node) => node.status.toLowerCase() !== "matched" && node.members > 0).length.toLocaleString("en-IN"))
   }
 
-  const fonoSupply: FunnelStage[] = [stage("Contracted Nests", sum(governedFono, "contracted nests"), sum(governedFono, "contracted nests")), stage("Activation-ready Nests", fonoReady, fonoReady, sum(governedFono, "contracted nests")), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
+  const fonoSupply: FunnelStage[] = [stage("Contracted Nests", fonoContracted, fonoContracted), stage("Activation-ready Nests", fonoReady, fonoReady, fonoContracted), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
   const fonoPipeline = groupedCounts(fonoDemandRows, (row) => person(value(row, "owner actor id")))
   const spPipeline = groupedCounts(spDemandRows, (row) => person(value(row, "owner actor id")))
   const fonoDemand: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
   const fonoRequirementStages: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.requirement, item.requirement, index ? items[index - 1].requirement : null))
   const demandStages: FunnelStage[] = spPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
-  const supplyStages: FunnelStage[] = [stage("SP ready Nests", spReady, spReady), stage("SP occupied Nests", sum(sp, "occupied nests"), sum(sp, "occupied nests"), spReady)]
+  const supplyStages: FunnelStage[] = [stage("SP ready Nests", spReady, spReady), stage("SP occupied Nests", spOccupied, spOccupied, spReady)]
 
   const occupancyRows = governedFono.filter((row) => n(row["contracted nests"]) > 0).map((row) => {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])

@@ -59,7 +59,11 @@ export default async function Page() {
       && !sourceId.startsWith("FONO-TRACKER-")
   })
   const enterpriseDemandPreview = buildLiveEnterpriseDemandLoopPreview(enterpriseWorkspaceRows, liveSnapshot.asOf)
-  const dashboardOpsData = { ...liveOpsData, enterpriseDemand: enterpriseWorkspaceRows }
+  // Keep the complete governed demand ledger available to Living/Growth. The
+  // Enterprise workspace receives its narrower lane separately so channel bot
+  // rows cannot become Enterprise cards and are not accidentally hidden from
+  // the FONO/SP comparison.
+  const dashboardOpsData = { ...liveOpsData, enterpriseWorkspaceDemand: enterpriseWorkspaceRows }
   const newAddsPreview = buildLiveNewAddsPreview(liveSnapshot)
   const memberEngagementPreview = buildLiveMemberEngagementPreview(liveSnapshot)
   const memberSavingsPreview = buildLiveMemberSavingsPreview(liveSnapshot)

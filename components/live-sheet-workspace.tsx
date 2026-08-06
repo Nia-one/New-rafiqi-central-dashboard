@@ -26,9 +26,19 @@ export function LiveSheetWorkspace({ kind, rows, secondaryRows = [], asOf, alloc
   const secondary = table(secondaryRows)
   const units = total(rows, ["members", "occupied nests", "activation ready nests", "orders", "units", "headcount"])
   const value = total(rows, ["gmv", "gmv inr", "cm2 inr", "revenue", "value", "monthly income"])
+  const sectionNames = kind === "Enterprise Demand"
+    ? ["Do this now", "Today's work", "Exceptions", "Supporting detail", "Proof & health"]
+    : kind === "Work"
+      ? ["Main point", "Today's work", "Exceptions", "Supporting detail", "Source and health"]
+      : kind === "Member Feedback"
+        ? ["Retention command", "Headline measures", "Members needing action", "Repeat issues", "Source and confidence"]
+        : [`${kind} source`, `${kind} measures`, `${kind} records`, `${kind} supporting source`, "Source and health"]
   const sections = [
-    { title: `${kind} source`, summary: `${rows.length} governed rows` },
-    ...(secondaryRows.length ? [{ title: `${kind} supporting source`, summary: `${secondaryRows.length} governed rows` }] : []),
+    { title: sectionNames[0], summary: rows.length ? `${rows.length} governed rows available` : `No governed ${kind.toLowerCase()} rows` },
+    { title: sectionNames[1], summary: `${units || 0} operational units recorded` },
+    { title: sectionNames[2], summary: rows.length ? `${rows.length} records to review` : "No verified records are open" },
+    { title: sectionNames[3], summary: `${secondaryRows.length} supporting rows` },
+    { title: sectionNames[4], summary: `Backend snapshot · ${clean(asOf)}` },
   ]
   return <DashboardSectionAccordion className={`pillar-screen ${kind.toLowerCase()}-screen live-sheet-workspace`} ariaLabel={`${kind} live sections`} sections={sections}>
     <div className="decision-bar"><div><span>LIVE GOVERNED DATA</span><strong>{kind} is rendered from the current backend-sheet snapshot.</strong></div><p>Last refreshed: {clean(asOf)}</p></div>
@@ -40,8 +50,8 @@ export function LiveSheetWorkspace({ kind, rows, secondaryRows = [], asOf, alloc
       <article><span>Recorded value</span><strong>{value ? value.toLocaleString("en-IN") : "No data"}</strong><small>Sum of the available value field</small></article>
     </section>
     {rows.length ? <section className="operating-section"><h2>{kind} records</h2><DataTable caption={`${kind} governed records`} columns={primary.columns} rows={primary.rows} /></section> : <section className="work-empty"><Database aria-hidden /><h2>No governed {kind.toLowerCase()} rows</h2><p>Add data through the approved User Input or bot source; this screen does not invent fallback values.</p></section>}
-    {secondaryRows.length > 0 && <section className="operating-section"><h2>Supporting records</h2><DataTable caption={`${kind} supporting records`} columns={secondary.columns} rows={secondary.rows} /></section>}
-    <p className="footer-note"><RefreshCw aria-hidden /> One backend refresh updates every page that reuses these records.</p>
+    <section className="operating-section">{secondaryRows.length > 0 ? <><h2>Supporting records</h2><DataTable caption={`${kind} supporting records`} columns={secondary.columns} rows={secondary.rows} /></> : <><h2>No separate supporting records</h2><p className="footer-note">This page currently uses only its governed primary source.</p></>}</section>
+    <section className="operating-section"><h2>Source and health</h2><p className="footer-note"><RefreshCw aria-hidden /> One backend refresh updates every page that reuses these records. Last refreshed: {clean(asOf)}.</p></section>
   </DashboardSectionAccordion>
 }
 

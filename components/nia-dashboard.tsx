@@ -381,17 +381,17 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       /> : <LensProvider lens={lens}>
       {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} onModeChange={setOverviewMode} onNavigate={navigate} />}
       {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users.</h2><p>Operating teams can continue through the remaining Self Drive tabs. Financial goals, cash, opex and leakage remain protected.</p></section>)}
-      {active === "Enterprise Demand" && (enterpriseDemandPreview ? <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} /> : <LiveSheetWorkspace kind="Enterprise Demand" rows={liveOpsData?.enterpriseDemand ?? []} asOf={dataAsOf} />)}
+      {active === "Enterprise Demand" && (enterpriseDemandPreview ? <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} /> : <LiveSheetWorkspace kind="Enterprise Demand" rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />)}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
       {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsPreview} />}
       {active === "Nia Growth" && <NiaGrowthWorkspace preview={niaGrowthPreview} />}
       {active === "Finance control" && financeExpansionPreview && <FinanceExpansionWorkspace preview={financeExpansionPreview} />}
       {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
-      {active === "Nia Margins" && <LiveSheetWorkspace kind="Economics" rows={liveOpsData?.finance ?? []} secondaryRows={liveOpsData?.living ?? []} asOf={dataAsOf} />}
+      {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && ((liveOpsData?.work ?? []).length ? <LiveSheetWorkspace kind="Work" rows={liveOpsData.work} asOf={dataAsOf} /> : <WorkScreen />)}
-      {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}
+      {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], hourly: liveOpsData?.essentials ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}
       {active === "People" && <PeopleScreen commitments={commitments} liveData={{ dashboard: liveOpsData?.peopleDashboard ?? [], performance: liveOpsData?.peoplePerformance ?? [], followThrough: liveOpsData?.peopleFollowThrough ?? [], roster: liveOpsData?.people ?? [] }} />}
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} items={memberFeedbackItems} responses={memberNpsResponses} sourceAsOf={String(liveOpsData?.fetchedAt ?? "")} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
