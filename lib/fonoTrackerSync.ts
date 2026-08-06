@@ -66,6 +66,7 @@ export async function syncFonoTrackerData() {
     const evidence = String(cell(row, headers, "Evidence_Ref", "Evidence Ref")).trim();
     const remarks = String(cell(row, headers, "Remarks")).trim();
     const verifier = String(cell(row, headers, "Verifier")).trim();
+    if (norm(studioId).startsWith("sample") || norm(remarks).includes("do not count")) return [];
     const key = stable("FONO-TRACKER", [date, acquirer, theatre, corridor, prospect, after, nests]);
     const isSupply = SUPPLY_STAGES.has(normalizedStage);
     if (isSupply) livingRecords.push({
