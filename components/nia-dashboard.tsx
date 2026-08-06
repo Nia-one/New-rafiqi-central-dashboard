@@ -390,7 +390,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
       {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
-      {active === "Work" && ((liveOpsData?.work ?? []).length ? <LiveSheetWorkspace kind="Work" rows={liveOpsData.work} asOf={dataAsOf} /> : <WorkScreen />)}
+      {active === "Work" && <WorkScreen liveRows={liveOpsData?.work ?? []} />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], hourly: liveOpsData?.essentials ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}
       {active === "People" && <PeopleScreen commitments={commitments} liveData={{ dashboard: liveOpsData?.peopleDashboard ?? [], performance: liveOpsData?.peoplePerformance ?? [], followThrough: liveOpsData?.peopleFollowThrough ?? [], roster: liveOpsData?.people ?? [] }} />}
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} items={memberFeedbackItems} responses={memberNpsResponses} sourceAsOf={String(liveOpsData?.fetchedAt ?? "")} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}

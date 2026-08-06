@@ -55,6 +55,7 @@ export function MemberEngagementWorkspace({ preview }: Props) {
   const remainingRecoveries = Math.max(0, recoveryTarget - recovered)
   const recoveryPercent = recoveryTarget > 0 ? Math.min(100, Math.round(recovered / recoveryTarget * 100)) : 0
   const reopenedTasks = tasks.filter((task) => task.state === "Reopened").length
+  const hasRetentionGap = preview.summary.gap !== "No data"
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -68,9 +69,9 @@ export function MemberEngagementWorkspace({ preview }: Props) {
 
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Member Engagement sections" sections={[
     { title: "Data freshness", summary: `Last refresh ${date(preview.source.lastRefreshAt)} · ${preview.quarantinedCount} quarantined` },
-    { title: "Retention command", summary: `${preview.summary.gap} gap to recover · owner ${preview.summary.owner}` },
+    { title: "Retention command", summary: hasRetentionGap ? `${preview.summary.gap} gap to recover · owner ${preview.summary.owner}` : "No governed recovery command is recorded" },
     { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} confirmed` },
-    { title: "Members saved vs goal", summary: `${preview.summary.current} current · ${preview.summary.target} target` },
+    { title: "Members saved vs goal", summary: hasRetentionGap ? `${preview.summary.current} current · ${preview.summary.target} target` : "No governed current value or target" },
     { title: "Headline measures", summary: `${preview.measures.length} retention controls at a glance`, lens: "decide" },
     { title: "Retention implication", summary: "Verified exit-reason recovery is incomplete.", lens: "decide" },
     { title: "Cohorts and recovery", summary: `${preview.retentionCurves.length} governed cohort records`, lens: "decide" },
@@ -78,7 +79,7 @@ export function MemberEngagementWorkspace({ preview }: Props) {
     { title: "Members needing action", summary: `${tasks.length} Member actions open`, lens: "operate" },
     { title: "Repeat issues", summary: `${preview.despatchEscalations.length} repeated issues need help` },
     { title: "Background record", summary: `${audit.length} local shadow events · governed controls retained`, lens: "operate" },
-    { title: "Decision required", summary: `Recover the ${preview.summary.gap} retention gap` },
+    { title: "Decision required", summary: hasRetentionGap ? `Recover the ${preview.summary.gap} retention gap` : "No governed retention decision is currently supported" },
     { title: "Source and confidence", summary: `${preview.source.name} · Production confidence Low` },
   ]}>
     <div className={styles.freshness} role="status">
@@ -95,7 +96,7 @@ export function MemberEngagementWorkspace({ preview }: Props) {
         <p>{preview.question}</p>
       </div>
       <div className={styles.ownerSummary}>
-        <b className={styles.verdictPill} data-state="behind">{preview.summary.gap} to recover</b>
+        <b className={styles.verdictPill} data-state={hasRetentionGap ? "behind" : "neutral"}>{hasRetentionGap ? `${preview.summary.gap} to recover` : "No measured gap"}</b>
         <span>Current owner</span>
         <strong>{preview.summary.owner}</strong>
         <small>Role only · Member identity protected</small>
@@ -188,8 +189,8 @@ export function MemberEngagementWorkspace({ preview }: Props) {
     <section className={styles.askBand} aria-label="Decision required">
       <div className={styles.askCopy}>
         <span>Decision required</span>
-        <strong>Recover the {preview.summary.gap} retention gap by verifying the remaining at-risk Member recoveries.</strong>
-        <p>Only independently verified recoveries count; accountability sits with {preview.summary.owner} until the recorded governed retention target is met.</p>
+        <strong>{hasRetentionGap ? `Recover the ${preview.summary.gap} retention gap by verifying the remaining at-risk Member recoveries.` : "No Member recovery decision is currently supported by the governed source."}</strong>
+        <p>{hasRetentionGap ? <>Only independently verified recoveries count; accountability sits with {preview.summary.owner} until the recorded governed retention target is met.</> : "Record a valid retention observation, target, and governed recovery action before this page assigns accountability."}</p>
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>

@@ -31,9 +31,25 @@ export function EssentialsScreen({ allocationFocus, liveData = null }: { allocat
     const dashboard = liveData?.dashboard ?? [], hourly = liveData?.hourly ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
     const firstDashboard = dashboard[0], firstInventory = inventory[0]
     const metric = (key: string) => dashboard.find((row) => String(liveValue(row, "key") ?? "") === key)
-    const metricText = (key: string, fallback = "") => String(liveValue(metric(key), "value text") ?? fallback)
-    const metricDisplay = (key: string, fallback = "—") => String(liveValue(metric(key), "value text", "value number") ?? fallback)
     const hourlySum = (key: string) => hourly.reduce((sum, row) => sum + liveNumber(row, key), 0)
+    const eligible = hourlySum("eligible members")
+    const buyers = hourlySum("buying members")
+    const billed = hourlySum("essentials billed inr")
+    const margin = hourlySum("nia margin inr")
+    const templateValues: Record<string, string> = {
+      buyers: buyers.toLocaleString("en-IN"),
+      eligible: eligible.toLocaleString("en-IN"),
+      marginPct: billed > 0 ? `${Math.round(margin / billed * 1_000) / 10}%` : "Not recorded",
+      cohortCount: String(cohorts.length),
+      inventoryCount: String(inventory.length),
+      savings: `₹${hourlySum("member savings inr").toLocaleString("en-IN")}`,
+      stockouts: String(hourlySum("current stockouts") || inventory.filter((row) => liveNumber(row, "stockout") > 0).length),
+      ownedInventory: "Not recorded",
+      dio: String(liveNumber(firstInventory, "days cover", "dio") || "Not recorded"),
+    }
+    const renderTemplate = (input: string) => Object.entries(templateValues).reduce((output, [key, replacement]) => output.replaceAll(`{${key}}`, replacement), input)
+    const metricText = (key: string, fallback = "") => renderTemplate(String(liveValue(metric(key), "value text") ?? fallback))
+    const metricDisplay = (key: string, fallback = "—") => String(liveValue(metric(key), "value text", "value number") ?? fallback)
     const journey = [
       ["essentials_headline_eligible_label", "Eligible Members", metricDisplay("essentials_headline_eligible", hourlySum("eligible members").toLocaleString("en-IN")), "essentials_headline_eligible_note"],
       ["essentials_headline_attach_label", "Attach rate", metricDisplay("essentials_headline_attach", hourlySum("eligible members") ? `${Math.round(hourlySum("buying members") / hourlySum("eligible members") * 100)}%` : "—"), "essentials_headline_attach_note"],

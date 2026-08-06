@@ -87,8 +87,9 @@ export function buildLiveNewAddsPreview(snapshot: LiveSelfDriveSnapshot): NewAdd
 export function buildLiveMemberEngagementPreview(snapshot: LiveSelfDriveSnapshot): MemberEngagementPreview | null {
   const headline = buildLiveMemberEngagementHeadlineMeasures(snapshot)
   const command = buildLiveMemberEngagementCommand(snapshot)
-  if (!headline.hasData && !command.hasData) return null
+  if (!snapshot.memberNpsDashboard.length && !snapshot.memberNpsFeedback.length && !snapshot.memberNpsResponses.length && !command.hasData) return null
   const background = buildLiveMemberEngagementBackground(snapshot)
+  const hasMeasuredEngagement = headline.hasData || command.hasData
   const tasks = buildLiveMemberEngagementActions(snapshot).map((row) => ({
     actionId: row.actionId,
     memberLabel: row.memberLabel,
@@ -107,8 +108,10 @@ export function buildLiveMemberEngagementPreview(snapshot: LiveSelfDriveSnapshot
     fixtureLabel: "Governed live data",
     question: "Which verified Member friction must be recovered next?",
     source: { name: background.source.names || "Member NPS", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: "Current", synthetic: false },
-    headline: command.hasData ? `Recover ${command.recoveryGap} open Member signals before the next checkpoint.` : headline.implication,
-    summary: { target: String(command.targetRecovered), current: String(command.baselineRecovered), gap: String(command.recoveryGap), owner: command.owner, progress: command.state || "Open", verifiedResult: `${command.baselineRecovered} verified recoveries` },
+    headline: command.hasData ? `Recover ${command.recoveryGap} open Member signals before the next checkpoint.` : headline.hasData ? headline.implication : "No valid Member retention observation or recovery target is currently recorded.",
+    summary: hasMeasuredEngagement
+      ? { target: String(command.targetRecovered), current: String(command.baselineRecovered), gap: String(command.recoveryGap), owner: command.owner, progress: command.state || "Open", verifiedResult: `${command.baselineRecovered} verified recoveries` }
+      : { target: "No data", current: "No data", gap: "No data", owner: "Unassigned", progress: "No governed action", verifiedResult: "No verified recovery record" },
     measures: headline.measures,
     retentionCurves: headline.retentionCurves,
     tasks,
