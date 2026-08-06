@@ -25,8 +25,9 @@ const manualTabs = [...uiTabs, ...uniqueTeamTabs]
 const reportTabs = new Set(["Fono Funnel"])
 const fonoManualHeaders = new Set([
   "studio id", "studio name", "location id", "studios count", "activation ready nests",
-  "member adds", "verifier", "remarks", "evidence ref", "last updated",
+  "member adds", "verifier", "remarks",
 ])
+const fonoSystemHeaders = new Set(["evidence ref", "last updated"])
 
 // Empty set means every populated header is user-entered except the red/system set below.
 const editableOverrides = new Map([
@@ -105,7 +106,7 @@ async function main() {
     const automatedColumns = []
     header.values.forEach((value, column) => {
       const key = norm(value)
-      const editable = override ? override.has(key) : !alwaysSystem.has(key)
+      const editable = fonoSystemHeaders.has(key) && title === "Fono Funnel" ? false : override ? override.has(key) : !alwaysSystem.has(key)
       if (!editable) automatedColumns.push(column)
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(key)
       requests.push({ repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: header.index, endRowIndex: header.index + 1, startColumnIndex: column, endColumnIndex: column + 1 }, cell: {
@@ -129,7 +130,7 @@ async function main() {
     const header = headers.get(title)
     const override = editableOverrides.get(title)
     header.values.forEach((field, index) => {
-      const editable = override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
+      const editable = fonoSystemHeaders.has(norm(field)) && title === "Fono Funnel" ? false : override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(norm(field))
       guideRows.push([title, index + 1, field, reportInput ? "YELLOW — BUSINESS REPORT IMPORT" : editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", reportInput ? "Import or replace the verified Business Report value." : editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
     })
