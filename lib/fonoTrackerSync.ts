@@ -3,8 +3,11 @@ import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
 import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
-const SOURCE_ID = process.env.FONO_TRACKER_SHEET_ID || "1pZNwOip3teKUuV2bKQGuKnLMikKl5DVieNGVPBtEzqE";
-const SOURCE_TAB = process.env.FONO_TRACKER_TAB || "Visit Log";
+// The imported Business Report tab in the Fresh User Input workbook is the
+// single FONO authority. Do not read the separate Acquirer Tracker workbook:
+// doing so makes the visible input workbook disagree with the dashboard.
+const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "1e54fm3oUeseNzsTFG8O4XweRnWVU2n8OvBc7MLOu6nE";
+const SOURCE_TAB = "Fono Funnel";
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const number = (value: unknown) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
 const cell = (row: unknown[], headers: string[], ...names: string[]) => { const wanted = new Set(names.map(norm)); const index = headers.findIndex((header) => wanted.has(norm(header))); return index < 0 ? "" : row[index] ?? ""; };
@@ -35,8 +38,14 @@ export async function syncFonoTrackerData() {
   const sheets = google.sheets({ version: "v4", auth });
   const response = await sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_ID, range: `'${SOURCE_TAB}'!A:AM` });
   const values = (response.data.values || []) as unknown[][];
-  const headers = (values[0] || []).map(String);
-  const records = values.slice(1).flatMap((row) => {
+  const headerIndex = values.findIndex((row) => {
+    const cells = row.map(norm);
+    return cells.includes("date") && cells.includes("stage after") && cells.includes("nests potential");
+  });
+  if (headerIndex < 0) throw new Error(`${SOURCE_TAB} is missing Date, Stage After or Nests Potential headers`);
+  const headers = (values[headerIndex] || []).map(String);
+  const sourceRows = values.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
+  const records = sourceRows.flatMap((row) => {
     const after = String(cell(row, headers, "Stage After")).trim();
     const normalizedStage = normalizeStage(after);
     if (!DEMAND_STAGES.has(normalizedStage)) return [];
@@ -60,7 +69,7 @@ export async function syncFonoTrackerData() {
     }];
   });
   const written = await replaceOwned(sheets, backendId, records);
-  return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: Math.max(0, values.length - 1), demandRows: records.length,
+  return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,
     demandNests: records.reduce((sum, row) => sum + number(row["headcount required"]), 0), supplyNests: records.reduce((sum, row) => sum + number(row["headcount matched"]), 0),
     gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), written };
 }

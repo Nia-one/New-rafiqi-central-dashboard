@@ -12,7 +12,7 @@ const norm = (value) => String(value || "").trim().toLowerCase().replaceAll("_",
 
 const guides = ["00_READ_ME", "TEAM_DATA_ENTRY_HOME", "SELF_DRIVE_LEARN_GUIDE", "DATA_ENTRY_GUIDE"]
 const uiTabs = [
-  "UI_Occupancy", "UI_FONO_Supply", "UI_Shrampark_Supply", "UI_Enterprise_Demand",
+  "UI_Occupancy", "Fono Funnel", "UI_Shrampark_Supply", "UI_Enterprise_Demand",
   "UI_Enterprise_Supply", "UI_Finance", "UI_Collections", "UI_People", "UI_Actions",
   "UI_Approvals", "UI_Evidence", "UI_Targets",
 ]
@@ -24,7 +24,6 @@ const manualTabs = [...uiTabs, ...uniqueTeamTabs]
 
 // Empty set means every populated header is user-entered except the red/system set below.
 const editableOverrides = new Map([
-  ["UI_FONO_Supply", new Set(["member adds"])],
   ["TEAM_MEMBER_ACTIVATION", new Set(["member token", "activated at", "theatre id", "studio id", "nest id", "demand id", "enterprise id", "work assignment id", "membership billed inr", "membership collected inr", "activation evidence url", "verified at", "verified by", "verification status", "reporting month"])],
   ["TEAM_MEMBER_FEEDBACK", new Set(["member token", "score", "feedback", "collected at", "theatre", "studio", "pillar", "category", "exit risk", "action id", "raw conversation ref", "reporting month"])],
   ["TEAM_ENTERPRISE_OUTCOMES", new Set(["demand reference", "action / outcome", "owner actor id", "due at", "state", "proof reference", "verified by actor id", "verified at", "notes", "reporting month"])],
@@ -36,7 +35,7 @@ const alwaysSystem = new Set(["last updated", "vacant nests", "occupancy pct", "
 
 const consumers = {
   UI_Occupancy: "Living > Existing Occupancy",
-  UI_FONO_Supply: "Living FONO; Member Adds; Nia Growth",
+  "Fono Funnel": "Living FONO; Enterprise Demand; Member Adds; Nia Growth",
   UI_Shrampark_Supply: "Living Shram Park; Enterprise Demand; Nia Growth",
   UI_Enterprise_Demand: "Enterprise Demand; Nia Growth",
   UI_Enterprise_Supply: "Living; Enterprise Demand; Member Adds",
