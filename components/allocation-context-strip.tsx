@@ -6,8 +6,19 @@ import { formatInr } from "@/lib/ops-data"
  * queue item deep-links here. It restates the selected mismatch without
  * redesigning or removing any existing lane content.
  */
-export function AllocationContextStrip({ mismatchId }: { mismatchId?: string }) {
+export function AllocationContextStrip({ mismatchId, live }: { mismatchId?: string; live?: { issue: string; owner: string; current: string; target: string; gap: string; updated: string } }) {
   const mismatch = mismatchId ? mismatchById(mismatchId) : undefined
+  if (!mismatch && live) return (
+    <aside className="allocation-context" aria-label="Live FONO allocation context">
+      <p className="allocation-context-tag">LIVE FONO ALLOCATION · FONO FUNNEL</p>
+      <div className="allocation-context-body">
+        <div><span>ISSUE</span><strong>{live.issue}</strong><small>Updated {live.updated}</small></div>
+        <div><span>OWNER</span><strong>{live.owner}</strong><small>FONO-side accountable owner</small></div>
+        <div><span>CURRENT → TARGET</span><strong>{live.current} → {live.target}</strong><small>{live.gap}</small></div>
+      </div>
+      <p className="allocation-context-action">Convert contracted FONO Nests into verified occupied Members.</p>
+    </aside>
+  )
   if (!mismatch) return null
   const cm = isNoData(mismatch.forwardCmAtRisk24h) ? "No data" : formatInr(mismatch.forwardCmAtRisk24h, true)
 

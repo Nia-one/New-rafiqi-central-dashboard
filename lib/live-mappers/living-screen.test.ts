@@ -65,3 +65,19 @@ test("FONO and Śram Park demand pipelines remain independent", () => {
   assert.equal(result.fonoPipeline.byOwner[0].owner, "FONO Acquirer")
   assert.equal(result.spPipeline.byOwner[0].owner, "SP JCO")
 })
+
+test("FONO Stage After uses Nests Potential and treats takeover-pending as contracted supply", () => {
+  const result = buildLivingScreenData({
+    living: [{ "living hourly id": "FONO-TRACKER-LIVING-1", "studio id": "ST-1", "studio name": "Studio One", "supply model": "FONO", "contracted nests": 887, "activation ready nests": 887, "occupied nests": 52, "owner actor id": "Srinivas" }],
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-1", status: "Onboarded (Takeover Pending)", "headcount required": 887, "headcount matched": 887 },
+      { "demand id": "FONO-TRACKER-2", status: "Lead", "headcount required": 4474, "headcount matched": 0 },
+      { "demand id": "FONO-TRACKER-3", status: "Contracting", "headcount required": 264, "headcount matched": 0 },
+    ],
+  })
+
+  assert.deepEqual(result.fonoRequirementStages.map(({ label, mtd }) => [label, mtd]), [["Lead", 4474], ["Contracting", 264], ["Contracted", 887], ["Dropped", 0]])
+  assert.equal(result.fonoSupply[0].mtd, 887)
+  assert.equal(result.fonoStudioCount, 1)
+  assert.equal(result.occupancyRows[0][0], "Studio One")
+})

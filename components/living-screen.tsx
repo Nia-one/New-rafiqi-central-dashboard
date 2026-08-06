@@ -16,8 +16,9 @@ function PacingCard({ channel, actual, target, owner }: { channel: string; actua
 
 export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { focus?: LivingSection; allocationFocus?: string; liveOpsData?: any }) {
   const live = buildLivingScreenData(liveOpsData)
-  const fonoTeam = { stages: live.fonoSupply }, fonoDemand = { stages: live.fonoDemand }, demandTeam = { stages: live.demandStages }, supplyTeam = { stages: live.supplyStages }
-  const fonoSupply = live.fonoSupply.map((item, index) => ({ stage: item.label, studios: index === 0 ? (liveOpsData?.studios ?? []).filter((row: any) => String(row["supply model"] ?? "").toUpperCase() === "FONO").length : 0, nests: item.mtd, conversion: item.mtdConversion, owner: live.metricOwner("fono_owner") }))
+  const fonoTeam = { stages: live.fonoSupply }, fonoDemand = { stages: live.fonoRequirementStages }, demandTeam = { stages: live.demandStages }, supplyTeam = { stages: live.supplyStages }
+  const fonoStudioCounts = [live.fonoStudioCount, live.fonoReadyStudioCount, live.fonoOccupiedStudioCount]
+  const fonoSupply = live.fonoSupply.map((item, index) => ({ stage: item.label, studios: fonoStudioCounts[index] ?? 0, nests: item.mtd, conversion: item.mtdConversion, owner: live.fonoOwner }))
   const fonoOccupancy = live.occupancyRows
   const shramDemand = live.demandRows
   const shramSupply = live.supplyRows
@@ -32,9 +33,9 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { foc
     { title: "Śram Park supply", summary: `${openDemandNodes.length} open demand nodes need nearby options` },
     { title: "Existing occupancy", summary: `${live.existingOccupied.toLocaleString("en-IN")} occupied of ${live.existingContracted.toLocaleString("en-IN")} contracted Nests.` },
     { title: "Living summary", summary: `${live.occupancyOccupied.toLocaleString("en-IN")} occupied of ${live.occupancyContracted.toLocaleString("en-IN")} contracted Nests.` },
-  ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>Named demand should become occupied Nests.</strong></div><p>Compare both channels by Theatre, Studio, and activation date.</p></div><AllocationContextStrip mismatchId={allocationFocus} />
-    <LivingSupplyModelReport />
-    <div className="pacing-grid"><PacingCard channel="FONO" actual={live.fonoOccupied} target={live.fonoReady} owner={live.metricOwner("fono_owner")} /><PacingCard channel="Śram Park" actual={live.demandMatched} target={live.demandRequired} owner={live.metricOwner("shram_owner")} /></div>
+  ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>Named demand should become occupied Nests.</strong></div><p>Compare both channels by Theatre, Studio, and activation date.</p></div><AllocationContextStrip mismatchId={allocationFocus} live={{ issue: `${Math.max(0, live.fonoReady - live.fonoOccupied).toLocaleString("en-IN")} activation-ready FONO Nests remain unoccupied`, owner: live.fonoOwner, current: `${live.fonoOccupied.toLocaleString("en-IN")} occupied`, target: `${live.fonoReady.toLocaleString("en-IN")} ready`, gap: `${Math.max(0, live.fonoReady - live.fonoOccupied).toLocaleString("en-IN")} Nest gap`, updated: String(liveOpsData?.meta?.updatedAt || liveOpsData?.fetchedAt || "current refresh") }} />
+    <LivingSupplyModelReport liveData={live} refreshedAt={liveOpsData?.fetchedAt || liveOpsData?.meta?.updatedAt} />
+    <div className="pacing-grid"><PacingCard channel="FONO" actual={live.fonoOccupied} target={live.fonoReady} owner={live.fonoOwner} /><PacingCard channel="Śram Park" actual={live.demandMatched} target={live.demandRequired} owner={live.metricOwner("shram_owner")} /></div>
     <section id="fono" className={`operating-section ${focus === "fono" ? "focused-section" : ""}`}>
       <p className="pillar-kicker">ACQUISITION CHANNEL 01</p>
       <h2>FONO (Franchise Owned, Nia Operated)</h2>

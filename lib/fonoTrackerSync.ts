@@ -74,6 +74,7 @@ export async function syncFonoTrackerData() {
       "theatre id": theatre, "supply model": "FONO", "contracted nests": nests,
       "activation ready nests": activationReady || nests, "occupied nests": memberAdds,
       "occupancy ratio": nests ? memberAdds / nests : 0, "updated at": lastUpdated,
+      "next action owner actor id": acquirer || "ACT-UNASSIGNED", "next action": "Verify FONO Member Adds against activation-ready Nests",
       "source submission id": key, "source note": [locationId && `Location=${locationId}`, studiosCount && `Studios=${studiosCount}`, verifier && `Verifier=${verifier}`, remarks, evidence && `Evidence=${evidence}`].filter(Boolean).join(" | "),
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "",
     });

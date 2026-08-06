@@ -22,7 +22,7 @@ const demandChannel = (row: Row) => {
 const stageBucket = (row: Row) => {
   const state = `${value(row, "status")} ${value(row, "certainty")}`.toLowerCase()
   if (/drop|lost|reject|cancel/.test(state)) return "Dropped"
-  if (/contracted|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
+  if (/contracted|onboarded|takeover pending|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
   if (/contracting|negotiat|contract review|proposal/.test(state)) return "Contracting"
   return "Lead"
 }
@@ -108,13 +108,13 @@ export function buildLivingScreenData(ops: any) {
   const occupancyRows = governedFono.filter((row) => n(row["contracted nests"]) > 0).map((row) => {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
-    const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
-    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied)), person(value(row, "owner actor id"))]
+    const studioName = value(row, "studio name") || studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), `${percent(occupied, contracted)}%`, String(Math.max(0, contracted - occupied)), person(value(row, "owner actor id") || value(row, "next action owner actor id"))]
   })
   const existingOccupancyRows = existingCurrent.filter((row) => n(row["contracted nests"]) > 0).map((row) => {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
-    const studioName = studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
+    const studioName = value(row, "studio name") || studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
     return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, displayDate(value(row, "updated at"))]
   })
   const existingByTheatre = [...new Set(existingCurrent.map((row) => value(row, "theatre id")).filter(Boolean))].map((theatreId) => {
@@ -159,5 +159,9 @@ export function buildLivingScreenData(ops: any) {
     }
   })
 
-  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, existingOccupancyRows, existingByTheatre, existingContracted, existingOccupied, existingVacant: Math.max(0, existingContracted - existingOccupied), existingOccupancyPercent: percent(existingOccupied, existingContracted), demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
+  const fonoStudioCount = new Set(governedFono.map((row) => value(row, "studio id")).filter(Boolean)).size
+  const fonoReadyStudioCount = new Set(governedFono.filter((row) => n(row["activation ready nests"]) > 0).map((row) => value(row, "studio id")).filter(Boolean)).size
+  const fonoOccupiedStudioCount = new Set(governedFono.filter((row) => n(row["occupied nests"]) > 0).map((row) => value(row, "studio id")).filter(Boolean)).size
+  const fonoOwner = person(governedFono.map((row) => value(row, "next action owner actor id")).find(Boolean) || fonoDemandRows.map((row) => value(row, "owner actor id")).find(Boolean) || "")
+  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, existingOccupancyRows, existingByTheatre, existingContracted, existingOccupied, existingVacant: Math.max(0, existingContracted - existingOccupied), existingOccupancyPercent: percent(existingOccupied, existingContracted), demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, fonoOwner, fonoStudioCount, fonoReadyStudioCount, fonoOccupiedStudioCount, demandRequired, demandMatched, spReady, metricNumber, metricOwner, metricTemplate }
 }
