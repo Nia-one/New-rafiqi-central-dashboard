@@ -6,6 +6,7 @@ const { google } = require("googleapis")
 const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID
 const BLACK = { red: 0.03, green: 0.03, blue: 0.03 }
 const RED = { red: 0.8, green: 0.05, blue: 0.05 }
+const YELLOW = { red: 1, green: 0.75, blue: 0 }
 const WHITE = { red: 1, green: 1, blue: 1 }
 const MANAGED = "RAFIQI_FRESH_INPUT_MANAGED"
 const norm = (value) => String(value || "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ")
@@ -21,6 +22,7 @@ const uniqueTeamTabs = [
   "TEAM_NIA_GROWTH", "TEAM_OWNER_REGISTRY", "TEAM_LEARNING_HISTORY",
 ]
 const manualTabs = [...uiTabs, ...uniqueTeamTabs]
+const reportTabs = new Set(["Fono Funnel"])
 
 // Empty set means every populated header is user-entered except the red/system set below.
 const editableOverrides = new Map([
@@ -90,7 +92,7 @@ async function main() {
     requests.push({ updateSheetProperties: { properties: {
       sheetId: sheet.properties.sheetId,
       hidden: !(manual || guide),
-      tabColorStyle: { rgbColor: manual ? BLACK : RED },
+      tabColorStyle: { rgbColor: reportTabs.has(title) ? YELLOW : manual ? BLACK : RED },
     }, fields: "hidden,tabColorStyle" } })
     if (!manual) continue
 
@@ -101,9 +103,10 @@ async function main() {
       const key = norm(value)
       const editable = override ? override.has(key) : !alwaysSystem.has(key)
       if (!editable) automatedColumns.push(column)
+      const reportInput = reportTabs.has(title)
       requests.push({ repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: header.index, endRowIndex: header.index + 1, startColumnIndex: column, endColumnIndex: column + 1 }, cell: {
-        userEnteredFormat: { backgroundColor: editable ? BLACK : RED, textFormat: { foregroundColor: WHITE, bold: true }, wrapStrategy: "WRAP" },
-        note: editable ? "BLACK = USER INPUT. Fill this field; connected dashboard pages update after sync." : "RED = AUTOMATED / DERIVED. Do not edit.",
+        userEnteredFormat: { backgroundColor: reportInput ? YELLOW : editable ? BLACK : RED, textFormat: { foregroundColor: reportInput ? BLACK : WHITE, bold: true }, wrapStrategy: "WRAP" },
+        note: reportInput ? "YELLOW = BUSINESS REPORT IMPORT. Import or replace the verified report tab." : editable ? "BLACK = USER INPUT. Fill this field; connected dashboard pages update after sync." : "RED = AUTOMATED / DERIVED. Do not edit.",
       }, fields: "userEnteredFormat,note" } })
     })
     for (const column of automatedColumns) requests.push({ addProtectedRange: { protectedRange: {
@@ -123,14 +126,15 @@ async function main() {
     const override = editableOverrides.get(title)
     header.values.forEach((field, index) => {
       const editable = override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
-      guideRows.push([title, index + 1, field, editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
+      const reportInput = reportTabs.has(title)
+      guideRows.push([title, index + 1, field, reportInput ? "YELLOW — BUSINESS REPORT IMPORT" : editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", reportInput ? "Import or replace the verified Business Report value." : editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
     })
   }
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: "DATA_ENTRY_GUIDE!A:K" })
   await sheets.spreadsheets.values.update({ spreadsheetId, range: "DATA_ENTRY_GUIDE!A1", valueInputOption: "RAW", requestBody: { values: guideRows } })
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: "TEAM_DATA_ENTRY_HOME!A1:D100" })
   await sheets.spreadsheets.values.update({ spreadsheetId, range: "TEAM_DATA_ENTRY_HOME!A1", valueInputOption: "RAW", requestBody: { values: [
-    ["RAFIQI USER INPUT — READY", "BLACK tabs/columns are user input. RED tabs/columns are automated or derived; do not edit."],
+    ["RAFIQI USER INPUT — READY", "BLACK = direct user input. YELLOW = Business Report import/replace. RED = automated or derived; do not edit."],
     ["Rule", "Enter every fact once in its owning visible tab. Do not unhide system or bot tabs."],
     ["Visible inputs", manualTabs.join(", ")],
     ["Automated sources", "Essentials, Shram Park demand, FONO demand and backend/system mirrors remain hidden and excluded from manual entry."],
