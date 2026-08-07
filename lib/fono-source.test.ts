@@ -27,3 +27,10 @@ test("FONO Member Adds is projected explicitly from Fono Funnel without changing
   assert.match(fonoSync, /\[\.\.\.records, \.\.\.memberAddsRecords\]/);
   assert.match(fonoSync, /demandNests: records\.reduce/);
 });
+
+test("FONO owner names generate stable actor IDs and People_Roster rows automatically", () => {
+  assert.match(fonoSync, /return slug \? `ACT-FONO-\$\{slug\}` : "ACT-UNASSIGNED"/);
+  assert.match(fonoSync, /"display name": acquirer, role: "FONO Acquirer"/);
+  assert.match(fonoSync, /replaceOwned\(sheets, backendId, "People_Roster", "actor id", "ACT-FONO-"/);
+  assert.doesNotMatch(fonoSync, /"owner actor id": acquirer \|\| "ACT-UNASSIGNED"/);
+});

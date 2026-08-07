@@ -11,6 +11,10 @@ const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replac
 const number = (value: unknown) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
 const cell = (row: unknown[], headers: string[], ...names: string[]) => { const wanted = new Set(names.map(norm)); const index = headers.findIndex((header) => wanted.has(norm(header))); return index < 0 ? "" : row[index] ?? ""; };
 const stable = (prefix: string, values: unknown[]) => `${prefix}-${crypto.createHash("sha1").update(values.map(String).join("|")).digest("hex").slice(0, 16)}`;
+export const fonoActorId = (name: unknown) => {
+  const slug = String(name ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  return slug ? `ACT-FONO-${slug}` : "ACT-UNASSIGNED";
+};
 const normalizeStage = (value: unknown) => norm(value).replaceAll(" ", "-");
 const DEMAND_STAGES = new Set(["lead", "contracting", "onboarded-(takeover-pending)", "contracted"]);
 const SUPPLY_STAGES = new Set(["contracted", "onboarded-(takeover-pending)"]);
@@ -46,6 +50,7 @@ export async function syncFonoTrackerData() {
   const sourceRows = values.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
   const livingRecords: Record<string, unknown>[] = [];
   const memberAddsRecords: Record<string, unknown>[] = [];
+  const actorRecords = new Map<string, Record<string, unknown>>();
   const records = sourceRows.flatMap((row) => {
     const after = String(cell(row, headers, "Stage After")).trim();
     const normalizedStage = normalizeStage(after);
@@ -54,6 +59,7 @@ export async function syncFonoTrackerData() {
     if (nests <= 0) return [];
     const date = sourceDate(cell(row, headers, "Date"));
     const acquirer = String(cell(row, headers, "Acquirer")).trim();
+    const ownerActorId = fonoActorId(acquirer);
     const theatre = String(cell(row, headers, "Theatre")).trim();
     const corridor = String(cell(row, headers, "Corridor")).trim();
     const prospect = String(cell(row, headers, "Prospect (PG / owner)")).trim();
@@ -68,6 +74,11 @@ export async function syncFonoTrackerData() {
     const remarks = String(cell(row, headers, "Remarks")).trim();
     const verifier = String(cell(row, headers, "Verifier")).trim();
     if (norm(studioId).startsWith("sample") || norm(remarks).includes("do not count")) return [];
+    if (acquirer) actorRecords.set(ownerActorId, {
+      "actor id": ownerActorId, "display name": acquirer, role: "FONO Acquirer",
+      "theatre id": theatre, "studio id": studioId, "active shift": "Active",
+      "updated at": lastUpdated, "source id": `FONO-ACQUIRER-${ownerActorId}`,
+    });
     const key = stable("FONO-TRACKER", [date, acquirer, theatre, corridor, prospect, after, nests]);
     const isSupply = SUPPLY_STAGES.has(normalizedStage);
     if (isSupply) {
@@ -76,7 +87,7 @@ export async function syncFonoTrackerData() {
         "theatre id": theatre, "supply model": "FONO", "contracted nests": nests,
         "activation ready nests": activationReady || nests, "occupied nests": memberAdds,
         "occupancy ratio": nests ? memberAdds / nests : 0, "updated at": lastUpdated,
-        "next action owner actor id": acquirer || "ACT-UNASSIGNED", "next action": "Verify FONO Member Adds against activation-ready Nests",
+        "next action owner actor id": ownerActorId, "next action": "Verify FONO Member Adds against activation-ready Nests",
         "source submission id": key, "source note": [locationId && `Location=${locationId}`, studiosCount && `Studios=${studiosCount}`, verifier && `Verifier=${verifier}`, remarks, evidence && `Evidence=${evidence}`].filter(Boolean).join(" | "),
         [REPORTING_MONTH_HEADER]: reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "",
       });
@@ -89,7 +100,7 @@ export async function syncFonoTrackerData() {
         "plant id": studioId, "plant name": studioName, "role required": "Member Adds",
         "headcount required": nests, "headcount matched": memberAdds,
         "headcount remaining": Math.max(0, nests - memberAdds), certainty: after, status: after,
-        "owner actor id": acquirer || "ACT-UNASSIGNED", "opened at": date,
+        "owner actor id": ownerActorId, "opened at": date,
         "source submission id": key, "updated at": lastUpdated, "theatre id": theatre,
         "source note": `Business Report Fono Funnel | Member Adds=${memberAdds} | Contracted=${nests}${evidence ? ` | Evidence=${evidence}` : ""}`,
         [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
@@ -99,7 +110,7 @@ export async function syncFonoTrackerData() {
       "demand id": key, "enterprise id": stable("FONO-PROSPECT", [prospect]), "enterprise name": prospect || "FONO prospect",
       "plant id": studioId, "plant name": studioName,
       "role required": "Living supply", "headcount required": nests, "headcount matched": isSupply ? nests : 0,
-      "headcount remaining": isSupply ? 0 : nests, certainty: after, status: after, "owner actor id": acquirer || "ACT-UNASSIGNED",
+      "headcount remaining": isSupply ? 0 : nests, certainty: after, status: after, "owner actor id": ownerActorId,
       "opened at": date, "source submission id": key, "updated at": lastUpdated, "theatre id": theatre,
       "source note": `Business Report Fono Funnel | Demand=${nests} | Supply=${isSupply ? nests : 0}${evidence ? ` | Evidence=${evidence}` : ""}`,
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
@@ -107,8 +118,9 @@ export async function syncFonoTrackerData() {
   });
   const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords]);
   const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
+  const peopleWritten = await replaceOwned(sheets, backendId, "People_Roster", "actor id", "ACT-FONO-", [...actorRecords.values()]);
   return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,
     demandNests: records.reduce((sum, row) => sum + number(row["headcount required"]), 0), supplyNests: records.reduce((sum, row) => sum + number(row["headcount matched"]), 0),
     gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), memberAddsRows: memberAddsRecords.length,
-    memberAdds: memberAddsRecords.reduce((sum, row) => sum + number(row["headcount matched"]), 0), written, livingWritten };
+    memberAdds: memberAddsRecords.reduce((sum, row) => sum + number(row["headcount matched"]), 0), written, livingWritten, peopleWritten };
 }
