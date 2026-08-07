@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { canonicalNiaGrowthControl } from "./control-tower"
+import { canonicalMemberAddsControl, canonicalNiaGrowthControl } from "./control-tower"
 
 test("Control Tower uses the current Nia Growth summary instead of stale action baselines", () => {
   const result = canonicalNiaGrowthControl({
@@ -16,4 +16,14 @@ test("Control Tower uses the current Nia Growth summary instead of stale action 
   assert.equal(result.target, "FONO 5625 demand · SP 150 leads")
   assert.match(result.prescription, /FONO 4738 gap · SP 150 open/)
   assert.doesNotMatch(JSON.stringify(result), /1151|4474/)
+})
+
+test("healthy Member Adds keeps its named owner and complete source values", () => {
+  const result = canonicalMemberAddsControl({ target: 887, current: 887, gap: 0, owner: "Srinivas", progressPercent: 100, verifiedResult: "887/887 billing-live" })
+  assert.equal(result.owner, "Srinivas")
+  assert.equal(result.current, "887")
+  assert.equal(result.target, "887")
+  assert.equal(result.gap, "0")
+  assert.match(result.rootCause, /887 verified Member Adds.*887 governed target.*0 still open/)
+  assert.doesNotMatch(JSON.stringify(result), /Unassigned|not enough values/i)
 })
