@@ -7,5 +7,5 @@ test("collections preserve overpayments as negative balances", () => {
   const workspace = readFileSync(new URL("../components/live-sheet-workspace.tsx", import.meta.url), "utf8");
   assert.match(sync, /"current due inr": num\(cell\(table, row, "Billed_INR"\)\) - num\(cell\(table, row, "Collected_INR"\)\)/);
   assert.match(workspace, /Invoice-wise collection balance/);
-  assert.match(workspace, /BALANCE.*inr\(amount\(row, "current due inr"\) \|\| amount\(row, "total billed inr"\) - amount\(row, "total collected inr"\)\)/s);
+  assert.match(workspace, /ACTUAL DUE.*Math\.max\(0, amount\(row, "total billed inr"\) - amount\(row, "total collected inr"\)\)/s);
 });

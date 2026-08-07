@@ -93,12 +93,12 @@ test("Collections roll up company-wide but only join a Living channel by governe
     ],
     finance: [
       { "finance daily id": "UI-COLL-1", "studio id": "FONO-1", "total billed inr": 1000, "total collected inr": 700, "current due inr": 300, "reconciliation status": "Partially Collected" },
-      { "finance daily id": "UI-COLL-2", "studio id": "EXISTING-1", "total billed inr": 2000, "total collected inr": 500, "current due inr": 1500, "reconciliation status": "Overdue" },
+      { "finance daily id": "UI-COLL-2", "studio id": "EXISTING-1", "total billed inr": 2000, "total collected inr": 2500, "current due inr": 0, "reconciliation status": "Collected" },
       { "finance daily id": "UI-FIN-1", "studio id": "FONO-1", "total billed inr": 9999, "current due inr": 9999 },
     ],
   })
 
-  assert.deepEqual(result.collection, { rowCount: 2, billed: 3000, collected: 1200, due: 1800, openCount: 2, overdueCount: 1 })
-  assert.deepEqual(result.fonoCollection, { rowCount: 1, billed: 1000, collected: 700, due: 300, openCount: 1, overdueCount: 0 })
+  assert.deepEqual(result.collection, { rowCount: 2, billed: 3000, collected: 2700, rawCollected: 3200, advance: 500, due: 300, openCount: 1, overdueCount: 0 })
+  assert.deepEqual(result.fonoCollection, { rowCount: 1, billed: 1000, collected: 700, rawCollected: 700, advance: 0, due: 300, openCount: 1, overdueCount: 0 })
   assert.equal(result.spCollection.rowCount, 0)
 })

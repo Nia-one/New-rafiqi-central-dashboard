@@ -66,10 +66,12 @@ export function buildLivingScreenData(ops: any) {
   const collectionRows = finance.filter((row) => value(row, "finance daily id").toUpperCase().startsWith("UI-COLL") && n(row["total billed inr"]) > 0)
   const collectionSummary = (rows: Row[]) => {
     const billed = sum(rows, "total billed inr")
-    const collected = sum(rows, "total collected inr")
-    const due = rows.reduce((total, row) => total + Math.max(0, n(row["current due inr"]) || (n(row["total billed inr"]) - n(row["total collected inr"]))), 0)
+    const rawCollected = sum(rows, "total collected inr")
+    const collected = rows.reduce((total, row) => total + Math.min(Math.max(0, n(row["total collected inr"])), Math.max(0, n(row["total billed inr"]))), 0)
+    const due = rows.reduce((total, row) => total + Math.max(0, n(row["total billed inr"]) - n(row["total collected inr"])), 0)
+    const advance = rows.reduce((total, row) => total + Math.max(0, n(row["total collected inr"]) - n(row["total billed inr"])), 0)
     const openRows = rows.filter((row) => /open|partial|overdue/i.test(value(row, "reconciliation status")))
-    return { rowCount: rows.length, billed, collected, due, openCount: openRows.length, overdueCount: openRows.filter((row) => /overdue/i.test(value(row, "reconciliation status"))).length }
+    return { rowCount: rows.length, billed, collected, rawCollected, advance, due, openCount: openRows.length, overdueCount: openRows.filter((row) => /overdue/i.test(value(row, "reconciliation status"))).length }
   }
   const fonoDemandRows = demand.filter((row) => demandChannel(row) === "FONO")
   const spDemandRows = demand.filter((row) => demandChannel(row) === "SP")

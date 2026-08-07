@@ -191,7 +191,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   }
   const livingLoop = buildControlTowerLivingLoop(liveOpsData)
   const collectionsLoop = livingLoop.collectionRows > 0
-    ? { name: "Collections", current: `₹${livingLoop.collectionCollected.toLocaleString("en-IN")} collected`, target: `₹${livingLoop.collectionBilled.toLocaleString("en-IN")} billed`, gap: `₹${livingLoop.collectionDue.toLocaleString("en-IN")} pending`, due: `${livingLoop.collectionOverdue} overdue · ${livingLoop.collectionOpen} open`, verified: livingLoop.verified }
+    ? { name: "Collections", current: `₹${livingLoop.collectionCollected.toLocaleString("en-IN")} applied`, target: `₹${livingLoop.collectionBilled.toLocaleString("en-IN")} billed`, gap: `₹${livingLoop.collectionDue.toLocaleString("en-IN")} actual dues`, due: `${livingLoop.collectionOverdue} overdue · ${livingLoop.collectionOpen} open`, verified: livingLoop.verified }
     : { name: "Collections", current: "No data", target: "No data", gap: "No recorded pending", due: "No collection input", verified: livingLoop.verified }
   const enterpriseRows = (liveOpsData?.enterpriseWorkspaceDemand ?? []) as Record<string, unknown>[]
   const enterpriseRequired = enterpriseRows.reduce((sum, row) => sum + (sourceNumber(row, "headcount required") ?? 0), 0)
