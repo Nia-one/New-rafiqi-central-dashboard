@@ -17,3 +17,10 @@ test("SP Supply has one live path into Living and Studio master", () => {
   assert.match(source, /spSupplyStudios:\s*await replaceOwned\("Studio_Master"/);
   assert.match(source, /"supply model": "SP"/);
 });
+
+test("vertical input sync removes legacy FONO demand without re-projecting it", () => {
+  const source = fs.readFileSync(new URL("./verticalInputSync.ts", import.meta.url), "utf8");
+  assert.match(source, /replaceOwned\("Enterprise_Demand", "demand id", "OPS-RPT-FONO", \[\]/);
+  assert.doesNotMatch(source, /demandRecords\.push/);
+  assert.doesNotMatch(source, /const fonoSources/);
+});

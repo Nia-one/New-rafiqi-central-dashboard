@@ -183,34 +183,10 @@ export async function syncVerticalInputs() {
     };
   });
 
-  const demandRecords: Record<string, unknown>[] = [];
-  const fonoReport = imported("Fono Funnel");
-  const fonoSources = fonoReport?.rows.length
-    ? [{ table: fonoReport, prefix: "OPS-RPT-FONO", kind: "FONO" }] as const
-    : [];
-  for (const { table, prefix, kind } of fonoSources) {
-    table.rows.forEach((row) => {
-      const company = value(row, table.headers, "Company Name", "Prospect (PG / owner)", "Theatre");
-      const location = value(row, table.headers, "Location", "Corridor", "Theatre");
-      // Prefer the explicit lead date. Display-only values such as `6-Jun` are
-      // parsed by JavaScript as 2001 and are not safe record identifiers.
-      const sourceDate = value(row, table.headers, "Lead date", "Date");
-      const opened = timestamp(sourceDate);
-      const reportingMonth = reportingMonthFromDate(sourceDate) || reportingMonthFromDate(opened)!;
-      const required = number(value(row, table.headers, "headcount_required", "Client Nests Potential", "Nests Potential", "Total Room"));
-      const matched = number(value(row, table.headers, "headcount_matched", "current occupancy"));
-      const sourceIdentity = [
-        company,
-        location,
-        opened,
-        value(row, table.headers, "Owner Contact NO"),
-        value(row, table.headers, "Activity Type"),
-        value(row, table.headers, "Time"),
-      ];
-      const activationAt = value(row, table.headers, "activation_required_at", "Next Action Date", "Contract start date");
-      demandRecords.push({ "demand id": value(row, table.headers, "dashboard_record_id") || id(prefix, sourceIdentity), "enterprise id": value(row, table.headers, "enterprise_id") || id(`${prefix}-ENT`, [company]), "enterprise name": company, "plant id": value(row, table.headers, "plant_id") || id(`${prefix}-PLANT`, [location]), "plant name": location, latitude: number(value(row, table.headers, "Latitude")), longitude: number(value(row, table.headers, "Longitude")), "role required": kind === "FONO" ? "Living supply" : "Workforce", "headcount required": required, "headcount matched": matched, "headcount remaining": Math.max(0, required - matched), "wage inr": number(value(row, table.headers, "RENT", "monthly wage inr")), "activation required at": activationAt ? timestamp(activationAt) : "", "certainty": value(row, table.headers, "certainty", "Stage After", "Current Stage"), "status": value(row, table.headers, "status", "Stage After", "Current Stage") || "Open", "owner actor id": value(row, table.headers, "owner_actor_id", "Acquirer", "JCO", "by"), "opened at": opened, "source submission id": id(`${prefix}-SRC`, sourceIdentity), "updated at": timestamp(value(row, table.headers, "source_updated_at")), [REPORTING_MONTH_HEADER]: reportingMonth });
-    });
-  }
+  // FONO is projected only by syncFonoTrackerData() from the fresh workbook.
+  // This connector used to write the same imported funnel as OPS-RPT-FONO rows,
+  // which doubled demand whenever a full governed sync ran. Keep this cleanup so
+  // existing legacy rows are removed before the canonical projection is applied.
 
   /* Essentials rows are produced exclusively by syncEssentialsBotData(). */
   const essentialsSource = { headers: [] as string[], rows: [] as unknown[][] };
@@ -285,7 +261,7 @@ export async function syncVerticalInputs() {
     living: await replaceOwned("Living_Hourly", "living hourly id", "OPS-", allLiving, targetRows.get("Living_Hourly")),
     spSupplyLiving: spSupply.length,
     spSupplyStudios: await replaceOwned("Studio_Master", "studio id", "OPS-SP-", spSupply.map((row) => row.studio), targetRows.get("Studio_Master")),
-    demand: await replaceOwned("Enterprise_Demand", "demand id", "OPS-", demandRecords, targetRows.get("Enterprise_Demand")),
+    demand: await replaceOwned("Enterprise_Demand", "demand id", "OPS-RPT-FONO", [], targetRows.get("Enterprise_Demand")),
     work: await replaceOwned("Work_Hourly", "work hourly id", "OPS-RPT-WORK", work, targetRows.get("Work_Hourly")),
     actions: await replaceOwned("Action_Log", "action id", "OPS-RPT-CM", reportActions, targetRows.get("Action_Log")),
   };
