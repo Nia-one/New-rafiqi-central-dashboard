@@ -118,7 +118,7 @@ export function MemberFeedbackScreen({ actions, items = [], responses = [], sour
   return <DashboardSectionAccordion key={view} className="member-feedback-screen" ariaLabel="Member NPS sections" sections={[
     { title: "Connector status", summary: items.length || responses.length ? "Governed Member feedback sources connected." : "No governed Member feedback records available." },
     { title: "Closure loop", summary: "Member speaks · RafiQi structures · owner fixes · Despatch verifies" },
-    { title: "Feedback summary", summary: `${summary.openItems} open · NPS ${summary.currentNps.score} from ${summary.currentNps.respondents} responses` },
+    { title: "Feedback summary", summary: `${summary.openItems} open · ${summary.currentNps.score === null ? "No NPS data" : `NPS ${summary.currentNps.score}`} from ${summary.currentNps.respondents} responses` },
     { title: "View", summary: `${view} · switch between action queue and NPS patterns` },
     { title: view, summary: view === "Early warning" ? `${summary.immediateAttention} items need immediate attention` : `July NPS ${summary.currentNps.score} · recurring causes retained`, lens: view === "Early warning" ? "operate" : undefined },
     { title: "Privacy", summary: "Anonymised Member tokens only; conversations remain restricted." },

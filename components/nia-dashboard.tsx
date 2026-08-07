@@ -187,6 +187,20 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
 export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsResponses = [], enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview = null, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, initialActive = "Despatch", onControlTower }: { liveOpsData: any; memberFeedbackItems?: readonly MemberFeedbackItem[]; memberNpsResponses?: NpsResponse[]; enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview?: MemberEngagementPreview | null; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; initialActive?: DashboardTab; onControlTower?: () => void }) {
   const dashboardPeriod = liveOpsData?.meta?.month || (liveOpsData?.meta?.updatedAt ? new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric" }).format(new Date(liveOpsData.meta.updatedAt)) : "Current period")
   const dataAsOf = liveOpsData?.meta?.updatedAt ?? liveOpsData?.fetchedAt ?? "Not recorded"
+  const registryValue = (row: Record<string, unknown>, key: string) => {
+    const normalized = key.toLowerCase().replaceAll("_", " ")
+    const match = Object.keys(row).find((candidate) => candidate.toLowerCase().replaceAll("_", " ") === normalized)
+    return String(match ? row[match] ?? "" : "").trim()
+  }
+  const registeredSavingsOwner = (liveOpsData?.ownerRegistry ?? []).find((row: Record<string, unknown>) => {
+    const identity = ["assignment id", "vertical", "scope", "business responsibility"].map((key) => registryValue(row, key)).join(" ").toLowerCase()
+    return registryValue(row, "status").toLowerCase() === "active" && registryValue(row, "role type").toLowerCase().includes("owner") && identity.includes("essential") && identity.includes("supply")
+  })
+  const registeredSavingsOwnerName = registeredSavingsOwner ? registryValue(registeredSavingsOwner, "owner name") : ""
+  const savingsOwner = memberSavingsPreview.summary.owner && memberSavingsPreview.summary.owner.toLowerCase() !== "unassigned" ? memberSavingsPreview.summary.owner : registeredSavingsOwnerName || "Unassigned"
+  const memberSavingsDisplay = savingsOwner === memberSavingsPreview.summary.owner ? memberSavingsPreview : { ...memberSavingsPreview, summary: { ...memberSavingsPreview.summary, owner: savingsOwner } }
+  const registeredFinanceRow = (liveOpsData?.ownerRegistry ?? []).find((row: Record<string, unknown>) => registryValue(row, "status").toLowerCase() === "active" && registryValue(row, "role type").toLowerCase().includes("owner") && registryValue(row, "vertical").toLowerCase() === "finance")
+  const registeredFinanceOwner = registeredFinanceRow ? registryValue(registeredFinanceRow, "owner name") : ""
   const [active, setActive] = useState<DashboardTab>(initialActive)
   const [workspace, setWorkspace] = useState<DashboardWorkspace>(POST_LOGIN_DASHBOARD_STATE.workspace)
   const [lens, setLens] = useState<OperatingLens>("operate")
@@ -371,7 +385,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
         cashControlPreview={cashControlPreview}
         newAddsPreview={newAddsPreview}
         memberEngagementPreview={memberEngagementPreview}
-        memberSavingsPreview={memberSavingsPreview}
+        memberSavingsPreview={memberSavingsDisplay}
         niaMarginsPreview={niaMarginsPreview}
         niaGrowthPreview={niaGrowthPreview}
         signOffCount={learningHistory.length}
@@ -384,11 +398,11 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       {active === "Enterprise Demand" && (enterpriseDemandPreview ? <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} /> : <LiveSheetWorkspace kind="Enterprise Demand" rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />)}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
-      {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsPreview} />}
+      {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsDisplay} />}
       {active === "Nia Growth" && <NiaGrowthWorkspace preview={niaGrowthPreview} />}
       {active === "Finance control" && financeExpansionPreview && <FinanceExpansionWorkspace preview={financeExpansionPreview} />}
       {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
-      {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} />}
+      {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} owner={registeredFinanceOwner || "Finance JCO"} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen liveRows={liveOpsData?.work ?? []} />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], hourly: liveOpsData?.essentials ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}

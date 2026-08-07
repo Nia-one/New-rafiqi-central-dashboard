@@ -15,7 +15,7 @@ function date(value: string) {
   return `${dateFormatter.format(new Date(value))} IST`
 }
 
-export function NiaMarginsWorkspace({ preview }: { preview: NiaMarginsPreview }) {
+export function NiaMarginsWorkspace({ preview, owner = "Finance JCO" }: { preview: NiaMarginsPreview; owner?: string }) {
   const pillarRows = [
     { label: "Living", value: preview.measures.pillarCm2Inr.living, target: 300 },
     { label: "Work", value: preview.measures.pillarCm2Inr.work, target: 1_000 },
@@ -24,7 +24,7 @@ export function NiaMarginsWorkspace({ preview }: { preview: NiaMarginsPreview })
   const behind = preview.measures.fullUseCm2Inr < preview.measures.fullUseTargetInr
   const gapInr = preview.measures.fullUseTargetInr - preview.measures.fullUseCm2Inr
   const verdictLabel = behind ? `Below control · ${inr(gapInr)}/unit to recover` : "At or above control"
-  const decisionOwner = preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO"
+  const decisionOwner = owner || (preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO")
   const decisionDue = preview.actions[0]?.dueAt
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Nia Margins sections" sections={[
     { title: "Margin verdict", summary: verdictLabel },
@@ -38,7 +38,7 @@ export function NiaMarginsWorkspace({ preview }: { preview: NiaMarginsPreview })
       <div><h2>{preview.answer}</h2><p>{preview.question}</p></div>
       <dl>
         <div className={styles.verdictCell}><dt>Verdict</dt><dd><b className={styles.verdictPill} data-state={behind ? "behind" : "on-track"}>{verdictLabel}</b></dd></div>
-        <div><dt>Owner</dt><dd>Finance JCO</dd></div>
+        <div><dt>Owner</dt><dd>{owner}</dd></div>
         <div><dt>Progress</dt><dd>{preview.loopHealth.verification.verified}/{preview.loopHealth.verification.claimed} verified</dd></div>
         <div><dt>Mode</dt><dd>{preview.mode}</dd></div>
       </dl>
