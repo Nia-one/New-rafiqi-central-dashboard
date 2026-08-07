@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { createHash } from "node:crypto";
 import { googleServiceAccountCredentials } from "./googleCredentials";
 
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "1e54fm3oUeseNzsTFG8O4XweRnWVU2n8OvBc7MLOu6nE";
@@ -15,6 +16,43 @@ const preferredCell = (table: Table, row: unknown[], ...names: string[]) => {
   }
   return "";
 };
+
+const systemHeader = (header: string) => ["record id", "reporting date", "reporting time", "last updated", "sample live"].includes(norm(header));
+const indiaDateTime = (now: Date) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(now).reduce<Record<string, string>>((output, part) => {
+    if (part.type !== "literal") output[part.type] = part.value;
+    return output;
+  }, {});
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, time: `${parts.hour}:${parts.minute}:${parts.second}` };
+};
+
+export function prepareFreshInputRow(tab: string, headers: string[], input: unknown[], sourceRowNumber: number, now = new Date()) {
+  const row = [...input];
+  const index = (name: string) => headers.findIndex((header) => norm(header) === norm(name));
+  const sampleLiveIndex = index("Sample_Live");
+  if (sampleLiveIndex < 0 || norm(row[sampleLiveIndex]) !== "live") return { row, updates: [] as { columnIndex: number; value: string }[], isLive: false };
+
+  const { date, time } = indiaDateTime(now);
+  const updates: { columnIndex: number; value: string }[] = [];
+  const setWhenBlank = (name: string, value: string) => {
+    const columnIndex = index(name);
+    if (columnIndex >= 0 && String(row[columnIndex] ?? "").trim() === "") {
+      row[columnIndex] = value;
+      updates.push({ columnIndex, value });
+    }
+  };
+  const stableContent = headers.map((header, columnIndex) => systemHeader(header) ? "" : String(row[columnIndex] ?? "").trim()).join("|");
+  const tabCode = tab.replace(/^UI_/, "").replace(/[^A-Za-z0-9]+/g, "-").toUpperCase();
+  const digest = createHash("sha256").update(`${tab}|${sourceRowNumber}|${stableContent}`).digest("hex").slice(0, 12).toUpperCase();
+  setWhenBlank("Record_ID", `UI-${tabCode}-${digest}`);
+  setWhenBlank("Reporting_Date", date);
+  setWhenBlank("Reporting_Time", time);
+  setWhenBlank("Last_Updated", now.toISOString());
+  return { row, updates, isLive: true };
+}
 
 async function upsertOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, target: string, keyHeader: string, records: Record<string, unknown>[]) {
   if (!records.length) return 0;
@@ -44,13 +82,34 @@ export async function syncFreshDashboardInputs() {
   // them out of this manual connector prevents duplicate operator input.
   const tabs = ["UI_Occupancy", "UI_Shrampark_Supply", "UI_Enterprise_Demand", "UI_Enterprise_Supply", "UI_Finance", "UI_Collections", "UI_People", "UI_Actions", "UI_Approvals", "UI_Evidence", "UI_Targets"];
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_ID, ranges: tabs.map((tab) => `'${tab}'!A:AN`) });
+  const sourceUpdates: { range: string; values: string[][] }[] = [];
   const tables = new Map(tabs.map((tab, index) => {
     const values = (response.data.valueRanges?.[index]?.values || []) as unknown[][];
     const headerIndex = values.findIndex((row) => row.some((value) => norm(value) === "record id"));
-    const table: Table = { headers: (values[headerIndex] || []).map(String), rows: values.slice(headerIndex + 1) };
-    table.rows = table.rows.filter((row) => norm(cell(table, row, "Sample_Live")) === "live" && Boolean(cell(table, row, "Record_ID")));
+    const headers = (values[headerIndex] || []).map(String);
+    const rows = values.slice(headerIndex + 1).map((row, rowOffset) => {
+      const sourceRowNumber = headerIndex + rowOffset + 2;
+      const prepared = prepareFreshInputRow(tab, headers, row, sourceRowNumber);
+      for (const update of prepared.updates) {
+        const column = update.columnIndex + 1;
+        let letters = "", remaining = column;
+        while (remaining > 0) { const remainder = (remaining - 1) % 26; letters = String.fromCharCode(65 + remainder) + letters; remaining = Math.floor((remaining - 1) / 26); }
+        sourceUpdates.push({ range: `'${tab}'!${letters}${sourceRowNumber}`, values: [[update.value]] });
+      }
+      return prepared;
+    }).filter((prepared) => prepared.isLive).map((prepared) => prepared.row);
+    const table: Table = { headers, rows };
     return [tab, table] as const;
   }));
+  if (sourceUpdates.length) {
+    try {
+      await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_ID, requestBody: { valueInputOption: "USER_ENTERED", data: sourceUpdates } });
+    } catch (error) {
+      const status = (error as { code?: number; status?: number }).code ?? (error as { status?: number }).status;
+      if (status !== 403) throw error;
+      console.warn(`Fresh input source is read-only for the sync identity; ${sourceUpdates.length} generated values were used for this sync but could not be persisted.`);
+    }
+  }
   const t = (name: string) => tables.get(name)!;
   const map = (name: string, mapper: (row: unknown[], table: Table) => Record<string, unknown>) => t(name).rows.map((row) => mapper(row, t(name)));
   const common = (row: unknown[], table: Table) => ({ "source submission id": cell(table, row, "Record_ID"), "updated at": iso(cell(table, row, "Last_Updated", "Reporting_Date")), "reporting month": month(cell(table, row, "Reporting_Date")) });
