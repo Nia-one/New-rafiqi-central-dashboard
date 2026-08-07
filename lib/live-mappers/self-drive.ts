@@ -1036,7 +1036,11 @@ export function buildLiveMemberEngagementLoopHealth(snapshot: LiveSelfDriveSnaps
 export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): LiveNiaGrowthProjection {
   const channel = (row: SheetRow) => {
     const ids = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
-    if (ids.includes("ops-rpt-fono") || text(row, "role required").toLowerCase() === "living supply") return "FONO"
+    if (text(row, "role required").toLowerCase() === "member adds") return ""
+    // FONO must be identified by its governed source lineage. A generic
+    // `Living supply` role is also used by Enterprise Demand and must never be
+    // folded into the FONO funnel total.
+    if (ids.includes("ops-rpt-fono") || ids.includes("fono-tracker-")) return "FONO"
     if (ids.includes("sp-bot")) return "SP"
     return ""
   }

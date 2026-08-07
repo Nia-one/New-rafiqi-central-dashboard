@@ -132,6 +132,16 @@ const sourceNumber = (row: Record<string, any> | undefined, ...keys: string[]) =
 
 const metricValue = (value: number | null, unit = "") => value === null ? "Not recorded" : `${value.toLocaleString("en-IN")}${unit ? ` ${unit}` : ""}`
 
+export function canonicalNiaGrowthControl(summary: NiaGrowthPreview["summary"]) {
+  return Object.freeze({
+    current: String(summary.current),
+    target: String(summary.target),
+    gap: String(summary.gap),
+    prescription: `Close and independently verify the current ${String(summary.gap)}`,
+    rootCause: `${String(summary.current)} are recorded against ${String(summary.target)}, leaving ${String(summary.gap)}.`,
+  })
+}
+
 export function buildControlTowerLivingLoop(liveOpsData: any) {
   const living = buildLivingScreenData(liveOpsData)
   return {
@@ -213,6 +223,8 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     const numericTarget = Number(String(loop.target).replace(/[^0-9.-]/g, "")) || 0
     const memberAddsGap = consoleName === "Member Adds" ? Number(newAddsPreview.taskSummary.gap) || 0 : 0
     const isOpenEnterpriseDemand = consoleName === "Enterprise Demand" && enterpriseGap > 0
+    const isNiaGrowthControl = consoleName === "All consoles" || consoleName === "Nia Growth"
+    const canonicalGrowth = isNiaGrowthControl ? canonicalNiaGrowthControl(niaGrowthPreview.summary) : null
     const verified = "verifiedPercent" in loop
       ? Math.min(100, Math.max(0, Number(loop.verifiedPercent) || 0))
       : numericTarget > 0 ? Math.min(100, Math.round(numericCurrent / numericTarget * 100)) : 0
@@ -222,10 +234,10 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     const unit = sourceValue(action, "expected metric").toLowerCase().includes("nest") ? "Nests" : ""
     const evidence: string[] = linkedEvidence.length ? linkedEvidence.map((row: Record<string, any>) => sourceValue(row, "description", "evidence type") || "Protected evidence record") : [sourceValue(action, "required evidence") || "Protected source record"]
     const due = sourceValue(action, "due at") ? displayDate(sourceValue(action, "due at")) : (alarm?.[4] || loop.due)
-    const prescription = sourceValue(action, "next action", "notes") || (memberAddsGap > 0 ? "Recover the FONO member-add gap" : isOpenEnterpriseDemand ? "Match confirmed Enterprise demand to governed Living supply" : "Continue governed monitoring")
+    const prescription = canonicalGrowth?.prescription || sourceValue(action, "next action", "notes") || (memberAddsGap > 0 ? "Recover the FONO member-add gap" : isOpenEnterpriseDemand ? "Match confirmed Enterprise demand to governed Living supply" : "Continue governed monitoring")
     const approvalDecision = sourceValue(linkedApproval, "decision") || "No approval recorded"
     const approvalRole = sourceValue(linkedApproval, "approver role")
-    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : isOpenEnterpriseDemand ? `${enterpriseGap} confirmed Enterprise demand Nests await supply matching` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 || isOpenEnterpriseDemand ? "Action required" : "No open alarm", prescription, rootCause: isOpenEnterpriseDemand ? `${enterpriseRequired} Nests are required, ${enterpriseMatched} are matched, and ${enterpriseGap} remain open. No supply is inferred from demand.` : gap === null ? "The governed source does not contain enough values to calculate the gap." : `${metricValue(baseline, unit)} are recorded against ${metricValue(target, unit)} required, leaving a ${metricValue(gap, unit)} readiness gap.`, owner: sourceValue(action, "owner actor id") || alarm?.[3] || (memberAddsGap > 0 ? newAddsPreview.taskSummary.owner : isOpenEnterpriseDemand ? sourceValue(enterpriseRows[0], "owner actor id") || "Unassigned" : "Unassigned"), due, metric: sourceValue(action, "expected metric") || loop.name, verified, current: baseline === null ? loop.current : metricValue(baseline, unit), target: target === null ? loop.target : metricValue(target, unit), by: due, verifier: sourceValue(linkedEvidence.find((row: Record<string, any>) => sourceValue(row, "verified by")), "verified by") || sourceValue(action, "verified by") || governanceRecords.find((record) => record.exceptionId === alarm?.[1])?.verifierActorId || "Independent verifier pending", evidence, governedRoute: prescription, approval: approvalRole ? `${approvalDecision} · ${approvalRole}` : approvalDecision, escalation: isOpenEnterpriseDemand ? `Escalate to ${sourceValue(enterpriseRows[0], "owner actor id") || "the governed owner"} at the activation due time` : gap && gap > 0 ? `Escalate to ${approvalRole || sourceValue(action, "owner actor id") || "the governed owner"} at the due time` : "Continue governed monitoring" }
+    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : isOpenEnterpriseDemand ? `${enterpriseGap} confirmed Enterprise demand Nests await supply matching` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 || isOpenEnterpriseDemand ? "Action required" : "No open alarm", prescription, rootCause: canonicalGrowth?.rootCause || (isOpenEnterpriseDemand ? `${enterpriseRequired} Nests are required, ${enterpriseMatched} are matched, and ${enterpriseGap} remain open. No supply is inferred from demand.` : gap === null ? "The governed source does not contain enough values to calculate the gap." : `${metricValue(baseline, unit)} are recorded against ${metricValue(target, unit)} required, leaving a ${metricValue(gap, unit)} readiness gap.`), owner: sourceValue(action, "owner actor id") || alarm?.[3] || (memberAddsGap > 0 ? newAddsPreview.taskSummary.owner : isOpenEnterpriseDemand ? sourceValue(enterpriseRows[0], "owner actor id") || "Unassigned" : "Unassigned"), due, metric: sourceValue(action, "expected metric") || loop.name, verified, current: canonicalGrowth?.current || (baseline === null ? loop.current : metricValue(baseline, unit)), target: canonicalGrowth?.target || (target === null ? loop.target : metricValue(target, unit)), by: due, verifier: sourceValue(linkedEvidence.find((row: Record<string, any>) => sourceValue(row, "verified by")), "verified by") || sourceValue(action, "verified by") || governanceRecords.find((record) => record.exceptionId === alarm?.[1])?.verifierActorId || "Independent verifier pending", evidence, governedRoute: prescription, approval: approvalRole ? `${approvalDecision} · ${approvalRole}` : approvalDecision, escalation: isOpenEnterpriseDemand ? `Escalate to ${sourceValue(enterpriseRows[0], "owner actor id") || "the governed owner"} at the activation due time` : gap && gap > 0 ? `Escalate to ${approvalRole || sourceValue(action, "owner actor id") || "the governed owner"} at the due time` : "Continue governed monitoring" }
   }
   const [activeConsole, setActiveConsole] = useState("All consoles")
   const [held, setHeld] = useState(false)

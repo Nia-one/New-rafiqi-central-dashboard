@@ -180,6 +180,25 @@ test("Member Adds vacancy owner comes from the contracted supply record", () => 
   assert.equal(buildLiveNewAddsFillStatus(live).owner, "North Lead")
 })
 
+test("Nia Growth keeps generic Enterprise living demand out of FONO totals", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-1", "source submission id": "FONO-TRACKER-1", status: "Lead", "role required": "Living supply", "headcount required": "5625", "headcount matched": "887", "updated at": "2026-08-07T00:00:00Z" },
+      { "demand id": "FONO-TRACKER-MEMBER-ADDS-1", "source submission id": "FONO-TRACKER-1", status: "Contracted", "role required": "Member Adds", "headcount required": "887", "headcount matched": "887", "updated at": "2026-08-07T00:00:00Z" },
+      { "demand id": "UI-ENT-DEMAND-1", status: "Under Discussion", "role required": "Living supply", "headcount required": "182", "headcount matched": "0", "updated at": "2026-08-07T00:00:00Z" },
+    ],
+  })
+
+  assert.deepEqual(buildLiveNiaGrowthProjection(live).summary, {
+    target: "FONO 5625 demand · SP 0 leads",
+    current: "FONO 887 supply · SP 0 won",
+    gap: "FONO 4738 gap · SP 0 open",
+    owner: "Unassigned",
+    progress: "16%",
+    verifiedResult: "FONO Nest capacity and Shrampark lead counts kept separate",
+  })
+})
+
 test("Member Adds accepts canonical FONO-TRACKER backend IDs", () => {
   const live = buildLiveSelfDriveSnapshot({
     enterpriseDemand: [

@@ -19,3 +19,11 @@ test("the fresh UI connector cannot reintroduce stale UI_FONO_Supply rows", () =
   assert.doesNotMatch(configuredTabs, /UI_FONO_Supply/);
   assert.doesNotMatch(supplyTabs, /UI_FONO_Supply/);
 });
+
+test("FONO Member Adds is projected explicitly from Fono Funnel without changing the FONO demand totals", () => {
+  assert.match(fonoSync, /const memberAdds = number\(cell\(row, headers, "Member_Adds", "Member Adds"\)\)/);
+  assert.match(fonoSync, /"role required": "Member Adds"/);
+  assert.match(fonoSync, /"headcount matched": memberAdds/);
+  assert.match(fonoSync, /\[\.\.\.records, \.\.\.memberAddsRecords\]/);
+  assert.match(fonoSync, /demandNests: records\.reduce/);
+});

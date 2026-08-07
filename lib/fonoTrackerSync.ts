@@ -45,6 +45,7 @@ export async function syncFonoTrackerData() {
   const headers = (values[headerIndex] || []).map(String);
   const sourceRows = values.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
   const livingRecords: Record<string, unknown>[] = [];
+  const memberAddsRecords: Record<string, unknown>[] = [];
   const records = sourceRows.flatMap((row) => {
     const after = String(cell(row, headers, "Stage After")).trim();
     const normalizedStage = normalizeStage(after);
@@ -69,15 +70,31 @@ export async function syncFonoTrackerData() {
     if (norm(studioId).startsWith("sample") || norm(remarks).includes("do not count")) return [];
     const key = stable("FONO-TRACKER", [date, acquirer, theatre, corridor, prospect, after, nests]);
     const isSupply = SUPPLY_STAGES.has(normalizedStage);
-    if (isSupply) livingRecords.push({
-      "living hourly id": key.replace("FONO-TRACKER-", "FONO-TRACKER-LIVING-"), "studio id": studioId, "studio name": studioName,
-      "theatre id": theatre, "supply model": "FONO", "contracted nests": nests,
-      "activation ready nests": activationReady || nests, "occupied nests": memberAdds,
-      "occupancy ratio": nests ? memberAdds / nests : 0, "updated at": lastUpdated,
-      "next action owner actor id": acquirer || "ACT-UNASSIGNED", "next action": "Verify FONO Member Adds against activation-ready Nests",
-      "source submission id": key, "source note": [locationId && `Location=${locationId}`, studiosCount && `Studios=${studiosCount}`, verifier && `Verifier=${verifier}`, remarks, evidence && `Evidence=${evidence}`].filter(Boolean).join(" | "),
-      [REPORTING_MONTH_HEADER]: reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "",
-    });
+    if (isSupply) {
+      livingRecords.push({
+        "living hourly id": key.replace("FONO-TRACKER-", "FONO-TRACKER-LIVING-"), "studio id": studioId, "studio name": studioName,
+        "theatre id": theatre, "supply model": "FONO", "contracted nests": nests,
+        "activation ready nests": activationReady || nests, "occupied nests": memberAdds,
+        "occupancy ratio": nests ? memberAdds / nests : 0, "updated at": lastUpdated,
+        "next action owner actor id": acquirer || "ACT-UNASSIGNED", "next action": "Verify FONO Member Adds against activation-ready Nests",
+        "source submission id": key, "source note": [locationId && `Location=${locationId}`, studiosCount && `Studios=${studiosCount}`, verifier && `Verifier=${verifier}`, remarks, evidence && `Evidence=${evidence}`].filter(Boolean).join(" | "),
+        [REPORTING_MONTH_HEADER]: reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "",
+      });
+      // Member Adds is an explicit actual-add projection. Keep it separate from
+      // the Living-supply demand row so the UI can consume Member_Adds without
+      // treating demand, capacity or Existing Occupancy as newly added Members.
+      memberAddsRecords.push({
+        "demand id": key.replace("FONO-TRACKER-", "FONO-TRACKER-MEMBER-ADDS-"),
+        "enterprise id": "UI_FONO_SUPPLY", "enterprise name": "FONO",
+        "plant id": studioId, "plant name": studioName, "role required": "Member Adds",
+        "headcount required": nests, "headcount matched": memberAdds,
+        "headcount remaining": Math.max(0, nests - memberAdds), certainty: after, status: after,
+        "owner actor id": acquirer || "ACT-UNASSIGNED", "opened at": date,
+        "source submission id": key, "updated at": lastUpdated, "theatre id": theatre,
+        "source note": `Business Report Fono Funnel | Member Adds=${memberAdds} | Contracted=${nests}${evidence ? ` | Evidence=${evidence}` : ""}`,
+        [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
+      });
+    }
     return [{
       "demand id": key, "enterprise id": stable("FONO-PROSPECT", [prospect]), "enterprise name": prospect || "FONO prospect",
       "plant id": studioId, "plant name": studioName,
@@ -88,9 +105,10 @@ export async function syncFonoTrackerData() {
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
     }];
   });
-  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", records);
+  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords]);
   const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
   return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,
     demandNests: records.reduce((sum, row) => sum + number(row["headcount required"]), 0), supplyNests: records.reduce((sum, row) => sum + number(row["headcount matched"]), 0),
-    gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), written, livingWritten };
+    gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), memberAddsRows: memberAddsRecords.length,
+    memberAdds: memberAddsRecords.reduce((sum, row) => sum + number(row["headcount matched"]), 0), written, livingWritten };
 }
