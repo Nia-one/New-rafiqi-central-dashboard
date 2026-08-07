@@ -154,7 +154,20 @@ async function upsert(tabName: string, keyHeader: string, records: Record<string
       updated++;
     } else append.push(output);
   }
-  if (append.length) await sheets.spreadsheets.values.append({ spreadsheetId, range: `${tabName}!A:AZ`, valueInputOption: "USER_ENTERED", insertDataOption: "INSERT_ROWS", requestBody: { values: append } });
+  // Do not use values.append here. Sheets infers a "logical table" inside the
+  // supplied range and, after a blank boundary, can shift a bot row to a later
+  // column instead of column A. That makes the stable key invisible on the next
+  // sync and creates a new duplicate every time. An explicit A-row update keeps
+  // every governed record aligned with the canonical header row.
+  if (append.length) {
+    const startRow = Math.max(2, rows.length + 1);
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tabName}!A${startRow}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: append },
+    });
+  }
   return { inserted: append.length, updated };
 }
 
@@ -281,7 +294,15 @@ export async function syncEssentialsBotData() {
   const essentialsHourly = await upsert("Essentials_Hourly", "essentials hourly id", [...hourly, ...quarantined]);
   const essentialsInventory = await upsert("Essentials_Inventory", "sku", inventoryRows);
   const memberActivations = await upsert("Member_Activation", "activation id", [...activationGroups.values()]);
-  const removedStaleHourly = await reconcileBotOwnedRows("Essentials_Hourly", "essentials hourly id", new Set([...hourly, ...quarantined].map((row) => norm(row["essentials hourly id"]))), (row, headers) => norm(cell(row, headers, "essentials hourly id")).startsWith("bot-ess-"));
+  const removedStaleHourly = await reconcileBotOwnedRows(
+    "Essentials_Hourly",
+    "essentials hourly id",
+    new Set([...hourly, ...quarantined].map((row) => norm(row["essentials hourly id"]))),
+    // Historical append inference shifted bot IDs beyond the governed key
+    // column. Treat a BOT-ESS identifier anywhere in the row as bot-owned so
+    // reconciliation can remove those malformed duplicates safely.
+    (row) => row.some((value) => norm(value).startsWith("bot-ess-")),
+  );
   const removedStaleInventory = await reconcileBotOwnedRows("Essentials_Inventory", "sku", new Set(inventoryRows.map((row) => norm(row.sku))), (row, headers) => norm(cell(row, headers, "supply model")) === "existing bot");
   return {
     mirrors,
