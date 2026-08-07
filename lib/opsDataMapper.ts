@@ -651,6 +651,7 @@ const askRateMultiple = currentDailyCmPace > 0
 
   sourceRegistry: toObjects(data.sourceRegistry),
   policyRegistry: toObjects(data.policyRegistry),
+  ownerRegistry: toObjects(data.ownerRegistry),
 
   living,
   finance,
