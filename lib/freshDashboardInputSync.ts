@@ -144,7 +144,7 @@ export async function syncFreshDashboardInputs() {
     "customer or member ref": cell(table, row, "Customer_or_Member_Ref"),
     "total billed inr": num(cell(table, row, "Billed_INR")),
     "total collected inr": num(cell(table, row, "Collected_INR")),
-    "current due inr": Math.max(0, num(cell(table, row, "Billed_INR")) - num(cell(table, row, "Collected_INR"))),
+    "current due inr": num(cell(table, row, "Billed_INR")) - num(cell(table, row, "Collected_INR")),
     "due date": cell(table, row, "Due_Date"),
     "finance reviewer": cell(table, row, "Finance_Reviewer"),
     "reconciliation status": cell(table, row, "Status"),
