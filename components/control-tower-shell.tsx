@@ -3,6 +3,7 @@
 import { ControlTower } from "@/components/control-tower"
 import { persistOperatingLens } from "@/components/lens"
 import { NiaDashboard } from "@/components/nia-dashboard"
+import { GlobalLiveSync } from "@/components/global-live-sync"
 import type { DashboardTab } from "@/lib/dashboard-model"
 import type { ComponentProps } from "react"
 import { useState } from "react"
@@ -24,9 +25,8 @@ const workspaceTabs: Record<string, DashboardTab> = {
 export function ControlTowerShell(props: DashboardProps) {
   const [activeWorkspace, setActiveWorkspace] = useState<DashboardTab | null>(null)
 
-  if (activeWorkspace === null) {
-    return (
-      <ControlTower
+  const workspace = activeWorkspace === null
+    ? <ControlTower
         liveOpsData={props.liveOpsData}
         enterpriseDemandPreview={props.enterpriseDemandPreview!}
         controlledAutonomyPreview={props.controlledAutonomyPreview!}
@@ -42,8 +42,7 @@ export function ControlTowerShell(props: DashboardProps) {
           setActiveWorkspace(workspaceTabs[workspace] ?? "Despatch")
         }}
       />
-    )
-  }
+    : <NiaDashboard {...props} initialActive={activeWorkspace} onControlTower={() => setActiveWorkspace(null)} />
 
-  return <NiaDashboard {...props} initialActive={activeWorkspace} onControlTower={() => setActiveWorkspace(null)} />
+  return <><GlobalLiveSync />{workspace}</>
 }

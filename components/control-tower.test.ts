@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { canonicalMemberAddsControl, canonicalNiaGrowthControl, CONTROL_TOWER_AUTO_SYNC_SECONDS } from "./control-tower"
+import { canonicalMemberAddsControl, canonicalNiaGrowthControl } from "./control-tower"
 
 test("Control Tower uses the current Nia Growth summary instead of stale action baselines", () => {
   const result = canonicalNiaGrowthControl({
@@ -26,8 +26,4 @@ test("healthy Member Adds keeps its named owner and complete source values", () 
   assert.equal(result.gap, "0")
   assert.match(result.rootCause, /887 verified Member Adds.*887 governed target.*0 still open/)
   assert.doesNotMatch(JSON.stringify(result), /Unassigned|not enough values/i)
-})
-
-test("Control Tower live refresh cadence is 45 seconds", () => {
-  assert.equal(CONTROL_TOWER_AUTO_SYNC_SECONDS, 45)
 })
