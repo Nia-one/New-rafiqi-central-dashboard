@@ -33,7 +33,14 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   const row = [...input];
   const index = (name: string) => headers.findIndex((header) => norm(header) === norm(name));
   const sampleLiveIndex = index("Sample_Live");
-  if (sampleLiveIndex < 0 || norm(row[sampleLiveIndex]) !== "live") return { row, updates: [] as { columnIndex: number; value: string }[], isLive: false };
+  const sampleLive = sampleLiveIndex < 0 ? "" : norm(row[sampleLiveIndex]);
+  const hasUserContent = headers.some((header, columnIndex) => !systemHeader(header) && String(row[columnIndex] ?? "").trim() !== "");
+  // Explicit sample/template rows must never sync. A populated row with a blank
+  // status is a genuine operator row, so the connector promotes it to Live.
+  // Any other explicit status (for example Draft/Hold) remains excluded.
+  if (sampleLive === "sample" || (sampleLive !== "" && sampleLive !== "live") || !hasUserContent) {
+    return { row, updates: [] as { columnIndex: number; value: string }[], isLive: false };
+  }
 
   const { date, time } = indiaDateTime(now);
   const updates: { columnIndex: number; value: string }[] = [];
@@ -47,6 +54,7 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   const stableContent = headers.map((header, columnIndex) => systemHeader(header) ? "" : String(row[columnIndex] ?? "").trim()).join("|");
   const tabCode = tab.replace(/^UI_/, "").replace(/[^A-Za-z0-9]+/g, "-").toUpperCase();
   const digest = createHash("sha256").update(`${tab}|${sourceRowNumber}|${stableContent}`).digest("hex").slice(0, 12).toUpperCase();
+  setWhenBlank("Sample_Live", "Live");
   setWhenBlank("Record_ID", `UI-${tabCode}-${digest}`);
   setWhenBlank("Reporting_Date", date);
   setWhenBlank("Reporting_Time", time);

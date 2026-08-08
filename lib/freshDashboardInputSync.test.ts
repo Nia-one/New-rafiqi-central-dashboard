@@ -31,3 +31,17 @@ test("sample rows are excluded and never receive system values", () => {
   assert.deepEqual(prepared.row, row);
   assert.deepEqual(prepared.updates, []);
 });
+
+test("populated rows with blank Sample_Live are promoted and fully automated", () => {
+  const prepared = prepareFreshInputRow("UI_People", headers, ["", "", "", "", "Ajay Kumar", ""], 8, now);
+  assert.equal(prepared.isLive, true);
+  assert.equal(prepared.row[1], "Live");
+  assert.equal(prepared.row[2], "2026-08-07");
+  assert.equal(prepared.row[3], "12:00:45");
+  assert.equal(prepared.updates.length, 5);
+});
+
+test("blank template rows and explicitly held rows are not synchronized", () => {
+  assert.equal(prepareFreshInputRow("UI_People", headers, [], 9, now).isLive, false);
+  assert.equal(prepareFreshInputRow("UI_People", headers, ["", "Draft", "", "", "Ajay Kumar", ""], 10, now).isLive, false);
+});

@@ -38,7 +38,7 @@ const editableOverrides = new Map([
   ["TEAM_OWNER_REGISTRY", new Set(["assignment id", "vertical", "scope", "theatre", "role type", "owner name", "business responsibility", "effective from", "effective to", "status", "reporting month"])],
   ["TEAM_LEARNING_HISTORY", new Set(["domain", "observed", "proposed change", "expected effect", "attribution", "confidence", "disposition", "owner actor id", "notes", "reporting month"])],
 ])
-const alwaysSystem = new Set(["last updated", "vacant nests", "occupancy pct", "collection leakage inr", "source submission id", "updated at", "actual loaded cac inr", "payback days", "growth record id", "supply model", "required nests", "gap nests", "owner actor id", "signed contract covered nests", "readiness status", "id"])
+const alwaysSystem = new Set(["record id", "sample live", "reporting date", "reporting time", "last updated", "vacant nests", "occupancy pct", "collection leakage inr", "source submission id", "updated at", "actual loaded cac inr", "payback days", "growth record id", "supply model", "required nests", "gap nests", "owner actor id", "signed contract covered nests", "readiness status", "id"])
 
 const consumers = {
   UI_Occupancy: "Living > Existing Occupancy",
@@ -143,7 +143,7 @@ async function main() {
     ["Rule", "Enter every fact once in its owning visible tab. Do not unhide system or bot tabs."],
     ["Visible inputs", manualTabs.join(", ")],
     ["Automated sources", "Essentials, Shram Park demand, FONO demand and backend/system mirrors remain hidden and excluded from manual entry."],
-    ["Sync", "Save the row with valid Record_ID, Sample_Live = Live and Reporting_Date where those columns exist, then use Refresh data."],
+    ["Sync", "Fill the black business fields and save. Record_ID, Sample_Live, Reporting_Date, Reporting_Time and Last_Updated are generated automatically during refresh."],
     ["Verification", "Check the named dashboard consumer shown in DATA_ENTRY_GUIDE after sync."],
   ] } })
 
