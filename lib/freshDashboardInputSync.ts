@@ -62,24 +62,43 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   return { row, updates, isLive: true };
 }
 
-async function upsertOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, target: string, keyHeader: string, records: Record<string, unknown>[]) {
-  if (!records.length) return 0;
-  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `'${target}'!A:AZ` });
-  const rows = (response.data.values || []) as unknown[][];
-  const headers = (rows[0] || []).map(String);
-  const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
-  if (keyIndex < 0) throw new Error(`${target} is missing ${keyHeader}`);
-  const byKey = new Map(rows.slice(1).map((row, index) => [norm(row[keyIndex]), index + 2] as const).filter(([key]) => key));
-  const updates: { range: string; values: unknown[][] }[] = [], appends: unknown[][] = [];
-  for (const record of records) {
-    const key = norm(record[keyHeader]); if (!key) continue;
-    const output = headers.map((header) => record[norm(header)] ?? record[header] ?? "");
-    const rowNumber = byKey.get(key);
-    if (rowNumber) updates.push({ range: `'${target}'!A${rowNumber}`, values: [output] }); else appends.push(output);
-  }
-  if (updates.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: updates } });
-  if (appends.length) await sheets.spreadsheets.values.append({ spreadsheetId, range: `'${target}'!A:AZ`, valueInputOption: "USER_ENTERED", insertDataOption: "INSERT_ROWS", requestBody: { values: appends } });
-  return updates.length + appends.length;
+type OwnedSpec = readonly [target: string, keyHeader: string, records: Record<string, unknown>[]];
+
+async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, specs: readonly OwnedSpec[]) {
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: specs.map(([target]) => `'${target}'!A:AZ`) });
+  const changes: { range: string; values: unknown[][] }[] = [];
+  const written: Record<string, number> = {};
+  const changedByTarget: Record<string, number> = {};
+  specs.forEach(([target, keyHeader, records], specIndex) => {
+    const rows = (response.data.valueRanges?.[specIndex]?.values || []) as unknown[][];
+    const headers = (rows[0] || []).map(String);
+    const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
+    if (keyIndex < 0) throw new Error(`${target} is missing ${keyHeader}`);
+    const byKey = new Map(rows.slice(1).map((row, index) => [norm(row[keyIndex]), { row, rowNumber: index + 2 }] as const).filter(([key]) => key));
+    let nextRowNumber = rows.length + 1;
+    let accepted = 0;
+    const recordsByKey = new Map<string, Record<string, unknown>>();
+    for (const record of records) {
+      const key = norm(record[keyHeader]);
+      if (key) recordsByKey.set(key, record);
+    }
+    for (const [key, record] of recordsByKey) {
+      accepted += 1;
+      const output = headers.map((header) => record[norm(header)] ?? record[header] ?? "");
+      const existing = byKey.get(key);
+      const unchanged = existing && output.every((value, index) => String(value ?? "").trim() === String(existing.row[index] ?? "").trim());
+      if (unchanged) continue;
+      const rowNumber = existing?.rowNumber ?? nextRowNumber++;
+      changes.push({ range: `'${target}'!A${rowNumber}`, values: [output] });
+      changedByTarget[target] = (changedByTarget[target] ?? 0) + 1;
+    }
+    written[target] = accepted;
+  });
+  // Canonical backend rows are data, not spreadsheet formulas. RAW preserves
+  // ISO timestamps and exact identifiers so an unchanged 45-second sync is a
+  // true no-op instead of repeatedly rewriting Google-formatted date values.
+  if (changes.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "RAW", data: changes } });
+  return { written, changedRows: changes.length, changedByTarget };
 }
 
 export async function syncFreshDashboardInputs() {
@@ -172,6 +191,6 @@ export async function syncFreshDashboardInputs() {
   const evidence = map("UI_Evidence", (row, table) => ({ "evidence id": cell(table, row, "Record_ID"), "linked type": "Action", "linked id": cell(table, row, "Linked_Action_ID"), "evidence type": cell(table, row, "Evidence_Type"), "protected url": cell(table, row, "Source_Reference", "Evidence_Ref"), "uploaded by actor id": cell(table, row, "Uploaded_By"), "uploaded at": cell(table, row, "Captured_At"), "verification status": cell(table, row, "Verification_Status"), notes: cell(table, row, "Remarks"), ...common(row, table) }));
   const targets = map("UI_Targets", (row, table) => ({ "policy id": cell(table, row, "Record_ID"), "policy name": `${cell(table, row, "Mode")} · ${cell(table, row, "Page")} · ${cell(table, row, "KPI_Name")}`, "policy value": cell(table, row, "Target_Value"), unit: cell(table, row, "Unit"), "effective from": cell(table, row, "Effective_From"), "approved by": cell(table, row, "Approver"), status: cell(table, row, "Status"), "source note": cell(table, row, "Remarks"), ...common(row, table) }));
   const specs = [["Living_Hourly", "living hourly id", [...occupancy, ...supply]], ["Enterprise_Demand", "demand id", [...demand, ...memberAdds]], ["Finance_Daily", "finance daily id", [...finance, ...collections]], ["People_Roster", "actor id", people], ["People_Performance", "actor id", peoplePerformance], ["Action_Log", "action id", actions], ["Approval_Log", "approval id", approvals], ["Evidence_Log", "evidence id", evidence], ["Policy_Registry", "policy id", targets]] as const;
-  const written: Record<string, number> = {}; for (const [target, key, records] of specs) written[target] = await upsertOwned(sheets, backendId, target, key, records);
-  return { sourceSpreadsheetId: SOURCE_ID, liveRows: [...tables.values()].reduce((sum, table) => sum + table.rows.length, 0), written };
+  const { written, changedRows, changedByTarget } = await upsertOwnedBatch(sheets, backendId, specs);
+  return { sourceSpreadsheetId: SOURCE_ID, liveRows: [...tables.values()].reduce((sum, table) => sum + table.rows.length, 0), changedRows, changedByTarget, written };
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { ArrowRight, ArrowUpRight, BadgeIndianRupee, Building2, ChartNoAxesCombined, CheckCircle2, ChevronRight, Clock3, Gauge, HeartHandshake, Pause, RefreshCw, RotateCcw, Send, ShieldAlert, ShieldCheck, TrendingUp, UserCheck, UserPlus, UserRound } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { EnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import type { ControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
 import type { NiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
@@ -10,6 +10,8 @@ import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engage
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
+
+export const CONTROL_TOWER_AUTO_SYNC_SECONDS = 45
 
 const consoleDefinitions = [
   { name: "All consoles", icon: Gauge },
@@ -270,35 +272,41 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const [held, setHeld] = useState(false)
   const [feedHeld, setFeedHeld] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [nextSyncIn, setNextSyncIn] = useState(CONTROL_TOWER_AUTO_SYNC_SECONDS)
+  const syncInFlight = useRef(false)
   const [focusedAlarm, setFocusedAlarm] = useState<string>(alarms[0]?.[0] ?? "")
   const [consoleEvents, setConsoleEvents] = useState<string[]>([])
   const [alarmStates, setAlarmStates] = useState<Record<string, string>>({})
   const [alarmEvents, setAlarmEvents] = useState<{ title: string; detail: string; at: string }[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+  const refreshDashboard = useCallback(async (silent = false) => {
+    if (syncInFlight.current) return
+    syncInFlight.current = true
+    setRefreshing(true)
+    try {
+      const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store" })
+      if (!response.ok) throw new Error(`Refresh failed (${response.status})`)
+      setNextSyncIn(CONTROL_TOWER_AUTO_SYNC_SECONDS)
+      window.location.reload()
+    } catch (error) {
+      syncInFlight.current = false
+      setRefreshing(false)
+      setNextSyncIn(CONTROL_TOWER_AUTO_SYNC_SECONDS)
+      if (!silent) window.alert(error instanceof Error ? error.message : "Dashboard refresh failed")
+    }
+  }, [])
   useEffect(() => {
     if (!mounted) return
-    let cancelled = false
-    const autoSyncIntervalMs = 2 * 60 * 60 * 1000
-    const autoSync = async () => {
-      const now = Date.now()
-      const last = Number(window.sessionStorage.getItem("rafiqi-auto-sync-at") || 0)
-      if (!last || now - last < autoSyncIntervalMs) {
-        if (!last) window.sessionStorage.setItem("rafiqi-auto-sync-at", String(now))
-        return
-      }
-      window.sessionStorage.setItem("rafiqi-auto-sync-at", String(now))
-      try {
-        const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store" })
-        if (!cancelled && response.ok) window.location.reload()
-      } catch {
-        // The daily Vercel reconciliation remains the durable fallback.
-      }
-    }
-    void autoSync()
-    const timer = window.setInterval(() => void autoSync(), autoSyncIntervalMs)
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [mounted])
+    const timer = window.setInterval(() => {
+      setNextSyncIn((current) => {
+        if (current > 1) return current - 1
+        if (!feedHeld) window.setTimeout(() => void refreshDashboard(true), 0)
+        return CONTROL_TOWER_AUTO_SYNC_SECONDS
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [feedHeld, mounted, refreshDashboard])
   const visibleLoops = useMemo(() => activeConsole === "All consoles" ? loops : loops.filter((loop) => loop.name.toLowerCase() === (activeConsole === "Living" ? "living occupancy" : activeConsole.toLowerCase())), [activeConsole])
   const view = viewFor(activeConsole)
   const visibleAlarms = useMemo(() => view.alarmConsole === null ? alarms : alarms.filter((alarm) => alarm[2] === view.alarmConsole), [view])
@@ -318,19 +326,6 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     if (state === "Evidence") return <><button type="button" onClick={() => moveAlarm(alarm, "Closed", "Alarm closed")}><CheckCircle2 aria-hidden />Close</button><button type="button" aria-label={`Escalate ${alarm[0]}`} onClick={() => moveAlarm(alarm, "Escalated", "Alarm escalated")}><Send aria-hidden /></button></>
     return <><button type="button" onClick={() => moveAlarm(alarm, "Assigned", "Alarm assigned")}><UserCheck aria-hidden />Assign</button><button type="button" aria-label={`Escalate ${alarm[0]}`} onClick={() => moveAlarm(alarm, "Escalated", "Alarm escalated")}><Send aria-hidden /></button></>
   }
-  const refreshDashboard = async () => {
-    if (refreshing) return
-    setRefreshing(true)
-    try {
-      const response = await fetch("/api/ops-data", { method: "POST", cache: "no-store" })
-      if (!response.ok) throw new Error(`Refresh failed (${response.status})`)
-      window.location.reload()
-    } catch (error) {
-      setRefreshing(false)
-      window.alert(error instanceof Error ? error.message : "Dashboard refresh failed")
-    }
-  }
-
   // The tower contains browser-local interaction state and locale-sensitive
   // presentation. Rendering its full body only after hydration keeps the
   // production DOM identical to the client's first render.
@@ -345,7 +340,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     </aside>
 
     <div className="tower-right-column">
-      <header className="tower-header"><div><span className="tower-kicker">RafiQi Central · Shadow control</span><h1>Control Tower</h1><p>{activeConsole === "All consoles" ? "All operating loops, one governed queue." : `${activeConsole} console isolated for action.`}</p></div><div className="tower-header-controls"><span className="tower-system-pill" data-state={held ? "ALARM" : "ALARM"}><i />{held ? "HELD" : "ALARM"}</span><button type="button" onClick={() => setFeedHeld((value) => !value)}><Pause aria-hidden />{feedHeld ? "Resume feed" : "Hold feed"}</button><button type="button" disabled={refreshing} onClick={() => void refreshDashboard()}><RefreshCw aria-hidden />{refreshing ? "Refreshing…" : "Refresh"}</button></div></header>
+      <header className="tower-header"><div><span className="tower-kicker">RafiQi Central · Shadow control</span><h1>Control Tower</h1><p>{activeConsole === "All consoles" ? "All operating loops, one governed queue." : `${activeConsole} console isolated for action.`}</p></div><div className="tower-header-controls"><span className="tower-system-pill" data-state={held ? "ALARM" : "ALARM"}><i />{held ? "HELD" : "ALARM"}</span><span className="tower-sync-countdown" role="status">{refreshing ? "Syncing live data…" : feedHeld ? "Auto-sync paused" : `Auto-sync in ${nextSyncIn}s`}</span><button type="button" onClick={() => setFeedHeld((value) => !value)}><Pause aria-hidden />{feedHeld ? "Resume feed" : "Hold feed"}</button><button type="button" disabled={refreshing} onClick={() => void refreshDashboard()}><RefreshCw aria-hidden />{refreshing ? "Refreshing…" : "Refresh"}</button></div></header>
       <div className="tower-scroll-plane">
         <div className="tower-content-row">
           <div className="tower-canvas">

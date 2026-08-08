@@ -9,6 +9,7 @@ import { syncFonoTrackerData } from "@/lib/fonoTrackerSync";
 
 let activeSync: Promise<SourceSyncReport> | null = null;
 let activeLiveSync: Promise<LiveSourceSyncReport> | null = null;
+let activeFreshInputSync: Promise<Awaited<ReturnType<typeof syncFreshDashboardInputs>>> | null = null;
 let lastSuccessfulSync: SourceSyncReport | null = null;
 let lastFailureAt = 0;
 let lastFailure: unknown = null;
@@ -51,6 +52,14 @@ export function syncLiveSources() {
   if (activeLiveSync) return activeLiveSync;
   activeLiveSync = runLiveSourceSync().finally(() => { activeLiveSync = null; });
   return activeLiveSync;
+}
+
+export function syncFreshInputs() {
+  if (activeFreshInputSync) return activeFreshInputSync;
+  activeFreshInputSync = syncFreshDashboardInputs()
+    .then((report) => { clearSheetCache(); return report; })
+    .finally(() => { activeFreshInputSync = null; });
+  return activeFreshInputSync;
 }
 
 async function runSourceSync(): Promise<SourceSyncReport> {
