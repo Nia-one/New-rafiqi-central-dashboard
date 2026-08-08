@@ -7,7 +7,11 @@ const auth = new GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
 });
 
-const CACHE_TTL_MS = 60 * 1000;
+// Live User Input synchronization completes in roughly 3–4 seconds. Keep the
+// per-instance read cache below that window so an automatic post-sync reload
+// cannot land on a different warm Vercel instance and reuse its stale minute-
+// old snapshot.
+const CACHE_TTL_MS = 2 * 1000;
 
 const sheetCache = new Map<
   string,
