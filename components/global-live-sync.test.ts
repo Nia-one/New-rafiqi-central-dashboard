@@ -9,7 +9,9 @@ test("global live sync runs every 45 seconds with locking and retries", () => {
   assert.match(source, /const SYNC_SECONDS = 45/)
   assert.match(source, /LEASE_KEY/)
   assert.match(source, /attempt < 3/)
-  assert.match(source, /\/api\/ops-data\?live=1/)
+  assert.match(source, /\/api\/ops-data\?input=1/)
+  assert.match(source, /report\.changedRows/)
+  assert.match(source, /window\.location\.reload\(\)/)
 })
 
 test("global live sync stays mounted across Control Tower and dashboard workspaces", () => {

@@ -1,7 +1,6 @@
 "use client"
 
 import { RefreshCw } from "lucide-react"
-import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 const SYNC_SECONDS = 45
@@ -11,7 +10,6 @@ const LEASE_KEY = "rafiqi-global-sync-lease"
 type SyncState = "ready" | "syncing" | "retrying" | "failed"
 
 export function GlobalLiveSync() {
-  const router = useRouter()
   const tabId = useRef(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
   const inFlight = useRef(false)
   const [seconds, setSeconds] = useState(SYNC_SECONDS)
@@ -53,12 +51,16 @@ export function GlobalLiveSync() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         setState(attempt === 0 ? "syncing" : "retrying")
         try {
-          const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store" })
+          const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store" })
           if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
+          const report = await response.json() as { changedRows?: number }
           success = true
           window.localStorage.setItem("rafiqi-global-last-sync-at", String(Date.now()))
           setState("ready")
-          router.refresh()
+          // A server-component refresh can preserve stale client props. Reload
+          // only when rows actually changed so every dashboard workspace moves
+          // to one consistent snapshot without disrupting unchanged cycles.
+          if ((report.changedRows ?? 0) > 0) window.location.reload()
           break
         } catch {
           if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1000 * 2 ** attempt))
@@ -70,7 +72,7 @@ export function GlobalLiveSync() {
       releaseLease()
       if (!success) scheduleNext()
     }
-  }, [acquireLease, releaseLease, router, scheduleNext])
+  }, [acquireLease, releaseLease, scheduleNext])
 
   useEffect(() => {
     const current = Number(window.localStorage.getItem(NEXT_SYNC_KEY) || 0)
