@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 const SYNC_SECONDS = 45
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
+const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
 
 type SyncState = "ready" | "syncing" | "retrying" | "failed"
 
@@ -55,12 +56,17 @@ export function GlobalLiveSync() {
           if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
           const report = await response.json() as { changedRows?: number }
           success = true
-          window.localStorage.setItem("rafiqi-global-last-sync-at", String(Date.now()))
           setState("ready")
           // A server-component refresh can preserve stale client props. Reload
           // only when rows actually changed so every dashboard workspace moves
           // to one consistent snapshot without disrupting unchanged cycles.
-          if ((report.changedRows ?? 0) > 0) window.location.reload()
+          if ((report.changedRows ?? 0) > 0) {
+            // localStorage events notify the other open dashboard tabs. The
+            // tab doing the sync reloads itself below; follower tabs reload
+            // from the storage listener so none remain on stale server props.
+            window.localStorage.setItem(LAST_CHANGED_SYNC_KEY, String(Date.now()))
+            window.location.reload()
+          }
           break
         } catch {
           if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1000 * 2 ** attempt))
@@ -86,10 +92,15 @@ export function GlobalLiveSync() {
     tick()
     const timer = window.setInterval(tick, 1000)
     const manual = () => void synchronize()
+    const changedInAnotherTab = (event: StorageEvent) => {
+      if (event.key === LAST_CHANGED_SYNC_KEY && event.newValue) window.location.reload()
+    }
     window.addEventListener("rafiqi:sync-now", manual)
+    window.addEventListener("storage", changedInAnotherTab)
     return () => {
       window.clearInterval(timer)
       window.removeEventListener("rafiqi:sync-now", manual)
+      window.removeEventListener("storage", changedInAnotherTab)
       releaseLease()
     }
   }, [releaseLease, scheduleNext, synchronize])
