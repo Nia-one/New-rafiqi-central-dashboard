@@ -27,3 +27,12 @@ test("Essentials cost sync preserves user inputs and mirrors order items with fo
   assert.doesNotMatch(source, /range: `\$\{COST_INPUT_TAB\}!A\$\{startRow\}/);
   assert.doesNotMatch(source, /range: `\$\{COST_INPUT_TAB\}!E\$\{startRow\}:G/);
 });
+
+test("Essentials bot projects every page-level live dataset", () => {
+  assert.match(source, /upsert\("Essentials_Hourly"/);
+  assert.match(source, /upsert\("Essentials_Inventory"/);
+  assert.match(source, /upsert\("Essentials_Cohorts"/);
+  assert.match(source, /upsert\("Essentials_Dashboard"/);
+  assert.match(source, /"cohort id": `BOT-ESS-GROUP-/);
+  assert.match(source, /metricRow\("essentials_headline_cm"/);
+});

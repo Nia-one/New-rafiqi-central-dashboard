@@ -317,7 +317,10 @@ export async function syncEssentialsBotData() {
   customers.rows.forEach((row) => registerEligible(row, customers.headers, "customer"));
   guests.rows.forEach((row) => registerEligible(row, guests.headers, "guest"));
   type Group = { studio: string; theatre: string; captured: string; members: Set<string>; placed: number; fulfilled: number; billed: number; collected: number; cogs: number; fulfilment: number; savings: number; unresolved: number };
+  type CohortMember = { dates: number[]; products: Set<string> };
+  type CohortGroup = { studio: string; theatre: string; captured: string; members: Map<string, CohortMember>; gmv: number; products: Set<string> };
   const groups = new Map<string, Group>();
+  const cohortGroups = new Map<string, CohortGroup>();
   const activationGroups = new Map<string, Record<string, unknown>>();
   for (const row of orders.rows) {
     const orderId = norm(cell(row, orders.headers, "id", "order_id"));
@@ -326,7 +329,10 @@ export async function syncEssentialsBotData() {
     const studio = String(cell(row, orders.headers, "studio_id") || (customer && cell(customer, customers.headers, "studio_id")) || (guest && cell(guest, guests.headers, "studio_id")) || `AUTO-STUDIO-${stableToken(orderId)}`);
     const theatre = String(cell(row, orders.headers, "theatre_code", "theatre_name") || (customer && cell(customer, customers.headers, "theatre_code", "theatre_name")) || (guest && cell(guest, guests.headers, "theatre_code", "theatre_name")) || "UNRESOLVED");
     const captured = String(cell(row, orders.headers, "updated_at", "order_date", "created_at"));
-    const key = `${studio}|${hour(captured)}`;
+    // The Essentials page is a current cumulative operating view. Keep one
+    // row per Studio so point-in-time eligible Members are never double-counted
+    // when the same Studio receives orders in several hours.
+    const key = studio;
     const g = groups.get(key) || { studio, theatre, captured, members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 };
     g.placed++;
     g.members.add(norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId);
@@ -337,8 +343,17 @@ export async function syncEssentialsBotData() {
     if (["delivered", "fulfilled", "complete", "completed"].includes(deliveryStatus)) g.fulfilled++;
     g.billed += num(cell(row, orders.headers, "grand_total", "subtotal"));
     g.collected += num(cell(row, orders.headers, "collected_amount")) || num(cell(row, orders.headers, "grand_total", "subtotal"));
+    const memberKey = norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId;
+    const cohort = cohortGroups.get(norm(studio)) || { studio, theatre, captured, members: new Map<string, CohortMember>(), gmv: 0, products: new Set<string>() };
+    const cohortMember = cohort.members.get(memberKey) || { dates: [], products: new Set<string>() };
+    const capturedTime = Date.parse(captured);
+    if (Number.isFinite(capturedTime)) cohortMember.dates.push(capturedTime);
+    cohort.gmv += num(cell(row, orders.headers, "grand_total", "subtotal"));
+    cohort.captured = captured || cohort.captured;
     for (const item of itemByOrder.get(orderId) || []) {
       const qty = num(cell(item, items.headers, "quantity")) || 1;
+      const product = String(cell(item, items.headers, "product_code") || cell(item, items.headers, "product_id") || cell(item, items.headers, "id") || "").trim();
+      if (product) { cohort.products.add(product); cohortMember.products.add(product); }
       const savedCosts = costInputs.byItemId.get(norm(cell(item, items.headers, "id", "order_item_id")));
       g.cogs += num(cell(item, items.headers, "cost")) || qty * num(cell(item, items.headers, "purchase_rate"));
       g.fulfilment += savedCosts
@@ -346,6 +361,8 @@ export async function syncEssentialsBotData() {
         : num(cell(item, items.headers, "direct_fulfilment_cost")) + num(cell(item, items.headers, "packaging_cost")) + num(cell(item, items.headers, "delivery_cost"));
       g.savings += qty * num(cell(item, items.headers, "nia_savings"));
     }
+    cohort.members.set(memberKey, cohortMember);
+    cohortGroups.set(norm(studio), cohort);
     groups.set(key, g);
 
     // Bot orders are already a member-activation signal. Keep these records bot-owned
@@ -397,9 +414,63 @@ export async function syncEssentialsBotData() {
     "owned inventory value": cell(r, inventory.headers, "owned_inventory_value"),
     "owner": cell(r, inventory.headers, "warehouse_location") || "Essentials",
   }));
+  const retention = (members: CohortMember[], days: number) => {
+    const windowMs = days * 86_400_000;
+    const retained = members.filter((member) => {
+      const dates = [...member.dates].sort((a, b) => a - b);
+      return dates.length > 1 && dates.some((date, index) => index > 0 && date - dates[0] <= windowMs);
+    }).length;
+    return members.length ? retained / members.length : "";
+  };
+  const cohortRows = [...cohortGroups.values()].map((group) => {
+    const members = [...group.members.values()];
+    const buyers = members.length;
+    const eligible = eligibleByStudio.get(norm(group.studio))?.size || buyers;
+    const ordersCount = members.reduce((sum, member) => sum + member.dates.length, 0);
+    return {
+      "cohort id": `BOT-ESS-GROUP-${stableToken(group.studio)}`,
+      "member group": group.studio,
+      "theatre": group.theatre,
+      "eligible": eligible,
+      "buyers": buyers,
+      "attach": eligible ? buyers / eligible : "",
+      "gmv": group.gmv,
+      "aov": ordersCount ? group.gmv / ordersCount : "",
+      "frequency": buyers ? ordersCount / buyers : "",
+      "d30": retention(members, 30),
+      "d60": retention(members, 60),
+      "d90": retention(members, 90),
+      "churn": "",
+      "products / member": buyers ? members.reduce((sum, member) => sum + member.products.size, 0) / buyers : "",
+      "captured at": group.captured,
+      [REPORTING_MONTH_HEADER]: reportingMonthFromDate(group.captured),
+    };
+  });
+  const totalEligible = hourly.reduce((sum, row) => sum + num(row["eligible members"]), 0);
+  const totalBuyers = hourly.reduce((sum, row) => sum + num(row["buying members"]), 0);
+  const totalBilled = hourly.reduce((sum, row) => sum + num(row["essentials billed inr"]), 0);
+  const totalMargin = hourly.reduce((sum, row) => sum + num(row["nia margin inr"]), 0);
+  const totalSavings = hourly.reduce((sum, row) => sum + num(row["member savings inr"]), 0);
+  const latestCaptured = hourly.map((row) => String(row["captured at"] || "")).filter(Boolean).sort().at(-1) || new Date().toISOString();
+  const metricRow = (key: string, valueText: string) => ({ key, "value text": valueText, "updated at": latestCaptured });
+  const dashboardRows = [
+    metricRow("essentials_main_kicker", "MAIN POINT"),
+    metricRow("essentials_main_headline", `${totalBuyers.toLocaleString("en-IN")} Members bought Essentials from ${totalEligible.toLocaleString("en-IN")} eligible Members; CM is ${totalBilled ? Math.round(totalMargin / totalBilled * 1_000) / 10 : 0}%.`),
+    metricRow("essentials_main_explanation", "Marketing brings Member demand. EAE and Merchandising manage stock, fulfilled orders, savings and working capital."),
+    metricRow("essentials_headline_eligible", totalEligible.toLocaleString("en-IN")),
+    metricRow("essentials_headline_attach", totalEligible ? `${Math.round(totalBuyers / totalEligible * 100)}%` : "—"),
+    metricRow("essentials_headline_gmv", `₹${totalBilled.toLocaleString("en-IN")}`),
+    metricRow("essentials_headline_arpu", totalBuyers ? `₹${Math.round(totalBilled / totalBuyers).toLocaleString("en-IN")}` : "—"),
+    metricRow("essentials_headline_cm", `₹${totalMargin.toLocaleString("en-IN")}`),
+    metricRow("essentials_headline_savings", `₹${totalSavings.toLocaleString("en-IN")}`),
+  ];
   await ensureBackendColumns("Essentials_Inventory", ["owned inventory value"]);
+  await ensureBackendColumns("Essentials_Cohorts", ["cohort id", "member group", "theatre", "eligible", "buyers", "attach", "gmv", "aov", "frequency", "d30", "d60", "d90", "churn", "products / member", "captured at", REPORTING_MONTH_HEADER]);
+  await ensureBackendColumns("Essentials_Dashboard", ["key", "value text", "updated at"]);
   const essentialsHourly = await upsert("Essentials_Hourly", "essentials hourly id", [...hourly, ...quarantined]);
   const essentialsInventory = await upsert("Essentials_Inventory", "sku", inventoryRows);
+  const essentialsCohorts = await upsert("Essentials_Cohorts", "cohort id", cohortRows);
+  const essentialsDashboard = await upsert("Essentials_Dashboard", "key", dashboardRows);
   const memberActivations = await upsert("Member_Activation", "activation id", [...activationGroups.values()]);
   const removedStaleHourly = await reconcileBotOwnedRows(
     "Essentials_Hourly",
@@ -416,6 +487,7 @@ export async function syncEssentialsBotData() {
     },
   );
   const removedStaleInventory = await reconcileBotOwnedRows("Essentials_Inventory", "sku", new Set(inventoryRows.map((row) => norm(row.sku))), (row, headers) => norm(cell(row, headers, "supply model")) === "existing bot");
+  const removedStaleCohorts = await reconcileBotOwnedRows("Essentials_Cohorts", "cohort id", new Set(cohortRows.map((row) => norm(row["cohort id"]))), (row, headers) => norm(cell(row, headers, "cohort id")).startsWith("bot-ess-group-"));
   return {
     mirrors,
     sourceRows: { orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length },
@@ -423,6 +495,8 @@ export async function syncEssentialsBotData() {
     unresolvedStudioOrders,
     essentialsHourly: { ...essentialsHourly, removedStale: removedStaleHourly },
     essentialsInventory: { ...essentialsInventory, removedStale: removedStaleInventory },
+    essentialsCohorts: { ...essentialsCohorts, removedStale: removedStaleCohorts },
+    essentialsDashboard,
     memberActivations,
   };
 }
