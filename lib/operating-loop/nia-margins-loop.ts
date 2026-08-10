@@ -3,7 +3,10 @@ import { buildLoopHealth, type LoopHealth } from "@/lib/operating-loop/loop-heal
 import type { SupplyModel } from "@/lib/operating-loop/contracts"
 import { createDespatchEscalation, type DespatchEscalationRecord } from "@/lib/operating-loop/runtime-contracts"
 
-export const NIA_MARGIN_TARGETS = Object.freeze({ living: 300, work: 1_000, essentials: 200, fullUse: 1_500, occupancyPct: 78 })
+export type NiaMarginTargets = Readonly<{ living: number; work: number; essentials: number; fullUse: number; occupancyPct: number }>
+// Fixture/default only. The live dashboard always injects approved Policy_Registry
+// values derived from UI_Targets; these defaults keep isolated domain tests stable.
+export const NIA_MARGIN_TARGETS: NiaMarginTargets = Object.freeze({ living: 300, work: 1_000, essentials: 200, fullUse: 1_500, occupancyPct: 78 })
 
 export type MarginStudioInput = Readonly<{
   studioId: string
@@ -115,10 +118,11 @@ export type NiaMarginsPreview = Readonly<{
   answer: string
   measures: Readonly<{
     fullUseCm2Inr: number
-    fullUseTargetInr: 1500
+    fullUseTargetInr: number
+    pillarTargetsInr: Readonly<{ living: number; work: number; essentials: number }>
     pillarCm2Inr: Readonly<{ living: number; work: number; essentials: number }>
     occupancyPct: number
-    occupancyTargetPct: 78
+    occupancyTargetPct: number
     negativeContributionStudios: number
     studioGrossMarginPct: number
   }>
@@ -139,21 +143,21 @@ function protectedReference(value: string) {
   return value.startsWith("protected://") && value.length > "protected://".length
 }
 
-function metricForDiagnosis(diagnosis: MarginDiagnosis) {
-  if (diagnosis.primaryCause === "Occupancy") return { expectedMetric: "Occupied Nests as a share of contracted Nests", baselineValue: diagnosis.occupancyPct, targetValue: NIA_MARGIN_TARGETS.occupancyPct, unit: "pct" as const }
-  if (diagnosis.primaryCause === "Living partner cost" || diagnosis.primaryCause === "Living utilities") return { expectedMetric: "Living CM2", baselineValue: diagnosis.livingUnitCm2Inr, targetValue: NIA_MARGIN_TARGETS.living, unit: "INR/occupied Nest/month" as const }
-  if (diagnosis.primaryCause === "Work delivery cost") return { expectedMetric: "Work CM2", baselineValue: diagnosis.workUnitCm2Inr, targetValue: NIA_MARGIN_TARGETS.work, unit: "INR/occupied Nest/month" as const }
-  return { expectedMetric: "Essentials CM2", baselineValue: diagnosis.essentialsUnitCm2Inr, targetValue: NIA_MARGIN_TARGETS.essentials, unit: "INR/occupied Nest/month" as const }
+function metricForDiagnosis(diagnosis: MarginDiagnosis, targets: NiaMarginTargets) {
+  if (diagnosis.primaryCause === "Occupancy") return { expectedMetric: "Occupied Nests as a share of contracted Nests", baselineValue: diagnosis.occupancyPct, targetValue: targets.occupancyPct, unit: "pct" as const }
+  if (diagnosis.primaryCause === "Living partner cost" || diagnosis.primaryCause === "Living utilities") return { expectedMetric: "Living CM2", baselineValue: diagnosis.livingUnitCm2Inr, targetValue: targets.living, unit: "INR/occupied Nest/month" as const }
+  if (diagnosis.primaryCause === "Work delivery cost") return { expectedMetric: "Work CM2", baselineValue: diagnosis.workUnitCm2Inr, targetValue: targets.work, unit: "INR/occupied Nest/month" as const }
+  return { expectedMetric: "Essentials CM2", baselineValue: diagnosis.essentialsUnitCm2Inr, targetValue: targets.essentials, unit: "INR/occupied Nest/month" as const }
 }
 
 function actionIdFor(diagnosis: MarginDiagnosis) {
   return `MARGIN-${diagnosis.studioId}-${diagnosis.primaryCause.toUpperCase().replaceAll(" ", "-")}`
 }
 
-export function createMarginAction(diagnosis: MarginDiagnosis, input: MarginStudioInput, dueAt: string): MarginAction | null {
+export function createMarginAction(diagnosis: MarginDiagnosis, input: MarginStudioInput, dueAt: string, targets: NiaMarginTargets = NIA_MARGIN_TARGETS): MarginAction | null {
   if (diagnosis.primaryCause === "On target" || diagnosis.routeTo === "No action") return null
   if (!input.ownerActorId.trim()) throw new Error("A named action owner is required for every margin exception.")
-  const metric = metricForDiagnosis(diagnosis)
+  const metric = metricForDiagnosis(diagnosis, targets)
   return Object.freeze({
     actionId: actionIdFor(diagnosis),
     studioId: diagnosis.studioId,
@@ -242,39 +246,50 @@ export function buildMarginDespatchEscalation(action: MarginAction): DespatchEsc
   })
 }
 
-function primaryCause(input: MarginStudioInput, occupancyPct: number, living: number, work: number, essentials: number): Pick<MarginDiagnosis, "primaryCause" | "routeTo" | "ownerRole" | "expectedRecovery"> {
-  if (input.rampDay > 30 && occupancyPct < NIA_MARGIN_TARGETS.occupancyPct) return {
+function primaryCause(input: MarginStudioInput, occupancyPct: number, living: number, work: number, essentials: number, targets: NiaMarginTargets): Pick<MarginDiagnosis, "primaryCause" | "routeTo" | "ownerRole" | "expectedRecovery"> {
+  if (input.rampDay > 30 && occupancyPct < targets.occupancyPct) return {
     primaryCause: "Occupancy",
     routeTo: input.supplyModel === "FONO" ? "New Adds" : "Enterprise Demand",
     ownerRole: input.supplyModel === "FONO" ? "New Adds JCO" : "Enterprise Demand JCO",
-    expectedRecovery: `Occupancy returns to at least ${NIA_MARGIN_TARGETS.occupancyPct}% and billed CM2 recovers in the next verified cycle.`,
+    expectedRecovery: `Occupancy returns to at least ${targets.occupancyPct}% and billed CM2 recovers in the next verified cycle.`,
+  }
+  const hasPillarControls = targets.living > 0 || targets.work > 0 || targets.essentials > 0
+  if (!hasPillarControls && targets.fullUse > 0 && living + work + essentials < targets.fullUse) {
+    return [
+      { value: living, result: { primaryCause: "Living partner cost", routeTo: "Pushkar", ownerRole: "Finance JCO", expectedRecovery: "Partner-cost and utility variance is reconciled and full-use CM2 recovers in the next verified cycle." } },
+      { value: work, result: { primaryCause: "Work delivery cost", routeTo: "Member Savings", ownerRole: "Work JCO", expectedRecovery: "Work delivery cost returns to band and full-use CM2 recovers in the next verified cycle." } },
+      { value: essentials, result: { primaryCause: "Essentials delivery cost", routeTo: "Member Savings", ownerRole: "Essentials JCO", expectedRecovery: "Essentials delivery cost returns to band and full-use CM2 recovers in the next verified cycle." } },
+    ].sort((a, b) => a.value - b.value)[0]!.result as Pick<MarginDiagnosis, "primaryCause" | "routeTo" | "ownerRole" | "expectedRecovery">
   }
   const gaps = [
-    { gap: NIA_MARGIN_TARGETS.living - living, result: { primaryCause: "Living partner cost", routeTo: "Pushkar", ownerRole: "Finance JCO", expectedRecovery: "Partner-cost variance is reconciled and Living CM2 recovers in the next verified cycle." } },
+    { gap: targets.living - living, result: { primaryCause: "Living partner cost", routeTo: "Pushkar", ownerRole: "Finance JCO", expectedRecovery: "Partner-cost variance is reconciled and Living CM2 recovers in the next verified cycle." } },
     { gap: Math.max(0, input.livingUtilitiesInr - 450), result: { primaryCause: "Living utilities", routeTo: "Living Operations", ownerRole: "Living Operations JCO", expectedRecovery: "Utilities return to the approved band and Living CM2 recovers in the next verified cycle." } },
-    { gap: NIA_MARGIN_TARGETS.work - work, result: { primaryCause: "Work delivery cost", routeTo: "Member Savings", ownerRole: "Work JCO", expectedRecovery: "Work delivery cost returns to band and Work CM2 recovers in the next verified cycle." } },
-    { gap: NIA_MARGIN_TARGETS.essentials - essentials, result: { primaryCause: "Essentials delivery cost", routeTo: "Member Savings", ownerRole: "Essentials JCO", expectedRecovery: "Essentials delivery cost returns to band and Essentials CM2 recovers in the next verified cycle." } },
+    { gap: targets.work - work, result: { primaryCause: "Work delivery cost", routeTo: "Member Savings", ownerRole: "Work JCO", expectedRecovery: "Work delivery cost returns to band and Work CM2 recovers in the next verified cycle." } },
+    { gap: targets.essentials - essentials, result: { primaryCause: "Essentials delivery cost", routeTo: "Member Savings", ownerRole: "Essentials JCO", expectedRecovery: "Essentials delivery cost returns to band and Essentials CM2 recovers in the next verified cycle." } },
   ].sort((a, b) => b.gap - a.gap)[0]
   if (!gaps || gaps.gap <= 0) return { primaryCause: "On target", routeTo: "No action", ownerRole: "Finance JCO", expectedRecovery: "Maintain verified component contribution." }
   return gaps.result as Pick<MarginDiagnosis, "primaryCause" | "routeTo" | "ownerRole" | "expectedRecovery">
 }
 
-export function diagnoseMarginStudio(input: MarginStudioInput): MarginDiagnosis {
+export function diagnoseMarginStudio(input: MarginStudioInput, targets: NiaMarginTargets = NIA_MARGIN_TARGETS): MarginDiagnosis {
   for (const [label, value] of Object.entries({ contractedNests: input.contractedNests, occupiedNests: input.occupiedNests, rampDay: input.rampDay, billedLivingArpuInr: input.billedLivingArpuInr, livingPartnerCostInr: input.livingPartnerCostInr, livingUtilitiesInr: input.livingUtilitiesInr, billedWorkArpuInr: input.billedWorkArpuInr, workDirectDeliveryCostInr: input.workDirectDeliveryCostInr, billedEssentialsArpuInr: input.billedEssentialsArpuInr, essentialsDirectDeliveryCostInr: input.essentialsDirectDeliveryCostInr, studioGrossMarginPct: input.studioGrossMarginPct })) nonNegative(value, label)
   if (!input.studioId.trim() || !input.sourceRowIdentity.trim()) throw new Error("Margin Studio requires stable Studio and source identity.")
   if (input.occupiedNests > input.contractedNests || input.contractedNests === 0) throw new Error("Occupied Nests must fit inside positive contracted capacity.")
   const occupancyPct = Math.round((input.occupiedNests / input.contractedNests) * 1_000) / 10
-  const targetOccupiedNests = Math.ceil(input.contractedNests * NIA_MARGIN_TARGETS.occupancyPct / 100)
+  const targetOccupiedNests = Math.ceil(input.contractedNests * targets.occupancyPct / 100)
   const livingUnitCm2Inr = input.billedLivingArpuInr - input.livingPartnerCostInr - input.livingUtilitiesInr
   const workUnitCm2Inr = input.billedWorkArpuInr - input.workDirectDeliveryCostInr
   const essentialsUnitCm2Inr = input.billedEssentialsArpuInr - input.essentialsDirectDeliveryCostInr
   const fullUseUnitCm2Inr = livingUnitCm2Inr + workUnitCm2Inr + essentialsUnitCm2Inr
-  const occupancyVolumeEffectInr = (input.occupiedNests - targetOccupiedNests) * NIA_MARGIN_TARGETS.fullUse
-  const livingUnitVarianceInr = input.occupiedNests * (livingUnitCm2Inr - NIA_MARGIN_TARGETS.living)
-  const workUnitVarianceInr = input.occupiedNests * (workUnitCm2Inr - NIA_MARGIN_TARGETS.work)
-  const essentialsUnitVarianceInr = input.occupiedNests * (essentialsUnitCm2Inr - NIA_MARGIN_TARGETS.essentials)
+  const occupancyVolumeEffectInr = (input.occupiedNests - targetOccupiedNests) * targets.fullUse
+  const hasPillarControls = targets.living > 0 || targets.work > 0 || targets.essentials > 0
+  const livingUnitVarianceInr = hasPillarControls ? input.occupiedNests * (livingUnitCm2Inr - targets.living) : 0
+  const workUnitVarianceInr = hasPillarControls ? input.occupiedNests * (workUnitCm2Inr - targets.work) : 0
+  const essentialsUnitVarianceInr = hasPillarControls
+    ? input.occupiedNests * (essentialsUnitCm2Inr - targets.essentials)
+    : input.occupiedNests * (fullUseUnitCm2Inr - targets.fullUse)
   const studioTotalCm2GapInr = occupancyVolumeEffectInr + livingUnitVarianceInr + workUnitVarianceInr + essentialsUnitVarianceInr
-  const cause = primaryCause(input, occupancyPct, livingUnitCm2Inr, workUnitCm2Inr, essentialsUnitCm2Inr)
+  const cause = primaryCause(input, occupancyPct, livingUnitCm2Inr, workUnitCm2Inr, essentialsUnitCm2Inr, targets)
   return Object.freeze({
     studioId: input.studioId,
     studioName: input.studioName,
@@ -297,7 +312,7 @@ export function diagnoseMarginStudio(input: MarginStudioInput): MarginDiagnosis 
     actionId: cause.primaryCause === "On target" ? null : `MARGIN-${input.studioId}-${cause.primaryCause.toUpperCase().replaceAll(" ", "-")}`,
     actionState: cause.primaryCause === "On target" ? "No action" : "Assigned",
     independentlyVerified: false,
-    reopened: input.previousVerifiedFullUseCm2Inr >= NIA_MARGIN_TARGETS.fullUse && fullUseUnitCm2Inr < NIA_MARGIN_TARGETS.fullUse,
+    reopened: targets.fullUse > 0 && input.previousVerifiedFullUseCm2Inr >= targets.fullUse && fullUseUnitCm2Inr < targets.fullUse,
   })
 }
 
@@ -311,10 +326,11 @@ const learningPolicy: LearningPolicy = {
   confidenceRequirements: { approved: false, minimumEvidenceCycles: 3, minimumSampleSize: 30, maximumForecastErrorPct: 10, minimumVerificationRatePct: 95 },
 }
 
-export function buildNiaMarginsPreview(inputs: readonly MarginStudioInput[], asOf = "2026-07-17T14:00:00+05:30", closureInputs: readonly MarginClosureInput[] = NIA_MARGINS_SYNTHETIC_CLOSURES): NiaMarginsPreview {
+export function buildNiaMarginsPreview(inputs: readonly MarginStudioInput[], asOf = "2026-07-17T14:00:00+05:30", closureInputs: readonly MarginClosureInput[] = NIA_MARGINS_SYNTHETIC_CLOSURES, targets: NiaMarginTargets = NIA_MARGIN_TARGETS): NiaMarginsPreview {
   if (inputs.length === 0) throw new Error("Nia Margins requires at least one Studio input.")
-  const baseDiagnoses = inputs.map(diagnoseMarginStudio)
-  const createdActions = baseDiagnoses.map((diagnosis, index) => createMarginAction(diagnosis, inputs[index]!, "2026-07-18T14:00:00+05:30")).filter((action): action is MarginAction => action !== null)
+  const baseDiagnoses = inputs.map((input) => diagnoseMarginStudio(input, targets))
+  const dueAt = new Date(new Date(asOf).getTime() + 24 * 60 * 60 * 1_000).toISOString()
+  const createdActions = baseDiagnoses.map((diagnosis, index) => createMarginAction(diagnosis, inputs[index]!, dueAt, targets)).filter((action): action is MarginAction => action !== null)
   const closuresByAction = new Map<string, MarginClosureInput[]>()
   for (const input of closureInputs) closuresByAction.set(input.proof.actionId, [...(closuresByAction.get(input.proof.actionId) ?? []), input])
   const actions = Object.freeze(createdActions.map((action) => {
@@ -367,19 +383,22 @@ export function buildNiaMarginsPreview(inputs: readonly MarginStudioInput[], asO
     cashEffectInr: 0,
     synthetic: true,
   }, learningPolicy)
-  const answer = fullUseCm2Inr >= NIA_MARGIN_TARGETS.fullUse
-    ? `Full-use CM2 is ₹${fullUseCm2Inr}, at or above the ₹1,500 control.`
-    : `Full-use CM2 is ₹${fullUseCm2Inr}, ₹${NIA_MARGIN_TARGETS.fullUse - fullUseCm2Inr} below control; ${primary.primaryCause.toLowerCase()} is the largest measured operating cause.`
+  const answer = targets.fullUse <= 0
+    ? `Full-use CM2 is ₹${fullUseCm2Inr}; an approved control is not recorded.`
+    : fullUseCm2Inr >= targets.fullUse
+      ? `Full-use CM2 is ₹${fullUseCm2Inr}, at or above the ₹${targets.fullUse} control.`
+      : `Full-use CM2 is ₹${fullUseCm2Inr}, ₹${targets.fullUse - fullUseCm2Inr} below control; ${primary.primaryCause.toLowerCase()} is the largest measured operating cause.`
   return Object.freeze({
     mode: "Shadow only",
     question: "Which operating cause is moving contribution, who owns it, and did contribution recover?",
     answer,
     measures: Object.freeze({
       fullUseCm2Inr,
-      fullUseTargetInr: 1_500,
+      fullUseTargetInr: targets.fullUse,
+      pillarTargetsInr: Object.freeze({ living: targets.living, work: targets.work, essentials: targets.essentials }),
       pillarCm2Inr: Object.freeze({ living: weighted((item) => item.livingUnitCm2Inr), work: weighted((item) => item.workUnitCm2Inr), essentials: weighted((item) => item.essentialsUnitCm2Inr) }),
       occupancyPct: Math.round((occupied / contracted) * 1_000) / 10,
-      occupancyTargetPct: 78,
+      occupancyTargetPct: targets.occupancyPct,
       negativeContributionStudios: diagnoses.filter((item) => item.fullUseUnitCm2Inr < 0).length,
       studioGrossMarginPct: Math.round(inputs.reduce((sum, input) => sum + input.studioGrossMarginPct * input.occupiedNests, 0) / Math.max(1, occupied) * 10) / 10,
     }),

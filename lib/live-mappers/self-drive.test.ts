@@ -180,6 +180,31 @@ test("Member Adds vacancy owner comes from the contracted supply record", () => 
   assert.equal(buildLiveNewAddsFillStatus(live).owner, "North Lead")
 })
 
+test("margin inputs allocate company-wide CM Actions once and preserve exact Studio names", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-08-11T01:00:00+05:30" },
+    studios: [
+      { "studio id": "S1", "studio name": "Nia Nest One", "supply model": "FONO" },
+      { "studio id": "S2", "studio name": "Nia Nest Two", "supply model": "FONO" },
+    ],
+    living: [
+      { "living hourly id": "L1", "studio id": "S1", "theatre id": "T1", "contracted nests": 100, "occupied nests": 75 },
+      { "living hourly id": "L2", "studio id": "S2", "theatre id": "T1", "contracted nests": 100, "occupied nests": 25 },
+    ],
+    actionLog: [
+      { "action id": "CM-L", "operating objective": "Living", "expected metric": "CM Actual", "baseline value": 1000, "target value": 4000 },
+      { "action id": "CM-W", "operating objective": "Work", "expected metric": "CM Actual", "baseline value": 500, "target value": 1000 },
+      { "action id": "CM-E", "operating objective": "Essentials", "expected metric": "CM Actual", "baseline value": 100, "target value": 200 },
+    ],
+  })
+
+  const inputs = buildLiveMarginInputs(live)
+  assert.deepEqual(inputs.map((input) => input.studioName), ["Nia Nest One", "Nia Nest Two"])
+  assert.equal(inputs.reduce((sum, input) => sum + input.billedLivingArpuInr * input.occupiedNests, 0), 4000)
+  assert.equal(inputs.reduce((sum, input) => sum + (input.billedWorkArpuInr - input.workDirectDeliveryCostInr) * input.occupiedNests, 0), 500)
+  assert.equal(inputs.reduce((sum, input) => sum + (input.billedEssentialsArpuInr - input.essentialsDirectDeliveryCostInr) * input.occupiedNests, 0), 100)
+})
+
 test("Nia Growth keeps generic Enterprise living demand out of FONO totals", () => {
   const live = buildLiveSelfDriveSnapshot({
     enterpriseDemand: [

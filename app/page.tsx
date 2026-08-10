@@ -69,17 +69,34 @@ export default async function Page() {
     console.error("LIVE_PREVIEW_GAP", { enterpriseDemand: Boolean(enterpriseDemandPreview), newAdds: Boolean(newAddsPreview), memberEngagement: Boolean(memberEngagementPreview), memberSavings: Boolean(memberSavingsPreview), niaGrowth: Boolean(niaGrowthPreview), marginInputs: marginInputs.length })
     throw new Error("Required governed live data is unavailable; synthetic dashboard values are disabled.")
   }
-  const calculatedMargins = buildNiaMarginsPreview(marginInputs, liveSnapshot.asOf, [])
-  const marginTargetPolicy = liveSnapshot.policies.find((row) => {
+  const approvedMarginPolicies = liveSnapshot.policies.filter((row) => {
     const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")} ${String(row["source note"] ?? "")}`.toLowerCase()
     return /margin|cm2/.test(descriptor) && /full.?use|target|control/.test(descriptor) && String(row.status ?? "").toLowerCase() === "approved"
   })
+  const marginTargetPolicy = [...approvedMarginPolicies].sort((left, right) => {
+    const score = (row: Record<string, unknown>) => {
+      const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")}`.toLowerCase()
+      return (descriptor.includes("nia margins") ? 10_000 : 0)
+        + (descriptor.includes("target-margin") ? 5_000 : 0)
+        + (Date.parse(String(row["effective from"] ?? "")) || 0) / 1e12
+    }
+    return score(right) - score(left)
+  })[0]
   const recordedMarginTarget = Number(String(marginTargetPolicy?.["policy value"] ?? "").replace(/[^0-9.-]/g, "")) || 0
   const recordedOccupancyPolicy = liveSnapshot.policies.find((row) => {
     const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")} ${String(row["source note"] ?? "")}`.toLowerCase()
     return /occupancy/.test(descriptor) && /target|control|floor/.test(descriptor) && String(row.status ?? "").toLowerCase() === "approved"
   })
   const recordedOccupancyTarget = Number(String(recordedOccupancyPolicy?.["policy value"] ?? "").replace(/[^0-9.-]/g, "")) || 0
+  const pillarTarget = (pillar: string) => {
+    const policy = liveSnapshot.policies.find((row) => {
+      const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")} ${String(row["source note"] ?? "")}`.toLowerCase()
+      return descriptor.includes(pillar) && /margin|cm2/.test(descriptor) && String(row.status ?? "").toLowerCase() === "approved"
+    })
+    return Number(String(policy?.["policy value"] ?? "").replace(/[^0-9.-]/g, "")) || 0
+  }
+  const marginTargets = { living: pillarTarget("living"), work: pillarTarget("work"), essentials: pillarTarget("essential"), fullUse: recordedMarginTarget, occupancyPct: recordedOccupancyTarget }
+  const calculatedMargins = buildNiaMarginsPreview(marginInputs, liveSnapshot.asOf, [], marginTargets)
   const marginActions = liveSnapshot.actions.filter((row) => /margin|cm2/.test(`${String(row["operating objective"] ?? "")} ${String(row["expected metric"] ?? "")}`.toLowerCase()) && String(row["source submission id"] ?? "").trim())
   const marginActionIds = new Set(marginActions.map((row) => String(row["action id"] ?? "")).filter(Boolean))
   const marginEvidence = liveSnapshot.evidence.filter((row) => marginActionIds.has(String(row["linked id"] ?? "")))
@@ -87,13 +104,7 @@ export default async function Page() {
   const marginLoopHealth = buildLoopHealth({ asOf: liveSnapshot.asOf, feeds: [], clocks: [], verification: { claimed: marginEvidence.length, verified: verifiedMarginEvidence, awaiting: Math.max(0, marginEvidence.length - verifiedMarginEvidence), reopened: 0, oldestAwaitingAt: null } })
   const niaMarginsPreview = {
     ...calculatedMargins,
-    answer: recordedMarginTarget > 0
-      ? `Full-use CM2 is ₹${calculatedMargins.measures.fullUseCm2Inr}; approved sheet control is ₹${recordedMarginTarget}.`
-      : `Full-use CM2 is ₹${calculatedMargins.measures.fullUseCm2Inr}; approved sheet control is not recorded.`,
-    measures: { ...calculatedMargins.measures, fullUseTargetInr: recordedMarginTarget, occupancyTargetPct: recordedOccupancyTarget, negativeContributionStudios: marginInputs.filter((row) => row.previousVerifiedFullUseCm2Inr < 0).length },
-    diagnoses: [],
-    actions: [],
-    despatchEscalations: [],
+    measures: { ...calculatedMargins.measures, negativeContributionStudios: calculatedMargins.diagnoses.filter((row) => row.fullUseUnitCm2Inr < 0).length },
     loopHealth: marginLoopHealth,
     liveTargetRecorded: recordedMarginTarget > 0,
   } as unknown as typeof calculatedMargins & { liveTargetRecorded: boolean }

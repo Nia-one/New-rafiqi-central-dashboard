@@ -7,11 +7,10 @@ const auth = new GoogleAuth({
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
 });
 
-// Live User Input synchronization completes in roughly 3–4 seconds. Keep the
-// per-instance read cache below that window so an automatic post-sync reload
-// cannot land on a different warm Vercel instance and reuse its stale minute-
-// old snapshot.
-const CACHE_TTL_MS = 2 * 1000;
+// Dashboard navigation can render several server requests in quick succession.
+// Reuse the same governed snapshot for one minute; explicit source syncs call
+// clearSheetCache(), so fresh writes still force the next read immediately.
+const CACHE_TTL_MS = 60 * 1000;
 
 const sheetCache = new Map<
   string,
@@ -110,7 +109,7 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
       accessToken = typeof tokenResponse === "string" ? tokenResponse : tokenResponse?.token;
     } catch (error) {
       lastNetworkError = error;
-      if (attempt < 2) await wait(500 * 2 ** attempt);
+      if (attempt < 2) await wait(1_000 * 2 ** attempt);
     }
   }
 
@@ -140,7 +139,7 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
     }
     if (response?.ok) break;
     if (response && response.status !== 429 && response.status < 500) throw new Error(await response.text());
-    if (attempt < 2) await wait(500 * 2 ** attempt);
+    if (attempt < 2) await wait(response?.status === 429 ? 10_000 * (attempt + 1) : 1_000 * 2 ** attempt);
   }
 
   if (!response?.ok) {

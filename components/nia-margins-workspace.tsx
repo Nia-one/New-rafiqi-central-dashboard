@@ -17,12 +17,12 @@ function date(value: string) {
 
 export function NiaMarginsWorkspace({ preview, owner = "Finance JCO" }: { preview: NiaMarginsPreview; owner?: string }) {
   const pillarRows = [
-    { label: "Living", value: preview.measures.pillarCm2Inr.living, target: 300 },
-    { label: "Work", value: preview.measures.pillarCm2Inr.work, target: 1_000 },
-    { label: "Essentials", value: preview.measures.pillarCm2Inr.essentials, target: 200 },
+    { label: "Living", value: preview.measures.pillarCm2Inr.living, target: preview.measures.pillarTargetsInr.living },
+    { label: "Work", value: preview.measures.pillarCm2Inr.work, target: preview.measures.pillarTargetsInr.work },
+    { label: "Essentials", value: preview.measures.pillarCm2Inr.essentials, target: preview.measures.pillarTargetsInr.essentials },
   ]
   const behind = preview.measures.fullUseCm2Inr < preview.measures.fullUseTargetInr
-  const gapInr = preview.measures.fullUseTargetInr - preview.measures.fullUseCm2Inr
+  const gapInr = Math.max(0, preview.measures.fullUseTargetInr - preview.measures.fullUseCm2Inr)
   const verdictLabel = behind ? `Below control · ${inr(gapInr)}/unit to recover` : "At or above control"
   const decisionOwner = owner || (preview.diagnoses[0] ? dashboardDisplayLabel(preview.diagnoses[0].ownerRole) : "Finance JCO")
   const decisionDue = preview.actions[0]?.dueAt
@@ -32,7 +32,7 @@ export function NiaMarginsWorkspace({ preview, owner = "Finance JCO" }: { previe
     { title: "Headline measures", summary: `${inr(preview.measures.fullUseCm2Inr)} full-use CM2 · ${preview.measures.occupancyPct}% occupancy`, lens: "decide" },
     { title: "Margin implication", summary: "The gap is concentrated in measured Studio causes.", lens: "decide" },
     { title: "Profit drivers and learning", summary: `${preview.actions.length} governed actions · ${preview.despatchEscalations.length} escalations` },
-    { title: "Decision required", summary: `Recover ${inr(gapInr)}/unit · owner ${decisionOwner}` },
+    { title: behind ? "Decision required" : "No decision required", summary: behind ? `Recover ${inr(gapInr)}/unit · owner ${decisionOwner}` : `Approved ${inr(preview.measures.fullUseTargetInr)} control achieved` },
   ]}>
     <header className={styles.headline}>
       <div><h2>{preview.answer}</h2><p>{preview.question}</p></div>
@@ -55,7 +55,7 @@ export function NiaMarginsWorkspace({ preview, owner = "Finance JCO" }: { previe
       <article className={styles.panel}>
         <h3>What’s moving profit</h3><p>Collection leakage stays in Cash &amp; Control.</p>
         <div className={styles.waterfall} aria-label="Billed CM2 waterfall by pillar">
-          {pillarRows.map((row) => <div className={styles.barRow} key={row.label}><span>{row.label}</span><div className={styles.barTrack}><div className={styles.barFill} style={{ width: `${Math.min(100, Math.max(0, row.value / row.target * 100))}%` }} /></div><b>{inr(row.value)}</b></div>)}
+          {pillarRows.map((row) => <div className={styles.barRow} key={row.label}><span>{row.label}</span><div className={styles.barTrack}><div className={styles.barFill} style={{ width: `${row.target > 0 ? Math.min(100, Math.max(0, row.value / row.target * 100)) : Math.min(100, Math.max(0, row.value / Math.max(1, preview.measures.fullUseCm2Inr) * 100))}%` }} /></div><b>{inr(row.value)}</b></div>)}
         </div>
         <div className={styles.diagnoses} aria-label="Attributed Studio actions">
           {preview.diagnoses.map((item) => <div className={styles.diagnosis} key={item.studioId}>
@@ -86,9 +86,9 @@ export function NiaMarginsWorkspace({ preview, owner = "Finance JCO" }: { previe
 
     <section className={styles.askBand} aria-label="Decision required">
       <div className={styles.askCopy}>
-        <span>Decision required</span>
-        <strong>Recover the {inr(gapInr)}/unit full-use CM2 gap by verifying the attributed Studio actions.</strong>
-        <p>Recovery closes only on protected billed-revenue and direct-cost proof; accountability sits with {decisionOwner} until full-use CM2 clears the ₹{preview.measures.fullUseTargetInr} control.</p>
+        <span>{behind ? "Decision required" : "No decision required"}</span>
+        <strong>{behind ? `Recover the ${inr(gapInr)}/unit full-use CM2 gap by verifying the attributed Studio actions.` : `Full-use CM2 has achieved the ${inr(preview.measures.fullUseTargetInr)} approved control.`}</strong>
+        <p>{behind ? `Recovery closes only on protected billed-revenue and direct-cost proof; accountability sits with ${decisionOwner} until full-use CM2 clears the approved control.` : "Continue governed monitoring; a new action is created only if verified contribution falls below the approved control."}</p>
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{decisionOwner}</dd></div>

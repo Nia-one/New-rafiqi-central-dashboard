@@ -1263,6 +1263,30 @@ export function filterLiveSelfDriveSnapshot(snapshot: LiveSelfDriveSnapshot, fil
 }
 
 export function buildLiveMarginInputs(snapshot: LiveSelfDriveSnapshot): readonly MarginStudioInput[] {
+  const componentActual = (pattern: RegExp) => snapshot.actions.reduce((sum, row) => {
+    const descriptor = `${text(row, "operating objective")} ${text(row, "expected metric")}`.toLowerCase()
+    if (!pattern.test(descriptor) || !/actual/.test(descriptor)) return sum
+    return sum + number(row, "baseline value")
+  }, 0)
+  const componentRevenue = (pattern: RegExp) => snapshot.actions.reduce((sum, row) => {
+    const descriptor = `${text(row, "operating objective")} ${text(row, "expected metric")}`.toLowerCase()
+    if (!pattern.test(descriptor) || !/actual/.test(descriptor)) return sum
+    const match = text(row, "notes").match(/CM_INPUT\|revenue=([0-9.-]+)/i)
+    return sum + (match ? Number(match[1]) || 0 : number(row, "target value"))
+  }, 0)
+  // The CM Actions sheet stores company-wide actuals, not one row per Studio.
+  // Work is the operating bucket for Work, B2B and FONO actual contribution.
+  const workCmTotal = componentActual(/\b(?:work|b2b|fono)\b/)
+  const workRevenueTotal = componentRevenue(/\b(?:work|b2b|fono)\b/)
+  const essentialsCmTotal = componentActual(/essential/)
+  const essentialsRevenueTotal = componentRevenue(/essential/)
+  const livingCmActionTotal = componentActual(/\bliving\b/)
+  const livingRevenueActionTotal = componentRevenue(/\bliving\b/)
+  const financeLivingCmTotal = snapshot.finance.reduce((sum, row) => sum + number(row, "living cm2 inr", "cm2 inr"), 0)
+  const financeLivingRevenueTotal = snapshot.finance.reduce((sum, row) => sum + number(row, "total revenue inr"), 0)
+  const eligibleLiving = snapshot.living.filter((row) => number(row, "occupied nests") > 0)
+  const totalOccupied = eligibleLiving.reduce((sum, row) => sum + number(row, "occupied nests"), 0)
+
   return snapshot.living.flatMap((row) => {
     const studioId = text(row, "studio id")
     const sourceRowIdentity = text(row, "living hourly id") || studioId
@@ -1283,19 +1307,48 @@ export function buildLiveMarginInputs(snapshot: LiveSelfDriveSnapshot): readonly
     // incomplete; exclude it until the source data is corrected.
     if (!studioId || !sourceRowIdentity || !resolvedSupplyModel || contractedNests <= 0 || occupied < 0 || occupied > contractedNests) return []
 
-    const finance = snapshot.finance.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}
-    const billedLiving = number(row, "living billed inr")
-    const workBilled = number(snapshot.work.find((entry) => text(entry, "theatre id") === text(row, "theatre id")) || {}, "work billed inr")
-    const essentialsBilled = number(snapshot.essentials.find((entry) => text(entry, "studio id") === text(row, "studio id")) || {}, "essentials billed inr")
+    const matchingFinanceRows = snapshot.finance.filter((entry) => text(entry, "studio id") === studioId)
+    // Finance_Daily is append-only and may retain several snapshots for one
+    // Studio. Margin is a point-in-time KPI, so use the latest snapshot once
+    // instead of summing historical copies of the same Studio economics.
+    const financeRows = matchingFinanceRows.length ? [matchingFinanceRows.reduce((latest, candidate, index) => {
+      const score = (entry: SheetRow, fallbackIndex: number) => {
+        const rawTimestamp = ["source updated at", "last updated", "reporting date", "date", "finance date"]
+          .map((key) => text(entry, key)).find((value) => Number.isFinite(Date.parse(value)))
+        return rawTimestamp ? Date.parse(rawTimestamp) : fallbackIndex
+      }
+      const latestIndex = matchingFinanceRows.indexOf(latest)
+      return score(candidate, index) >= score(latest, latestIndex) ? candidate : latest
+    })] : []
+    const financeTotal = (field: string) => financeRows.reduce((sum, entry) => sum + number(entry, field), 0)
+    const occupiedShare = totalOccupied > 0 ? occupied / totalOccupied : 0
+    // CM Actions contains the governed company cumulative generated from
+    // UI_Finance. Prefer it when present so a partially-synced Finance_Daily
+    // snapshot cannot understate the company total. Finance remains the
+    // exact-Studio fallback when no cumulative has been governed yet.
+    const billedLiving = livingRevenueActionTotal > 0
+      ? livingRevenueActionTotal * occupiedShare
+      : (financeLivingRevenueTotal > 0 ? financeTotal("total revenue inr") : number(row, "living billed inr"))
+    const livingCm = livingCmActionTotal > 0
+      ? livingCmActionTotal * occupiedShare
+      : (financeLivingCmTotal > 0 ? (financeTotal("living cm2 inr") || financeTotal("cm2 inr")) : 0)
+    const directCost = financeTotal("direct cost inr")
+    const opex = financeTotal("opex mtd inr")
+    const inferredLivingCost = Math.max(0, billedLiving - livingCm)
+    const livingDirectCost = directCost || Math.max(0, inferredLivingCost - opex)
+    const workRevenue = workRevenueTotal * occupiedShare
+    const workCm = workCmTotal * occupiedShare
+    const essentialsRevenue = essentialsRevenueTotal * occupiedShare
+    const essentialsCm = essentialsCmTotal * occupiedShare
     return [{
-      studioId, studioName: studioId, theatreId: text(row, "theatre id"),
+      studioId, studioName: text(studio, "studio name") || text(financeRows[0] || {}, "studio name") || text(row, "studio name") || studioId, theatreId: text(row, "theatre id"),
       supplyModel: resolvedSupplyModel as "FONO" | "SP",
       contractedNests, occupiedNests: occupied, rampDay: 30,
       billedLivingArpuInr: occupied ? billedLiving / occupied : 0,
-      livingPartnerCostInr: 0, livingUtilitiesInr: 0,
-      billedWorkArpuInr: occupied ? workBilled / occupied : 0, workDirectDeliveryCostInr: 0,
-      billedEssentialsArpuInr: occupied ? essentialsBilled / occupied : 0, essentialsDirectDeliveryCostInr: 0,
-      studioGrossMarginPct: 0, previousVerifiedFullUseCm2Inr: number(finance, "cm2 inr"),
+      livingPartnerCostInr: occupied ? livingDirectCost / occupied : 0, livingUtilitiesInr: occupied ? opex / occupied : 0,
+      billedWorkArpuInr: occupied ? workRevenue / occupied : 0, workDirectDeliveryCostInr: occupied ? Math.max(0, workRevenue - workCm) / occupied : 0,
+      billedEssentialsArpuInr: occupied ? essentialsRevenue / occupied : 0, essentialsDirectDeliveryCostInr: occupied ? Math.max(0, essentialsRevenue - essentialsCm) / occupied : 0,
+      studioGrossMarginPct: billedLiving > 0 ? Math.round(livingCm / billedLiving * 1_000) / 10 : 0, previousVerifiedFullUseCm2Inr: financeTotal("cm2 inr"),
       ownerActorId: text(row, "next action owner actor id") || "Operations", sourceUpdatedAt: snapshot.asOf,
       sourceRowIdentity, synthetic: false,
     }]
