@@ -4,6 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
 const SOURCE_SHEET_ID = process.env.ESSENTIALS_BOT_SHEET_ID || "1C8y3uVxp5toMwLBPGVWbltOoNX_hVuKtvyfiqIUC0oY";
+const COST_INPUT_TAB = "Rafiqi_Order_Item_Costs";
 const BOT_MIRRORS = [
   ["Orders", "BOT_ESS_ORDERS"],
   ["Order_Items", "TEAM_ESSENTIALS_BOT"],
@@ -77,7 +78,6 @@ export async function ensureEssentialsBotSchema() {
   const required: Record<string, string[]> = {
     Orders: ["payment_collected_at", "collected_amount"],
     Delivery_Status: ["order_id", "dispatched_at", "delivered_at", "delivery_status", "delivery_owner", "updated_at"],
-    Order_Items: ["direct_fulfilment_cost", "packaging_cost", "delivery_cost", "total_fulfilment_cost", "nia_contribution_margin"],
     Inventory_Master: ["studio_id", "mrp", "selling_price", "unit_cost", "member_savings", "owned_inventory_value", "days_cover", "zero_sale"],
   };
   const tabs = Object.keys(required);
@@ -90,42 +90,9 @@ export async function ensureEssentialsBotSchema() {
   });
   if (data.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "RAW", data } });
 
-  // Calculated columns remain formula-owned; users only maintain the three cost inputs.
-  const finalHeaders = [...((response.data.valueRanges?.[2].values?.[0] || []).map(String))];
-  required.Order_Items.forEach((header) => {
-    if (!finalHeaders.some((existing) => norm(existing) === norm(header))) finalHeaders.push(header);
-  });
-  const findColumn = (...names: string[]) => {
-    const wanted = new Set(names.map(norm));
-    const index = finalHeaders.findIndex((header) => wanted.has(norm(header)));
-    return index < 0 ? "" : columnLetter(index);
-  };
-  const direct = findColumn("direct_fulfilment_cost");
-  const packaging = findColumn("packaging_cost");
-  const delivery = findColumn("delivery_cost");
-  const total = findColumn("total_fulfilment_cost");
-  const margin = findColumn("nia_contribution_margin");
-  const grossProfit = findColumn("gross_profit", "gross_profit_amount");
-  const revenue = findColumn("total_price", "line_total", "selling_amount", "revenue");
-  const cost = findColumn("cost", "purchase_cost", "purchase_rate");
-  const quantity = findColumn("quantity", "qty");
-  const formulaRanges = [`Order_Items!${total}2`, `Order_Items!${margin}2`];
-  const existingFormulas = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges: formulaRanges, valueRenderOption: "FORMULA" });
-  const formulaData: { range: string; values: string[][] }[] = [];
-  if (!existingFormulas.data.valueRanges?.[0].values?.[0]?.[0]) {
-    formulaData.push({ range: formulaRanges[0], values: [[`=ARRAYFORMULA(IF(A2:A="","",N(${direct}2:${direct})+N(${packaging}2:${packaging})+N(${delivery}2:${delivery})))`]] });
-  }
-  if (!existingFormulas.data.valueRanges?.[1].values?.[0]?.[0]) {
-    const baseMargin = grossProfit
-      ? `N(${grossProfit}2:${grossProfit})`
-      : revenue && cost
-        ? `N(${revenue}2:${revenue})-(N(${cost}2:${cost})${quantity ? `*IF(N(${quantity}2:${quantity})=0,1,N(${quantity}2:${quantity}))` : ""})`
-        : "0";
-    formulaData.push({ range: formulaRanges[1], values: [[`=ARRAYFORMULA(IF(A2:A="","",${baseMargin}-N(${total}2:${total})))`]] });
-  }
-  if (formulaData.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
-
-  const inventoryHeaders = [...((response.data.valueRanges?.[3].values?.[0] || []).map(String))];
+  // Order-item fulfilment costs live in Rafiqi_Order_Item_Costs because the Bot
+  // rebuilds Order_Items and removes any dashboard-owned columns from that tab.
+  const inventoryHeaders = [...((response.data.valueRanges?.[2].values?.[0] || []).map(String))];
   required.Inventory_Master.forEach((header) => {
     if (!inventoryHeaders.some((existing) => norm(existing) === norm(header))) inventoryHeaders.push(header);
   });
@@ -255,6 +222,89 @@ async function reconcileBotOwnedRows(tabName: string, keyHeader: string, desired
   return stale.length;
 }
 
+async function syncCostInputRows(items: ReturnType<typeof table>) {
+  const sheets = await client(true);
+  const headers = [
+    "order_item_id", "order_number", "product_code", "product_name",
+    "direct_fulfilment_cost", "packaging_cost", "delivery_cost",
+    "total_fulfilment_cost", "nia_contribution_margin", "source_updated_at",
+  ];
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID, fields: "sheets.properties(sheetId,title)" });
+  if (!metadata.data.sheets?.some((sheet) => sheet.properties?.title === COST_INPUT_TAB)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SOURCE_SHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: COST_INPUT_TAB, gridProperties: { frozenRowCount: 1, rowCount: 1000, columnCount: headers.length } } } }] },
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SOURCE_SHEET_ID,
+      range: `${COST_INPUT_TAB}!A1:J1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [headers] },
+    });
+  }
+
+  const current = await sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A:J`, valueRenderOption: "UNFORMATTED_VALUE" });
+  const rows = (current.data.values || []) as unknown[][];
+  const currentHeaders = (rows[0] || headers).map(String);
+  const existingIds = new Set(rows.slice(1).map((row) => norm(cell(row, currentHeaders, "order_item_id"))).filter(Boolean));
+  const missing = items.rows.filter((row) => {
+    const id = norm(cell(row, items.headers, "id", "order_item_id"));
+    return id && !existingIds.has(id);
+  });
+  if (missing.length) {
+    const startRow = Math.max(2, rows.length + 1);
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SOURCE_SHEET_ID,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: [
+          {
+            range: `${COST_INPUT_TAB}!A${startRow}:D${startRow + missing.length - 1}`,
+            values: missing.map((row) => [
+              cell(row, items.headers, "id", "order_item_id"),
+              cell(row, items.headers, "order_number"),
+              cell(row, items.headers, "product_code"),
+              cell(row, items.headers, "product_name"),
+            ]),
+          },
+          {
+            range: `${COST_INPUT_TAB}!J${startRow}:J${startRow + missing.length - 1}`,
+            values: missing.map((row) => [cell(row, items.headers, "updated_at", "created_at")]),
+          },
+        ],
+      },
+    });
+  }
+
+  const formulas = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: SOURCE_SHEET_ID,
+    ranges: [`${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`],
+    valueRenderOption: "FORMULA",
+  });
+  const formulaData: { range: string; values: string[][] }[] = [];
+  if (!formulas.data.valueRanges?.[0].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!H2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",N(E2:E)+N(F2:F)+N(G2:G)))"]] });
+  }
+  if (!formulas.data.valueRanges?.[1].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!I2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:O,15,FALSE),0)-N(H2:H)))"]] });
+  }
+  if (formulaData.length) {
+    await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
+  }
+
+  const byItemId = new Map<string, { direct: number; packaging: number; delivery: number }>();
+  rows.slice(1).forEach((row) => {
+    const id = norm(cell(row, currentHeaders, "order_item_id"));
+    if (!id) return;
+    byItemId.set(id, {
+      direct: num(cell(row, currentHeaders, "direct_fulfilment_cost")),
+      packaging: num(cell(row, currentHeaders, "packaging_cost")),
+      delivery: num(cell(row, currentHeaders, "delivery_cost")),
+    });
+  });
+  return { byItemId, inserted: missing.length, preserved: byItemId.size };
+}
+
 export async function syncEssentialsBotData() {
   const source = await client();
   const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ"];
@@ -262,6 +312,7 @@ export async function syncEssentialsBotData() {
   const rawTables = (result.data.valueRanges || []).map((v) => (v.values || []) as unknown[][]);
   const mirrors = await mirrorBotTables(rawTables);
   const [orders, items, deliveries, customers, guests, inventory] = rawTables.map((values) => table(values));
+  const costInputs = await syncCostInputRows(items);
   const customerById = new Map(customers.rows.map((r) => [norm(cell(r, customers.headers, "id")), r]));
   const guestById = new Map(guests.rows.map((r) => [norm(cell(r, guests.headers, "id")), r]));
   const deliveryByOrder = new Map(deliveries.rows.map((r) => [norm(cell(r, deliveries.headers, "order_id")), r]));
@@ -302,8 +353,11 @@ export async function syncEssentialsBotData() {
     g.collected += num(cell(row, orders.headers, "collected_amount")) || num(cell(row, orders.headers, "grand_total", "subtotal"));
     for (const item of itemByOrder.get(orderId) || []) {
       const qty = num(cell(item, items.headers, "quantity")) || 1;
+      const savedCosts = costInputs.byItemId.get(norm(cell(item, items.headers, "id", "order_item_id")));
       g.cogs += num(cell(item, items.headers, "cost")) || qty * num(cell(item, items.headers, "purchase_rate"));
-      g.fulfilment += num(cell(item, items.headers, "direct_fulfilment_cost")) + num(cell(item, items.headers, "packaging_cost")) + num(cell(item, items.headers, "delivery_cost"));
+      g.fulfilment += savedCosts
+        ? savedCosts.direct + savedCosts.packaging + savedCosts.delivery
+        : num(cell(item, items.headers, "direct_fulfilment_cost")) + num(cell(item, items.headers, "packaging_cost")) + num(cell(item, items.headers, "delivery_cost"));
       g.savings += qty * num(cell(item, items.headers, "nia_savings"));
     }
     groups.set(key, g);
@@ -379,6 +433,7 @@ export async function syncEssentialsBotData() {
   return {
     mirrors,
     sourceRows: { orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length },
+    costInputs: { inserted: costInputs.inserted, preserved: costInputs.preserved },
     unresolvedStudioOrders,
     essentialsHourly: { ...essentialsHourly, removedStale: removedStaleHourly },
     essentialsInventory: { ...essentialsInventory, removedStale: removedStaleInventory },
