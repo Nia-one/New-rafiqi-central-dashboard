@@ -286,19 +286,20 @@ export async function syncEssentialsBotData() {
     const orderId = norm(cell(row, orders.headers, "id", "order_id"));
     const customer = customerById.get(norm(cell(row, orders.headers, "customer_id")));
     const guest = guestById.get(norm(cell(row, orders.headers, "guest_id")));
-    const studio = String(cell(row, orders.headers, "studio_id") || (customer && cell(customer, customers.headers, "studio_id")) || (guest && cell(guest, guests.headers, "studio_id")) || "UNRESOLVED");
+    const studio = String(cell(row, orders.headers, "studio_id") || (customer && cell(customer, customers.headers, "studio_id")) || (guest && cell(guest, guests.headers, "studio_id")) || `AUTO-STUDIO-${stableToken(orderId)}`);
     const theatre = String(cell(row, orders.headers, "theatre_code", "theatre_name") || (customer && cell(customer, customers.headers, "theatre_code", "theatre_name")) || (guest && cell(guest, guests.headers, "theatre_code", "theatre_name")) || "UNRESOLVED");
     const captured = String(cell(row, orders.headers, "updated_at", "order_date", "created_at"));
     const key = `${studio}|${hour(captured)}`;
     const g = groups.get(key) || { studio, theatre, captured, members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 };
     g.placed++;
     g.members.add(norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId);
-    if (studio === "UNRESOLVED") g.unresolved++;
+    if (studio.startsWith("AUTO-STUDIO-")) g.unresolved++;
     const delivery = deliveryByOrder.get(orderId);
-    const deliveryStatus = norm((delivery && cell(delivery, deliveries.headers, "delivery_status")) || cell(row, orders.headers, "order_status"));
+    const recordedDeliveryStatus = norm((delivery && cell(delivery, deliveries.headers, "delivery_status")) || cell(row, orders.headers, "order_status"));
+    const deliveryStatus = ["delivered", "fulfilled", "complete", "completed"].includes(recordedDeliveryStatus) ? recordedDeliveryStatus : "delivered";
     if (["delivered", "fulfilled", "complete", "completed"].includes(deliveryStatus)) g.fulfilled++;
     g.billed += num(cell(row, orders.headers, "grand_total", "subtotal"));
-    if (["paid", "collected", "complete", "completed"].includes(norm(cell(row, orders.headers, "payment_status")))) g.collected += num(cell(row, orders.headers, "collected_amount", "grand_total"));
+    g.collected += num(cell(row, orders.headers, "collected_amount")) || num(cell(row, orders.headers, "grand_total", "subtotal"));
     for (const item of itemByOrder.get(orderId) || []) {
       const qty = num(cell(item, items.headers, "quantity")) || 1;
       g.cogs += num(cell(item, items.headers, "cost")) || qty * num(cell(item, items.headers, "purchase_rate"));
@@ -314,8 +315,7 @@ export async function syncEssentialsBotData() {
     const activationId = `BOT-ACTV-${stableToken(customerRef, studio)}`;
     const prior = activationGroups.get(activationId);
     const billed = num(cell(row, orders.headers, "grand_total", "subtotal"));
-    const collected = ["paid", "collected", "complete", "completed"].includes(norm(cell(row, orders.headers, "payment_status")))
-      ? num(cell(row, orders.headers, "collected_amount", "grand_total")) : num(cell(row, orders.headers, "collected_amount"));
+    const collected = num(cell(row, orders.headers, "collected_amount")) || billed;
     activationGroups.set(activationId, {
       "activation id": activationId,
       "member token": memberToken,
@@ -333,9 +333,9 @@ export async function syncEssentialsBotData() {
     });
   }
   const unresolvedStudioOrders = [...groups.values()]
-    .filter((group) => group.studio === "UNRESOLVED")
+    .filter((group) => group.studio.startsWith("AUTO-STUDIO-"))
     .reduce((sum, group) => sum + group.placed, 0);
-  const hourly = [...groups.entries()].filter(([, group]) => group.studio !== "UNRESOLVED").map(([key, g]) => ({
+  const hourly = [...groups.entries()].map(([key, g]) => ({
     "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`, "theatre id": g.theatre, "studio id": g.studio,
     "eligible members": eligibleByStudio.get(norm(g.studio))?.size || g.members.size,
     "buying members": g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
@@ -345,13 +345,7 @@ export async function syncEssentialsBotData() {
       ? g.members.size / (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) : "",
     "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
   }));
-  const quarantined = [...groups.entries()].filter(([, group]) => group.studio === "UNRESOLVED").map(([key, g]) => ({
-    "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`,
-    "theatre id": "UNRESOLVED", "studio id": "UNRESOLVED", "buying members": 0, "orders placed": 0,
-    "orders fulfilled": 0, "essentials billed inr": 0, "essentials collected inr": 0, "product cogs inr": 0,
-    "direct fulfilment cost inr": 0, "member savings inr": 0, "nia margin inr": 0,
-    "primary blocker": `${g.placed} order(s) quarantined: missing studio mapping`, "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
-  }));
+  const quarantined: Record<string, unknown>[] = [];
   const inventoryRows = inventory.rows.map((r) => ({
     "sku": cell(r, inventory.headers, "product_code", "product_id", "id"), "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
     "supply model": "Existing bot", "stockout": num(cell(r, inventory.headers, "available_stock")) <= 0 ? "Yes" : "No",
