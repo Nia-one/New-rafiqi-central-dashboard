@@ -152,6 +152,18 @@ export function canonicalMemberAddsControl(summary: NewAddsPreview["taskSummary"
   })
 }
 
+export function canonicalNiaMarginsControl(measures: NiaMarginsPreview["measures"], liveTargetRecorded: boolean) {
+  const current = `₹${measures.fullUseCm2Inr.toLocaleString("en-IN")}`
+  if (!liveTargetRecorded) {
+    return Object.freeze({ current, target: "Not recorded", gap: "Not calculable", rootCause: "The governed target is not recorded, so the margin gap cannot be calculated." })
+  }
+  const target = `₹${measures.fullUseTargetInr.toLocaleString("en-IN")}`
+  const gapValue = Math.max(0, measures.fullUseTargetInr - measures.fullUseCm2Inr)
+  const gap = `₹${gapValue.toLocaleString("en-IN")}`
+  const position = gapValue === 0 ? "at or above" : "below"
+  return Object.freeze({ current, target, gap, rootCause: `Full-use CM2 is ${current} against the ${target} governed target, so the current gap is ${gap} and contribution is ${position} control.` })
+}
+
 export function governanceConsole(record: { domain?: unknown; title?: unknown; exceptionId?: unknown }) {
   const domain = String(record.domain || "Operations")
   const identity = `${String(record.title || "")} ${String(record.exceptionId || "")}`.toLowerCase()
@@ -206,6 +218,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const enterpriseGap = Math.max(0, enterpriseRequired - enterpriseMatched)
   const enterpriseDue = enterpriseRows.map((row) => sourceValue(row, "activation required at")).filter(Boolean).sort()[0]
   const enterpriseUpdated = enterpriseRows.map((row) => sourceValue(row, "updated at", "opened at")).filter(Boolean).sort().at(-1)
+  const canonicalMargins = canonicalNiaMarginsControl(niaMarginsPreview.measures, Boolean((niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded))
   const loops = [
     enterpriseRows.length
       ? { name: "Enterprise demand", current: `${enterpriseMatched} Nests matched`, target: `${enterpriseRequired} Nests required`, gap: `${enterpriseGap} Nests open`, due: enterpriseDue ? displayDate(enterpriseDue) : "Activation date not recorded", verified: enterpriseUpdated ? displayDate(enterpriseUpdated) : "Backend sheet" }
@@ -219,7 +232,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     { name: "Member savings", current: String(livePreviews.memberSavingsPreview.summary.current), target: String(livePreviews.memberSavingsPreview.summary.target), gap: String(livePreviews.memberSavingsPreview.summary.gap), due: livePreviews.memberSavingsPreview.tasks[0]?.dueAt ? displayDate(livePreviews.memberSavingsPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.memberSavingsPreview.source.lastRefreshAt), owner: resolvedOwner(livePreviews.memberSavingsPreview.summary.owner, registeredOwner("essential", "supply")) },
     { ...livingLoop, owner: registeredOwner("occupancy") },
     { ...collectionsLoop, owner: registeredOwner("collection", "finance") || registeredOwner("collection") },
-    { name: "Nia margins", current: `₹${niaMarginsPreview.measures.fullUseCm2Inr.toLocaleString("en-IN")}`, target: (niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded ? `₹${niaMarginsPreview.measures.fullUseTargetInr.toLocaleString("en-IN")}` : "Not recorded", gap: (niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded ? `₹${Math.max(0, niaMarginsPreview.measures.fullUseTargetInr - niaMarginsPreview.measures.fullUseCm2Inr).toLocaleString("en-IN")}` : "Not calculable", due: "No sheet action", verified: "Calculated from backend", owner: registeredOwner("finance") },
+    { name: "Nia margins", current: canonicalMargins.current, target: canonicalMargins.target, gap: canonicalMargins.gap, due: "No sheet action", verified: "Calculated from backend", owner: registeredOwner("finance") },
     { name: "Nia growth", current: String(livePreviews.niaGrowthPreview.summary.current), target: String(livePreviews.niaGrowthPreview.summary.target), gap: String(livePreviews.niaGrowthPreview.summary.gap), due: livePreviews.niaGrowthPreview.tasks[0]?.dueAt ? displayDate(livePreviews.niaGrowthPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.niaGrowthPreview.source.lastRefreshAt), verifiedPercent: Number.parseInt(String(livePreviews.niaGrowthPreview.summary.progress), 10) || 0, owner: livePreviews.niaGrowthPreview.summary.owner },
   ]
   const governanceRecords = (controlledAutonomyPreview.routineLoop.records ?? []) as any[]
@@ -271,7 +284,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     const prescription = canonicalGrowth?.prescription || sourceValue(action, "next action", "notes") || (memberAddsGap > 0 ? "Recover the FONO member-add gap" : isOpenEnterpriseDemand ? "Match confirmed Enterprise demand to governed Living supply" : "Continue governed monitoring")
     const approvalDecision = sourceValue(linkedApproval, "decision") || "No approval recorded"
     const approvalRole = sourceValue(linkedApproval, "approver role")
-    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : isOpenEnterpriseDemand ? `${enterpriseGap} confirmed Enterprise demand Nests await supply matching` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 || isOpenEnterpriseDemand ? "Action required" : "No open alarm", prescription, rootCause: canonicalGrowth?.rootCause || canonicalMemberAdds?.rootCause || (isOpenEnterpriseDemand ? `${enterpriseRequired} Nests are required, ${enterpriseMatched} are matched, and ${enterpriseGap} remain open. No supply is inferred from demand.` : gap === null ? "The governed source does not contain enough values to calculate the gap." : `${metricValue(baseline, unit)} are recorded against ${metricValue(target, unit)} required, leaving a ${metricValue(gap, unit)} readiness gap.`), owner: sourceValue(action, "owner actor id") || alarm?.[3] || canonicalMemberAdds?.owner || sourceValue(loop as unknown as Record<string, unknown>, "owner") || (isOpenEnterpriseDemand ? sourceValue(enterpriseRows[0], "owner actor id") || "Unassigned" : "Unassigned"), due, metric: sourceValue(action, "expected metric") || loop.name, verified, current: canonicalGrowth?.current || canonicalMemberAdds?.current || (baseline === null ? loop.current : metricValue(baseline, unit)), target: canonicalGrowth?.target || canonicalMemberAdds?.target || (target === null ? loop.target : metricValue(target, unit)), by: due, verifier: sourceValue(linkedEvidence.find((row: Record<string, any>) => sourceValue(row, "verified by")), "verified by") || sourceValue(action, "verified by") || governanceRecords.find((record) => record.exceptionId === alarm?.[1])?.verifierActorId || "Independent verifier pending", evidence, governedRoute: prescription, approval: approvalRole ? `${approvalDecision} · ${approvalRole}` : approvalDecision, escalation: isOpenEnterpriseDemand ? `Escalate to ${sourceValue(enterpriseRows[0], "owner actor id") || "the governed owner"} at the activation due time` : gap && gap > 0 ? `Escalate to ${approvalRole || sourceValue(action, "owner actor id") || "the governed owner"} at the due time` : "Continue governed monitoring" }
+    return { alarmConsole, title: alarm?.[0] || (memberAddsGap > 0 ? `${memberAddsGap} contracted FONO Nests require member adds` : isOpenEnterpriseDemand ? `${enterpriseGap} confirmed Enterprise demand Nests await supply matching` : `${loop.name} has no open governed alarm`), state: alarm || memberAddsGap > 0 || isOpenEnterpriseDemand ? "Action required" : "No open alarm", prescription, rootCause: canonicalGrowth?.rootCause || canonicalMemberAdds?.rootCause || (consoleName === "Nia Margins" ? canonicalMargins.rootCause : isOpenEnterpriseDemand ? `${enterpriseRequired} Nests are required, ${enterpriseMatched} are matched, and ${enterpriseGap} remain open. No supply is inferred from demand.` : gap === null ? "The governed source does not contain enough values to calculate the gap." : `${metricValue(baseline, unit)} are recorded against ${metricValue(target, unit)} required, leaving a ${metricValue(gap, unit)} readiness gap.`), owner: sourceValue(action, "owner actor id") || alarm?.[3] || canonicalMemberAdds?.owner || sourceValue(loop as unknown as Record<string, unknown>, "owner") || (isOpenEnterpriseDemand ? sourceValue(enterpriseRows[0], "owner actor id") || "Unassigned" : "Unassigned"), due, metric: sourceValue(action, "expected metric") || loop.name, verified, current: canonicalGrowth?.current || canonicalMemberAdds?.current || (baseline === null ? loop.current : metricValue(baseline, unit)), target: canonicalGrowth?.target || canonicalMemberAdds?.target || (target === null ? loop.target : metricValue(target, unit)), by: due, verifier: sourceValue(linkedEvidence.find((row: Record<string, any>) => sourceValue(row, "verified by")), "verified by") || sourceValue(action, "verified by") || governanceRecords.find((record) => record.exceptionId === alarm?.[1])?.verifierActorId || "Independent verifier pending", evidence, governedRoute: prescription, approval: approvalRole ? `${approvalDecision} · ${approvalRole}` : approvalDecision, escalation: isOpenEnterpriseDemand ? `Escalate to ${sourceValue(enterpriseRows[0], "owner actor id") || "the governed owner"} at the activation due time` : gap && gap > 0 ? `Escalate to ${approvalRole || sourceValue(action, "owner actor id") || "the governed owner"} at the due time` : "Continue governed monitoring" }
   }
   const [activeConsole, setActiveConsole] = useState("All consoles")
   const [held, setHeld] = useState(false)
@@ -284,10 +297,14 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const [alarmEvents, setAlarmEvents] = useState<{ title: string; detail: string; at: string }[]>([])
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+  useEffect(() => {
+    const complete = () => setRefreshing(false)
+    window.addEventListener("rafiqi:sync-complete", complete)
+    return () => window.removeEventListener("rafiqi:sync-complete", complete)
+  }, [])
   const refreshDashboard = () => {
     setRefreshing(true)
     window.dispatchEvent(new Event("rafiqi:sync-now"))
-    window.setTimeout(() => setRefreshing(false), 30_000)
   }
   const visibleLoops = useMemo(() => activeConsole === "All consoles" ? loops : loops.filter((loop) => loop.name.toLowerCase() === (activeConsole === "Living" ? "living occupancy" : activeConsole.toLowerCase())), [activeConsole])
   const view = viewFor(activeConsole)

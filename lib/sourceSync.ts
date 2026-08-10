@@ -29,23 +29,38 @@ export type SourceSyncReport = {
 };
 
 export type LiveSourceSyncReport = {
-  essentialsReport: Awaited<ReturnType<typeof syncEssentialsBotData>>;
-  shramParkDemandReport: Awaited<ReturnType<typeof syncShramParkDemandBotData>>;
-  fonoTrackerReport: Awaited<ReturnType<typeof syncFonoTrackerData>>;
-  freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>>;
+  essentialsReport: Awaited<ReturnType<typeof syncEssentialsBotData>> | null;
+  shramParkDemandReport: Awaited<ReturnType<typeof syncShramParkDemandBotData>> | null;
+  fonoTrackerReport: Awaited<ReturnType<typeof syncFonoTrackerData>> | null;
+  freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>> | null;
+  changedRows: number;
+  failures: readonly { source: string; error: string }[];
   syncedAt: string;
 };
 
 async function runLiveSourceSync(): Promise<LiveSourceSyncReport> {
   // The 45-second hot path moves only the four live operator/bot feeds. The
   // slower governance/history reconciliation remains on the daily full sync.
-  const essentialsPromise = syncEssentialsBotData();
-  const shramParkDemandReport = await syncShramParkDemandBotData();
-  const fonoTrackerReport = await syncFonoTrackerData();
-  const freshDashboardInputReport = await syncFreshDashboardInputs();
-  const essentialsReport = await essentialsPromise;
+  // Manual dashboard inputs run first so a failure in an unrelated bot feed
+  // cannot prevent UI_Targets (or another UI_* tab) from reaching the backend.
+  const failures: { source: string; error: string }[] = [];
+  const attempt = async <T,>(source: string, operation: () => Promise<T>) => {
+    try {
+      return await operation();
+    } catch (error) {
+      failures.push({ source, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+  };
+  const freshDashboardInputReport = await attempt("fresh-dashboard-inputs", syncFreshDashboardInputs);
+  const shramParkDemandReport = await attempt("shram-park-demand", syncShramParkDemandBotData);
+  const fonoTrackerReport = await attempt("fono-tracker", syncFonoTrackerData);
+  const essentialsReport = await attempt("essentials", syncEssentialsBotData);
   clearSheetCache();
-  return { essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, syncedAt: new Date().toISOString() };
+  const reports = [freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport];
+  if (reports.every((report) => report === null)) throw new AggregateError(failures.map((failure) => new Error(`${failure.source}: ${failure.error}`)), "Every live source sync failed");
+  const changedRows = reports.reduce((sum, report) => sum + (report && typeof report === "object" && "changedRows" in report ? Number(report.changedRows) || 0 : 0), 0);
+  return { essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, changedRows, failures, syncedAt: new Date().toISOString() };
 }
 
 export function syncLiveSources() {

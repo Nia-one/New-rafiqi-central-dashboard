@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { canonicalMemberAddsControl, canonicalNiaGrowthControl, governanceConsole } from "./control-tower"
+import { canonicalMemberAddsControl, canonicalNiaGrowthControl, canonicalNiaMarginsControl, governanceConsole } from "./control-tower"
 
 test("Control Tower uses the current Nia Growth summary instead of stale action baselines", () => {
   const result = canonicalNiaGrowthControl({
@@ -31,4 +31,13 @@ test("healthy Member Adds keeps its named owner and complete source values", () 
   assert.equal(result.gap, "0")
   assert.match(result.rootCause, /887 verified Member Adds.*887 governed target.*0 still open/)
   assert.doesNotMatch(JSON.stringify(result), /Unassigned|not enough values/i)
+})
+
+test("Nia Margins evidence uses the same canonical current, target, and gap as the operating card", () => {
+  const result = canonicalNiaMarginsControl({ fullUseCm2Inr: 377, fullUseTargetInr: 300 } as never, true)
+  assert.equal(result.current, "₹377")
+  assert.equal(result.target, "₹300")
+  assert.equal(result.gap, "₹0")
+  assert.match(result.rootCause, /₹377.*₹300.*₹0.*at or above control/)
+  assert.doesNotMatch(result.rootCause, /not enough values/i)
 })

@@ -8,6 +8,7 @@ const SYNC_SECONDS = 45
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
+const SYNC_TIMEOUT_MS = 5_000
 
 type SyncState = "ready" | "syncing" | "retrying" | "failed"
 
@@ -46,7 +47,11 @@ export function GlobalLiveSync() {
   }, [])
 
   const synchronize = useCallback(async () => {
-    if (inFlight.current || !acquireLease()) return
+    if (inFlight.current) return
+    if (!acquireLease()) {
+      window.dispatchEvent(new CustomEvent("rafiqi:sync-complete", { detail: { success: true, handledByAnotherTab: true } }))
+      return
+    }
     inFlight.current = true
     scheduleNext()
     let success = false
@@ -54,7 +59,7 @@ export function GlobalLiveSync() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         setState(attempt === 0 ? "syncing" : "retrying")
         try {
-          const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store" })
+          const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
           if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
           const report = await response.json() as { changedRows?: number }
           success = true
@@ -78,6 +83,7 @@ export function GlobalLiveSync() {
       inFlight.current = false
       releaseLease()
       if (!success) scheduleNext()
+      window.dispatchEvent(new CustomEvent("rafiqi:sync-complete", { detail: { success } }))
     }
   }, [acquireLease, releaseLease, router, scheduleNext])
 
