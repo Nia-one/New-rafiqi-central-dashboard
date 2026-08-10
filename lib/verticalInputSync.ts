@@ -4,7 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { normalizeReportingMonth, reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 import { canonicalizeBusinessReportTabs, repairBusinessReportFormulaReferences } from "./businessReportTabs";
 
-const SOURCE_ID = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "19-uFTgu-y50XfxJKGQwmA331wScGwEQW-ZPSVE6ciXU";
+const SOURCE_ID = process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID || "1e54fm3oUeseNzsTFG8O4XweRnWVU2n8OvBc7MLOu6nE";
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const isSampleRow = (row: unknown[]) => row.some((cell) => /SAMPLE.*DO.NOT.SYNC/i.test(String(cell ?? "")));
 const number = (v: unknown) => Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0;
