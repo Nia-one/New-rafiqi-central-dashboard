@@ -1112,7 +1112,9 @@ export function buildLiveSelfDriveSnapshot(ops: any): LiveSelfDriveSnapshot {
   const memberNpsFeedback = rows("memberNpsFeedback")
   const memberNpsResponses = rows("memberNpsResponses")
 
-  const suppliedAsOf = String(ops?.fetchedAt || ops?.meta?.updatedAt || "")
+  // snapshotAt is the canonical ISO value. updatedAt is display text and may
+  // originate from a numeric Google Sheets serial date.
+  const suppliedAsOf = String(ops?.fetchedAt || ops?.meta?.snapshotAt || ops?.meta?.updatedAt || "")
   const asOf = Number.isFinite(Date.parse(suppliedAsOf)) ? new Date(suppliedAsOf).toISOString() : new Date().toISOString()
   return {
     asOf,

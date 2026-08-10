@@ -32,6 +32,27 @@ function num(value: any) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const SHEETS_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
+
+/** Normalise Google Sheets/Excel serial dates as well as ordinary date strings. */
+function parseSourceDate(value: any): Date | null {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+
+  const text = String(value).trim();
+  const serial = Number(text);
+  if (/^\d+(?:\.\d+)?$/.test(text) && Number.isFinite(serial) && serial >= 20_000 && serial <= 80_000) {
+    const date = new Date(SHEETS_SERIAL_EPOCH_UTC + serial * 86_400_000);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  // Do not accidentally treat ordinary metric values (for example, 500) as dates.
+  if (!/[\-/:T]/.test(text)) return null;
+  const timestamp = Date.parse(text);
+  return Number.isNaN(timestamp) ? null : new Date(timestamp);
+}
+
 /**
  * Hourly source tabs are append-only.  Dashboard "current" measures must use
  * one newest observation per entity; otherwise yesterday's occupancy is added
@@ -47,8 +68,8 @@ function latestRowsByKey(rows: Record<string, any>[], keyNames: string[]) {
     if (!key) return;
 
     const rawTimestamp = row["updated at"] ?? row["updated_at"] ?? row["reporting date"] ?? row["reporting month"];
-    const parsedTimestamp = Date.parse(String(rawTimestamp ?? ""));
-    const at = Number.isNaN(parsedTimestamp) ? Number.NEGATIVE_INFINITY : parsedTimestamp;
+    const parsedTimestamp = parseSourceDate(rawTimestamp);
+    const at = parsedTimestamp ? parsedTimestamp.getTime() : Number.NEGATIVE_INFINITY;
     const prior = latest.get(key);
     if (!prior || at > prior.at || (at === prior.at && index > prior.index)) {
       latest.set(key, { row, at, index });
@@ -72,20 +93,6 @@ function latestLivingRows(rows: Record<string, any>[]) {
  * dashboard.  This accepts the timestamp column conventions used across the
  * operational tabs and returns the newest source snapshot.
  */
-function parseSourceDate(value: any): Date | null {
-  if (value === null || value === undefined || String(value).trim() === "") {
-    return null;
-  }
-
-  const text = String(value).trim();
-  // Do not accidentally treat ordinary metric values (for example, 500) as
-  // dates. Google Sheets timestamps are supplied as an ISO/date string here.
-  if (!/[\-/:T]/.test(text)) return null;
-
-  const timestamp = Date.parse(text);
-  return Number.isNaN(timestamp) ? null : new Date(timestamp);
-}
-
 function latestSourceSnapshot(...tables: any[][][]): Date | null {
   const timestampHeaders = new Set([
     "updated at", "updated_at", "captured at", "captured_at", "as of",
