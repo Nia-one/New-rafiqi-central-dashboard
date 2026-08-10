@@ -40,7 +40,7 @@ export type LiveSourceSyncReport = {
 };
 
 export type UserInputSyncReport = {
-  freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>>;
+  liveSourceReport: LiveSourceSyncReport;
   teamInputReport: Awaited<ReturnType<typeof syncTeamInputs>>;
   changedRows: number;
   syncedAt: string;
@@ -85,11 +85,14 @@ export function syncFreshInputs() {
   return activeFreshInputSync;
 }
 
-/** Synchronise every operator-owned UI_* and TEAM_* input tab. */
+/** Synchronise every operator-owned input tab and every connected live bot feed. */
 export function syncUserInputs() {
   if (activeUserInputSync) return activeUserInputSync;
   activeUserInputSync = (async () => {
-    const freshDashboardInputReport = await syncFreshDashboardInputs();
+    // syncLiveSources includes all UI_* tabs plus Shram Park, FONO and
+    // Essentials bot connectors. Team sync then covers the remaining governed
+    // TEAM_* inputs, including ownership, growth, activation and learning.
+    const liveSourceReport = await syncLiveSources();
     const teamInputReport = await syncTeamInputs();
     clearSheetCache();
     const teamChangedRows = teamInputReport.slice(1).reduce((sum, row) => {
@@ -98,9 +101,9 @@ export function syncUserInputs() {
       return sum + inserted + updated;
     }, 0);
     return {
-      freshDashboardInputReport,
+      liveSourceReport,
       teamInputReport,
-      changedRows: (Number(freshDashboardInputReport.changedRows) || 0) + teamChangedRows,
+      changedRows: (Number(liveSourceReport.changedRows) || 0) + teamChangedRows,
       syncedAt: new Date().toISOString(),
     };
   })().finally(() => { activeUserInputSync = null; });

@@ -58,9 +58,8 @@ export function GlobalLiveSync() {
     let success = false
     try {
       setState("syncing")
-      // All operator-owned UI_* and TEAM_* tabs are ingested here. Bot feeds
-      // retain their server cadence so browser tabs do not multiply bot-feed
-      // traffic against the shared Google Sheets quota.
+      // All operator-owned UI_* and TEAM_* tabs plus connected bot feeds are
+      // ingested by one server-coordinated sync cycle.
       const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
       if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
       const report = await response.json() as { changedRows?: number }
@@ -110,9 +109,9 @@ export function GlobalLiveSync() {
     }
   }, [releaseLease, router, scheduleNext, synchronize])
 
-  const label = state === "syncing" ? "Syncing all user inputs…"
+  const label = state === "syncing" ? "Syncing all inputs and bots…"
     : state === "failed" ? `Sync retry in ${seconds}s`
-      : `All user inputs sync in ${seconds}s`
+      : `All inputs and bots sync in ${seconds}s`
 
   return <div className="global-live-sync" data-state={state} role="status" aria-live="polite"><RefreshCw aria-hidden className={state === "syncing" ? "is-spinning" : ""} /><span>{label}</span></div>
 }
