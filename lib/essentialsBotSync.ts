@@ -259,17 +259,8 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
         valueInputOption: "RAW",
         data: [
           {
-            range: `${COST_INPUT_TAB}!A${startRow}:D${startRow + missing.length - 1}`,
-            values: missing.map((row) => [
-              cell(row, items.headers, "id", "order_item_id"),
-              cell(row, items.headers, "order_number"),
-              cell(row, items.headers, "product_code"),
-              cell(row, items.headers, "product_name"),
-            ]),
-          },
-          {
-            range: `${COST_INPUT_TAB}!J${startRow}:J${startRow + missing.length - 1}`,
-            values: missing.map((row) => [cell(row, items.headers, "updated_at", "created_at")]),
+            range: `${COST_INPUT_TAB}!A${startRow}:A${startRow + missing.length - 1}`,
+            values: missing.map((row) => [cell(row, items.headers, "id", "order_item_id")]),
           },
         ],
       },
@@ -278,15 +269,27 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
 
   const formulas = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SOURCE_SHEET_ID,
-    ranges: [`${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`],
+    ranges: [`${COST_INPUT_TAB}!B2`, `${COST_INPUT_TAB}!C2`, `${COST_INPUT_TAB}!D2`, `${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`, `${COST_INPUT_TAB}!J2`],
     valueRenderOption: "FORMULA",
   });
   const formulaData: { range: string; values: string[][] }[] = [];
   if (!formulas.data.valueRanges?.[0].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!H2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",N(E2:E)+N(F2:F)+N(G2:G)))"]] });
+    formulaData.push({ range: `${COST_INPUT_TAB}!B2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:P,16,FALSE),\"\")))"]] });
   }
   if (!formulas.data.valueRanges?.[1].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!C2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:D,4,FALSE),\"\")))"]] });
+  }
+  if (!formulas.data.valueRanges?.[2].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!D2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:E,5,FALSE),\"\")))"]] });
+  }
+  if (!formulas.data.valueRanges?.[3].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!H2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",N(E2:E)+N(F2:F)+N(G2:G)))"]] });
+  }
+  if (!formulas.data.valueRanges?.[4].values?.[0]?.[0]) {
     formulaData.push({ range: `${COST_INPUT_TAB}!I2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:O,15,FALSE),0)-N(H2:H)))"]] });
+  }
+  if (!formulas.data.valueRanges?.[5].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!J2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:J,10,FALSE),\"\")))"]] });
   }
   if (formulaData.length) {
     await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
