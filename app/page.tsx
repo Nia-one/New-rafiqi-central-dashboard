@@ -3,6 +3,7 @@ import { financeExpansionControlEnabled, selfDrivePlatformEnabled } from "@/lib/
 import { buildLiveEnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import { buildNiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
 import { buildLoopHealth } from "@/lib/operating-loop/loop-health"
+import { selectApprovedMarginTarget } from "@/lib/live-mappers/margin-target"
 import { buildOpsData } from "@/lib/opsDataMapper"
 import { buildLiveMarginInputs, buildLiveSelfDriveSnapshot } from "@/lib/live-mappers/self-drive"
 import {
@@ -69,19 +70,7 @@ export default async function Page() {
     console.error("LIVE_PREVIEW_GAP", { enterpriseDemand: Boolean(enterpriseDemandPreview), newAdds: Boolean(newAddsPreview), memberEngagement: Boolean(memberEngagementPreview), memberSavings: Boolean(memberSavingsPreview), niaGrowth: Boolean(niaGrowthPreview), marginInputs: marginInputs.length })
     throw new Error("Required governed live data is unavailable; synthetic dashboard values are disabled.")
   }
-  const approvedMarginPolicies = liveSnapshot.policies.filter((row) => {
-    const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")} ${String(row["source note"] ?? "")}`.toLowerCase()
-    return /margin|cm2/.test(descriptor) && /full.?use|target|control/.test(descriptor) && String(row.status ?? "").toLowerCase() === "approved"
-  })
-  const marginTargetPolicy = [...approvedMarginPolicies].sort((left, right) => {
-    const score = (row: Record<string, unknown>) => {
-      const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")}`.toLowerCase()
-      return (descriptor.includes("nia margins") ? 10_000 : 0)
-        + (descriptor.includes("target-margin") ? 5_000 : 0)
-        + (Date.parse(String(row["effective from"] ?? "")) || 0) / 1e12
-    }
-    return score(right) - score(left)
-  })[0]
+  const marginTargetPolicy = selectApprovedMarginTarget(liveSnapshot.policies)
   const recordedMarginTarget = Number(String(marginTargetPolicy?.["policy value"] ?? "").replace(/[^0-9.-]/g, "")) || 0
   const recordedOccupancyPolicy = liveSnapshot.policies.find((row) => {
     const descriptor = `${String(row["policy id"] ?? "")} ${String(row["policy name"] ?? "")} ${String(row["source note"] ?? "")}`.toLowerCase()
