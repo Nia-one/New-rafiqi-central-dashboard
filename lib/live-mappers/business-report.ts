@@ -48,6 +48,7 @@ export function buildBusinessReportData(ops: any) {
   const essentials: Row[] = ops?.essentials ?? []
   const work: Row[] = ops?.work ?? []
   const finance: Row[] = ops?.finance ?? []
+  const actions: Row[] = ops?.actionLog ?? []
   const livingRows: Row[] = ops?.living ?? []
 
   const occupancyByTheatre = living.existingByTheatre.map((row) => ({
@@ -79,8 +80,19 @@ export function buildBusinessReportData(ops: any) {
     .filter((row) => row.cmInr !== 0)
     .sort((a, b) => b.cmInr - a.cmInr)
   const explicitFinanceMargin = livingCmTheatres.reduce((total, row) => total + row.cmInr, 0)
-  const actualContribution = explicitWorkMargin + explicitFinanceMargin + essentialsMargin
-  const projectedRevenue = sum(finance, "total billed inr", "projected revenue inr") + sum(work, "work billed inr", "work revenue") + essentialsRevenue
+  const componentInputs = actions.filter((row) => String(raw(row, "action id") ?? "").toUpperCase().startsWith("OPS-RPT-CM-COMP-"))
+    .map((row) => {
+      const type = /pipeline/i.test(String(raw(row, "expected metric") ?? "")) ? "Pipeline" : "Actual"
+      const notes = String(raw(row, "notes") ?? "")
+      return { component: String(raw(row, "operating objective") ?? "Unassigned"), type, cmInr: number(row, "baseline value", "expected financial impact inr"), revenueInr: number(row, "target value"), volume: Number(notes.match(/(?:^|\|)volume=([0-9.-]+)/i)?.[1] || 0) }
+    })
+  const manualActuals = componentInputs.filter((row) => row.type === "Actual")
+  const manualPipeline = componentInputs.filter((row) => row.type === "Pipeline")
+  const actualContribution = componentInputs.length ? explicitFinanceMargin + manualActuals.reduce((total, row) => total + row.cmInr, 0) : explicitWorkMargin + explicitFinanceMargin + essentialsMargin
+  const livingRevenue = sum(finance, "total billed inr", "projected revenue inr")
+  const projectedRevenue = componentInputs.length ? livingRevenue + manualActuals.reduce((total, row) => total + row.revenueInr, 0) : livingRevenue + sum(work, "work billed inr", "work revenue") + essentialsRevenue
+  const pipelineContribution = manualPipeline.reduce((total, row) => total + row.cmInr, 0)
+  const contributionComponents = [...manualActuals, { component: "Living", type: "Actual", cmInr: explicitFinanceMargin, revenueInr: livingRevenue, volume: 0 }, ...manualPipeline]
 
   return {
     asOf: String(ops?.meta?.updatedAt || ops?.fetchedAt || "Not recorded"),
@@ -98,8 +110,9 @@ export function buildBusinessReportData(ops: any) {
       living: explicitFinanceMargin,
       livingByTheatre: livingCmTheatres,
       essentials: essentialsMargin,
-      pipeline: 0,
-      pipelineRecorded: false,
+      pipeline: pipelineContribution,
+      pipelineRecorded: manualPipeline.length > 0,
+      components: contributionComponents,
     },
     fono: { records: living.fonoPipeline.report.byTheatre.length, stages: fonoStages, byTheatre: living.fonoPipeline.report.byTheatre },
     enterprise: { records: enterpriseRows.length, stages: enterpriseStages, byTheatre: enterpriseByTheatre },

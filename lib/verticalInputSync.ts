@@ -241,7 +241,7 @@ export async function syncVerticalInputs() {
     return { "work hourly id": id("OPS-RPT-WORK", [client, month]), "enterprise id": id("OPS-RPT-ENT", [client]), "matched headcount": number(value(row, flow!.headers, "HC")), "work billed inr": number(value(row, flow!.headers, "Total Billing (₹)")), "work collected inr": "", "captured at": month, "source submission id": id("OPS-RPT-WORK-SRC", [client, month]), [REPORTING_MONTH_HEADER]: reportingMonth };
   });
   const cmActions = imported("CM Actions");
-  const reportActions = (cmActions?.rows || []).filter((row) => {
+  const legacyReportActions = (cmActions?.rows || []).filter((row) => {
     const objective = value(row, cmActions!.headers, "Studio / Entity");
     return objective && norm(objective) !== "studio / entity";
   }).map((row) => {
@@ -252,6 +252,23 @@ export async function syncVerticalInputs() {
     const realized = number(value(row, cmActions!.headers, "Realized (₹)"));
     return { "action id": id("OPS-RPT-CM", [objective, proposedAt]), "incident id": "", "operating objective": objective, "expected metric": "CM impact (₹)", "baseline value": realized, "target value": planned, "expected financial impact inr": Math.max(0, planned - realized), "confidence": "Reported", "owner actor id": "", "due at": timestamp(value(row, cmActions!.headers, "Target Close")), "required evidence": "Business Performance Report — CM Actions source row", "approval tier": "Human", "state": value(row, cmActions!.headers, "Status") || "Open", "proposed at": proposedAt, "notes": value(row, cmActions!.headers, "Notes"), [REPORTING_MONTH_HEADER]: reportingMonth };
   });
+  const componentActions = (cmActions?.rows || []).filter((row) => {
+    const component = value(row, cmActions!.headers, "CM Component");
+    return component && norm(component) !== "living" && number(value(row, cmActions!.headers, "CM INR")) !== 0;
+  }).map((row) => {
+    const component = value(row, cmActions!.headers, "CM Component");
+    const cmType = value(row, cmActions!.headers, "CM Type") || "Actual";
+    const cmInr = number(value(row, cmActions!.headers, "CM INR"));
+    const revenueInr = number(value(row, cmActions!.headers, "Revenue INR"));
+    const volume = number(value(row, cmActions!.headers, "Volume / Nests"));
+    const sourceMonth = value(row, cmActions!.headers, "Reporting Month") || new Date().toISOString();
+    const proposedAt = timestamp(sourceMonth);
+    const reportingMonth = reportingMonthFromDate(sourceMonth) || reportingMonthFromDate(proposedAt)!;
+    const notes = value(row, cmActions!.headers, "Notes");
+    const sourceMode = value(row, cmActions!.headers, "Source Mode") || "MANUAL";
+    return { "action id": id("OPS-RPT-CM-COMP", [component, cmType, reportingMonth]), "incident id": "", "operating objective": component, "expected metric": `CM ${cmType}`, "baseline value": cmInr, "target value": revenueInr, "expected financial impact inr": cmInr, "confidence": sourceMode, "owner actor id": "", "due at": proposedAt, "required evidence": "CM Actions governed component input", "approval tier": "Human", "state": value(row, cmActions!.headers, "Status") || "Open", "proposed at": proposedAt, "notes": `CM_INPUT|revenue=${revenueInr}|volume=${volume}|source=${sourceMode}|${notes}`, [REPORTING_MONTH_HEADER]: reportingMonth };
+  });
+  const reportActions = [...legacyReportActions, ...componentActions];
 
   const targets = ["Living_Hourly", "Studio_Master", "Enterprise_Demand", "Work_Hourly", "Action_Log"];
   const targetResponse = await sheets.spreadsheets.values.batchGet({ spreadsheetId: process.env.GOOGLE_SHEET_ID, ranges: targets.map((target) => `${target}!A:AZ`) });
