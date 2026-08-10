@@ -10,6 +10,7 @@ import { syncFonoTrackerData } from "@/lib/fonoTrackerSync";
 let activeSync: Promise<SourceSyncReport> | null = null;
 let activeLiveSync: Promise<LiveSourceSyncReport> | null = null;
 let activeFreshInputSync: Promise<Awaited<ReturnType<typeof syncFreshDashboardInputs>>> | null = null;
+let activeUserInputSync: Promise<UserInputSyncReport> | null = null;
 let lastSuccessfulSync: SourceSyncReport | null = null;
 let lastFailureAt = 0;
 let lastFailure: unknown = null;
@@ -35,6 +36,13 @@ export type LiveSourceSyncReport = {
   freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>> | null;
   changedRows: number;
   failures: readonly { source: string; error: string }[];
+  syncedAt: string;
+};
+
+export type UserInputSyncReport = {
+  freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>>;
+  teamInputReport: Awaited<ReturnType<typeof syncTeamInputs>>;
+  changedRows: number;
   syncedAt: string;
 };
 
@@ -75,6 +83,28 @@ export function syncFreshInputs() {
     .then((report) => { clearSheetCache(); return report; })
     .finally(() => { activeFreshInputSync = null; });
   return activeFreshInputSync;
+}
+
+/** Synchronise every operator-owned UI_* and TEAM_* input tab. */
+export function syncUserInputs() {
+  if (activeUserInputSync) return activeUserInputSync;
+  activeUserInputSync = (async () => {
+    const freshDashboardInputReport = await syncFreshDashboardInputs();
+    const teamInputReport = await syncTeamInputs();
+    clearSheetCache();
+    const teamChangedRows = teamInputReport.slice(1).reduce((sum, row) => {
+      const inserted = Number(row[3]) || 0;
+      const updated = Number(row[4]) || 0;
+      return sum + inserted + updated;
+    }, 0);
+    return {
+      freshDashboardInputReport,
+      teamInputReport,
+      changedRows: (Number(freshDashboardInputReport.changedRows) || 0) + teamChangedRows,
+      syncedAt: new Date().toISOString(),
+    };
+  })().finally(() => { activeUserInputSync = null; });
+  return activeUserInputSync;
 }
 
 async function runSourceSync(): Promise<SourceSyncReport> {

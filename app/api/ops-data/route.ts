@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
-import { syncAllSources, syncFreshInputs, syncLiveSources } from "@/lib/sourceSync";
+import { syncAllSources, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
 import { clearSheetCache } from "@/lib/googleSheets";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const fullSync = url.searchParams.get("full") === "1";
     const liveSync = url.searchParams.get("live") === "1";
     const inputSync = url.searchParams.get("input") === "1";
-    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncFreshInputs() : null;
+    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncUserInputs() : null;
     clearSheetCache();
     return NextResponse.json(
       { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : inputSync ? "input-sync" : "refresh", ...(result ?? {}) },

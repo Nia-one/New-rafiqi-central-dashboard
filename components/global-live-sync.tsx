@@ -8,7 +8,8 @@ const SYNC_SECONDS = 45
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
-const SYNC_TIMEOUT_MS = 40_000
+const SYNC_TIMEOUT_MS = 180_000
+const SYNC_LEASE_MS = SYNC_TIMEOUT_MS + 30_000
 
 type SyncState = "ready" | "syncing" | "failed"
 
@@ -33,7 +34,7 @@ export function GlobalLiveSync() {
     } catch {
       // A malformed stale lease is safe to replace.
     }
-    window.localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: tabId.current, expiresAt: now + 90_000 }))
+    window.localStorage.setItem(LEASE_KEY, JSON.stringify({ owner: tabId.current, expiresAt: now + SYNC_LEASE_MS }))
     return true
   }, [])
 
@@ -57,9 +58,9 @@ export function GlobalLiveSync() {
     let success = false
     try {
       setState("syncing")
-      // UI_Occupancy through UI_Targets are ingested by one batched connector.
-      // Bot feeds have their own server cadence; running every connector from
-      // every browser tab exhausted the shared Google Sheets read quota.
+      // All operator-owned UI_* and TEAM_* tabs are ingested here. Bot feeds
+      // retain their server cadence so browser tabs do not multiply bot-feed
+      // traffic against the shared Google Sheets quota.
       const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
       if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
       const report = await response.json() as { changedRows?: number }
@@ -109,9 +110,9 @@ export function GlobalLiveSync() {
     }
   }, [releaseLease, router, scheduleNext, synchronize])
 
-  const label = state === "syncing" ? "Syncing dashboard inputs…"
+  const label = state === "syncing" ? "Syncing all user inputs…"
     : state === "failed" ? `Sync retry in ${seconds}s`
-      : `Dashboard inputs sync in ${seconds}s`
+      : `All user inputs sync in ${seconds}s`
 
   return <div className="global-live-sync" data-state={state} role="status" aria-live="polite"><RefreshCw aria-hidden className={state === "syncing" ? "is-spinning" : ""} /><span>{label}</span></div>
 }
