@@ -254,7 +254,9 @@ export async function syncVerticalInputs() {
   });
   const componentActions = (cmActions?.rows || []).filter((row) => {
     const component = value(row, cmActions!.headers, "CM Component");
-    return component && norm(component) !== "living" && number(value(row, cmActions!.headers, "CM INR")) !== 0;
+    const cmInr = number(value(row, cmActions!.headers, "CM INR"));
+    const revenueInr = number(value(row, cmActions!.headers, "Revenue INR"));
+    return component && norm(component) !== "living" && (cmInr !== 0 || revenueInr !== 0);
   }).map((row) => {
     const component = value(row, cmActions!.headers, "CM Component");
     const cmType = value(row, cmActions!.headers, "CM Type") || "Actual";
