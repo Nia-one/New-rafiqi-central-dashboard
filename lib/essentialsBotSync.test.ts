@@ -20,10 +20,10 @@ test("Essentials fulfilment costs use the persistent order-item sidecar", () => 
   assert.match(source, /savedCosts\.direct \+ savedCosts\.packaging \+ savedCosts\.delivery/);
 });
 
-test("Essentials cost sync preserves user inputs and only inserts missing order items", () => {
-  assert.match(source, /existingIds\.has\(id\)/);
-  assert.match(source, /range: `\$\{COST_INPUT_TAB\}!A\$\{startRow\}:A/);
+test("Essentials cost sync preserves user inputs and mirrors order items with formulas", () => {
+  assert.match(source, /Order_Items!A2:A/);
   assert.match(source, /Order_Items!A:P,16,FALSE/);
   assert.match(source, /Order_Items!A:J,10,FALSE/);
+  assert.doesNotMatch(source, /range: `\$\{COST_INPUT_TAB\}!A\$\{startRow\}/);
   assert.doesNotMatch(source, /range: `\$\{COST_INPUT_TAB\}!E\$\{startRow\}:G/);
 });
