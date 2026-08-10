@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapShramParkDemandRow, shramParkOwnerForTheatre } from "./shramParkDemandBotSync";
+import { mapShramParkDemandRow, shramParkOwnerForTheatre, shramParkRowsToDelete } from "./shramParkDemandBotSync";
 
 const headers = ["Submission Timestamp", "Submission ID", "Company Name", "Location", "Theatre", "Requirement", "Male Requirement", "Female Requirement", "Total Requirement", "Follow Up Action", "Assigned To", "Source", "Activation Required At", "Headcount Matched", "Monthly Wage INR", "Latitude", "Longitude"];
 
@@ -10,9 +10,10 @@ test("maps each qualified Shram Park bot submission as one lead", () => {
   assert.deepEqual(result.errors, []);
   assert.equal(result.record["headcount required"], 1);
   assert.equal(result.record["headcount matched"], 0);
-  assert.equal(result.record.status, "Contracting");
+  assert.equal(result.record.status, "Interested");
   assert.equal(result.record.certainty, "Send Proposal / Quote");
   assert.equal(result.record["source submission id"], "SUB-1");
+  assert.equal(result.record["theatre id"], "Rajputana");
   assert.equal(result.record["owner actor id"], "ACT-PRASHANT-WAGHIRE");
 });
 
@@ -28,6 +29,20 @@ test("counts the fixed bot format as one lead without treating current manpower 
   assert.equal(result.record.certainty, "Schedule Next Visit");
   assert.equal(result.record["activation required at"], "2026-07-11");
   assert.equal(result.record["owner actor id"], "ACT-SATISH-SANGHEY");
+});
+
+test("preserves Interested as an actual Bot Sheet funnel stage", () => {
+  const row = ["2026-07-11T14:23:00+05:30", "SUB-INTERESTED", "Acme", "Plant", "Deccan", 3000, "Y", 0, 0, 0, "Interested", "", "WhatsApp", "2026-07-11", 0, 2000, 28.32, 76.82];
+  const result = mapShramParkDemandRow(row, ["Submission Timestamp", "Submission ID", "Company Name", "Location", "Theatre", "Current Manpower Count", "Requirement", "Male Requirement", "Female Requirement", "Total Requirement", "Follow Up Action", "Assigned To", "Source", "Date Visited", "Headcount Matched", "Monthly Wage INR", "Latitude", "Longitude"]);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.record.status, "Interested");
+  assert.equal(result.record.certainty, "Interested");
+});
+
+test("Interested wins when the Bot status also mentions a proposal", () => {
+  const row = ["2026-07-11T14:23:00+05:30", "SUB-INTERESTED-PROPOSAL", "Acme", "Plant", "Deccan", 3000, "Y", 0, 0, 0, "Interested - proposal shared", "", "WhatsApp", "2026-07-11", 0, 2000, 28.32, 76.82];
+  const result = mapShramParkDemandRow(row, ["Submission Timestamp", "Submission ID", "Company Name", "Location", "Theatre", "Current Manpower Count", "Requirement", "Male Requirement", "Female Requirement", "Total Requirement", "Follow Up Action", "Assigned To", "Source", "Date Visited", "Headcount Matched", "Monthly Wage INR", "Latitude", "Longitude"]);
+  assert.equal(result.record.status, "Interested");
 });
 
 test("assigns the accountable owner from all accepted Theatre spellings", () => {
@@ -49,4 +64,18 @@ test("quarantines test data and incomplete governed fields", () => {
   assert.equal(result.record["activation required at"], "2026-07-29T09:00:00+05:30");
   assert.ok(result.errors.includes("latitude_missing_or_invalid"));
   assert.ok(result.errors.includes("longitude_missing_or_invalid"));
+});
+
+test("reconciliation keeps only the final governed row for each Shram Park demand ID", () => {
+  const rows = [
+    ["demand id", "status"],
+    ["SP-BOT-A", "Lead"],
+    ["SP-BOT-B", "Lead"],
+    ["SP-BOT-A", "Contracting"],
+    ["SP-BOT-STALE", "Lead"],
+  ];
+  assert.deepEqual(shramParkRowsToDelete(rows, 0, new Set(["sp-bot-a", "sp-bot-b"])), [
+    { key: "sp-bot-a", rowIndex: 1 },
+    { key: "sp-bot-stale", rowIndex: 4 },
+  ]);
 });

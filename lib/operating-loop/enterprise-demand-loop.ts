@@ -698,7 +698,7 @@ export function buildLiveEnterpriseDemandLoopPreview(rows: readonly EnterpriseSh
     const required = enterpriseNumber(row, "headcount required")
     const status = enterpriseValue(row, "status")
     const demandStatus = enterpriseValue(row, "certainty") || status
-    if (!demandId || !enterpriseName || !plantName || !arrivalAt || !Number.isFinite(Date.parse(arrivalAt)) || required <= 0 || !/under discussion|confirmed|open|contract|signed|won|onboard|live/i.test(`${status} ${demandStatus}`)) return []
+    if (!demandId || !enterpriseName || !plantName || !arrivalAt || !Number.isFinite(Date.parse(arrivalAt)) || required <= 0 || !/lead|interest|under discussion|confirmed|open|contract|signed|won|onboard|live|closed|dropped/i.test(`${status} ${demandStatus}`)) return []
     const recordedSupplyModel = enterpriseValue(row, "supply model").toUpperCase()
     const supplyModel: SupplyModel = recordedSupplyModel === "SP" ? "SP" : "FONO"
     return [{

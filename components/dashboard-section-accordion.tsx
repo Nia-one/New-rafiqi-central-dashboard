@@ -85,10 +85,12 @@ export function DashboardSectionAccordion({
   }, [actionIndex, items.length, lens, sections])
   const [focus, setFocus] = useState(0)
   const safeFocus = Math.min(focus, Math.max(displayOrder.length - 1, 0))
+  const focusStorageKey = `rafiqi-section-focus:${ariaLabel}`
 
   useEffect(() => {
-    setFocus(0)
-  }, [lens, displayOrder.length])
+    const stored = Number(window.sessionStorage.getItem(focusStorageKey))
+    if (Number.isInteger(stored) && stored >= 0) setFocus(stored)
+  }, [focusStorageKey])
 
   useEffect(() => {
     function onFocusRequest(event: Event) {
@@ -110,7 +112,7 @@ export function DashboardSectionAccordion({
         {displayOrder.map((sourceIndex, displayIndex) => {
           const meta = sections[sourceIndex] ?? { title: `Section ${sourceIndex + 1}`, summary: "Open to review this section." }
           return <li key={`${meta.title}-${sourceIndex}`}>
-            <button type="button" aria-current={displayIndex === safeFocus ? "true" : undefined} data-status={meta.status} onClick={() => setFocus(displayIndex)}>
+            <button type="button" aria-current={displayIndex === safeFocus ? "true" : undefined} data-status={meta.status} onClick={() => { setFocus(displayIndex); window.sessionStorage.setItem(focusStorageKey, String(displayIndex)) }}>
               <i aria-hidden data-status={meta.status} />
               <span><strong>{meta.title}</strong><small>{meta.summary}</small></span>
             </button>

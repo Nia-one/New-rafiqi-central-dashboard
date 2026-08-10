@@ -3,6 +3,7 @@ import { DashboardSectionAccordion } from "@/components/dashboard-section-accord
 import { DataTable } from "@/components/data-table"
 import { TodayMtdFunnel } from "@/components/today-mtd-funnel"
 import { essentialsCohorts, essentialsHeadline, essentialsInventory, teamBlocks } from "@/lib/operating-data"
+import { buildEssentialsReport } from "@/lib/live-mappers/essentials-report"
 
 type LiveRow = Record<string, unknown>
 
@@ -29,13 +30,14 @@ function liveNumber(row: LiveRow | undefined, ...keys: string[]) {
 export function EssentialsScreen({ allocationFocus, liveData = null }: { allocationFocus?: string; liveData?: { dashboard: readonly LiveRow[]; hourly?: readonly LiveRow[]; cohorts: readonly LiveRow[]; inventory: readonly LiveRow[] } | null }) {
   if (liveData !== undefined) {
     const dashboard = liveData?.dashboard ?? [], hourly = liveData?.hourly ?? [], cohorts = liveData?.cohorts ?? [], inventory = liveData?.inventory ?? []
+    const essentialsReport = buildEssentialsReport(hourly)
     const firstDashboard = dashboard[0], firstInventory = inventory[0]
     const metric = (key: string) => dashboard.find((row) => String(liveValue(row, "key") ?? "") === key)
     const hourlySum = (key: string) => hourly.reduce((sum, row) => sum + liveNumber(row, key), 0)
-    const eligible = hourlySum("eligible members")
-    const buyers = hourlySum("buying members")
-    const billed = hourlySum("essentials billed inr")
-    const margin = hourlySum("nia margin inr")
+    const eligible = essentialsReport.eligibleMembers
+    const buyers = essentialsReport.buyingMembers
+    const billed = essentialsReport.revenue
+    const margin = essentialsReport.margin
     const templateValues: Record<string, string> = {
       buyers: buyers.toLocaleString("en-IN"),
       eligible: eligible.toLocaleString("en-IN"),

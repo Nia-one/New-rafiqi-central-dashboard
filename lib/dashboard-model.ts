@@ -1,6 +1,6 @@
-export const DASHBOARD_TABS = ["Overview", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"] as const
+export const DASHBOARD_TABS = ["Overview", "Living", "Work", "Essentials", "Business Report", "People", "Member Feedback", "Economics", "Definitions", "Despatch"] as const
 export const LEGACY_DASHBOARD_TABS = ["Overview", "Operations Mandate", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"] as const
-export const SELF_LEARN_TABS = ["Overview", "Living", "Work", "Essentials", "Member Feedback", "People", "Definitions"] as const
+export const SELF_LEARN_TABS = ["Overview", "Living", "Work", "Essentials", "Business Report", "Member Feedback", "People", "Definitions"] as const
 export const OPERATIONS_TABS = ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"] as const
 export const FINANCE_TABS = ["Finance control"] as const
 export type DashboardTab = (typeof DASHBOARD_TABS)[number] | (typeof OPERATIONS_TABS)[number] | (typeof FINANCE_TABS)[number]

@@ -21,20 +21,61 @@ const demandChannel = (row: Row) => {
 }
 const stageBucket = (row: Row) => {
   const state = `${value(row, "status")} ${value(row, "certainty")}`.toLowerCase()
-  if (/drop|lost|reject|cancel/.test(state)) return "Dropped"
+  if (/drop|lost|reject|cancel|closed/.test(state)) return "Dropped"
   if (/contracted|onboarded|takeover pending|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
+  if (/interest|proposal|quote/.test(state)) return "Interested"
   if (/contracting|negotiat|contract review|proposal/.test(state)) return "Contracting"
   return "Lead"
 }
 
 function groupedCounts(rows: Row[], owner: (row: Row) => string) {
-  const stages = ["Lead", "Contracting", "Contracted", "Dropped"]
+  const stages = ["Lead", "Interested", "Contracting", "Contracted", "Dropped"]
   const stageCounts = stages.map((stage) => ({ stage, count: rows.filter((row) => stageBucket(row) === stage).length, requirement: rows.filter((row) => stageBucket(row) === stage).reduce((sum, row) => sum + n(row["headcount required"]), 0) }))
   const byOwner = [...new Set(rows.map(owner).filter(Boolean))].map((name) => {
     const owned = rows.filter((row) => owner(row) === name)
     return { owner: name, total: owned.length, ...Object.fromEntries(stages.map((stage) => [stage.toLowerCase(), owned.filter((row) => stageBucket(row) === stage).length])) }
   }).sort((a, b) => b.total - a.total || a.owner.localeCompare(b.owner))
   return { stageCounts, byOwner }
+}
+
+const theatreLabel = (input: string) => {
+  const key = input.trim().toLowerCase()
+  if (/rajputana|^(?:th-)?(?:rn|rjt)$/.test(key)) return "Rajputana"
+  if (/wellington|^(?:th-)?wlg$/.test(key)) return "Wellington"
+  if (/coromandel|^(?:th-)?(?:coro|crm)$/.test(key)) return "Coromandel"
+  if (/deccan|^(?:th-)?dcn$/.test(key)) return "Deccan"
+  return input.trim() || "Unassigned"
+}
+
+const fonoTheatre = (row: Row) => {
+  const direct = value(row, "theatre id") || value(row, "theatre")
+  if (direct) return theatreLabel(direct)
+  // Historical backend rows pre-date the theatre-id column, but their
+  // governed FONO plant/studio identifiers retain the source Theatre code.
+  const dimensionalId = value(row, "plant id") || value(row, "studio id")
+  const match = dimensionalId.match(/(?:^|[-_])(TH[-_](?:RJT|RN|WLG|DCN|CORO|COR|CRM))(?:[-_]|$)/i)
+  return theatreLabel(match?.[1]?.replaceAll("_", "-") || "")
+}
+
+function fonoReportPipeline(rows: Row[]) {
+  const reportStage = (row: Row) => {
+    const bucket = stageBucket(row)
+    if (bucket === "Contracted") return "Contracted"
+    if (bucket === "Contracting") return "Contracting"
+    if (bucket === "Dropped") return "Dropped"
+    return "Lead"
+  }
+  const active = rows.filter((row) => reportStage(row) !== "Dropped")
+  const stages = ["Lead", "Contracting", "Contracted"] as const
+  const totals = Object.fromEntries(stages.map((name) => [name, active.filter((row) => reportStage(row) === name).reduce((total, row) => total + n(row["headcount required"]), 0)])) as Record<(typeof stages)[number], number>
+  const byTheatre = [...new Set(active.map(fonoTheatre))]
+    .map((name) => {
+      const theatreRows = active.filter((row) => fonoTheatre(row) === name)
+      const values = Object.fromEntries(stages.map((stage) => [stage, theatreRows.filter((row) => reportStage(row) === stage).reduce((total, row) => total + n(row["headcount required"]), 0)])) as Record<(typeof stages)[number], number>
+      return { theatre: name, ...values, total: values.Lead + values.Contracting + values.Contracted }
+    })
+    .sort((a, b) => b.total - a.total || a.theatre.localeCompare(b.theatre))
+  return { totals, byTheatre }
 }
 
 export function buildLivingScreenData(ops: any) {
@@ -73,8 +114,21 @@ export function buildLivingScreenData(ops: any) {
     const openRows = rows.filter((row) => /open|partial|overdue/i.test(value(row, "reconciliation status")))
     return { rowCount: rows.length, billed, collected, rawCollected, advance, due, openCount: openRows.length, overdueCount: openRows.filter((row) => /overdue/i.test(value(row, "reconciliation status"))).length }
   }
-  const fonoDemandRows = demand.filter((row) => demandChannel(row) === "FONO")
-  const spDemandRows = demand.filter((row) => demandChannel(row) === "SP")
+  const latestDemandById = new Map<string, Row>()
+  demand.forEach((row, index) => {
+    const id = value(row, "demand id") || value(row, "source submission id") || `row-${index}`
+    const previous = latestDemandById.get(id)
+    const rowTime = Date.parse(value(row, "updated at") || value(row, "opened at") || "1970-01-01")
+    const previousTime = Date.parse(value(previous, "updated at") || value(previous, "opened at") || "1970-01-01")
+    if (!previous || rowTime >= previousTime) latestDemandById.set(id, row)
+  })
+  const currentDemand = [...latestDemandById.values()]
+  const fonoCandidates = currentDemand.filter((row) => demandChannel(row) === "FONO" && !/member adds/i.test(value(row, "role required")))
+  const canonicalFonoRows = fonoCandidates.filter((row) => value(row, "demand id").toUpperCase().startsWith("FONO-TRACKER-") && !value(row, "demand id").toUpperCase().includes("MEMBER-ADDS"))
+  // Once the imported Fono Funnel is present it is the sole authority. This
+  // excludes legacy FONO rows and the separate Member Adds projection.
+  const fonoDemandRows = canonicalFonoRows.length ? canonicalFonoRows : fonoCandidates
+  const spDemandRows = currentDemand.filter((row) => demandChannel(row) === "SP")
   // Current channel supply is governed by the FONO/SP demand feeds. Living
   // Hourly currently contains only the independent EXISTING snapshot, so use
   // an explicit channel row there when present and otherwise the channel feed.
@@ -118,6 +172,7 @@ export function buildLivingScreenData(ops: any) {
 
   const fonoSupply: FunnelStage[] = [stage("Contracted Nests", fonoContracted, fonoContracted), stage("Activation-ready Nests", fonoReady, fonoReady, fonoContracted), stage("Occupied Nests", fonoOccupied, fonoOccupied, fonoReady)]
   const fonoPipeline = groupedCounts(fonoDemandRows, (row) => person(value(row, "owner actor id")))
+  const fonoReport = fonoReportPipeline(fonoDemandRows)
   const spPipeline = groupedCounts(spDemandRows, (row) => person(value(row, "owner actor id")))
   const fonoDemand: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.count, item.count, index ? items[index - 1].count : null))
   const fonoRequirementStages: FunnelStage[] = fonoPipeline.stageCounts.map((item, index, items) => stage(item.stage, item.requirement, item.requirement, index ? items[index - 1].requirement : null))
@@ -186,5 +241,5 @@ export function buildLivingScreenData(ops: any) {
   const fonoReadyStudioCount = new Set(governedFono.filter((row) => n(row["activation ready nests"]) > 0).map((row) => value(row, "studio id")).filter(Boolean)).size
   const fonoOccupiedStudioCount = new Set(governedFono.filter((row) => n(row["occupied nests"]) > 0).map((row) => value(row, "studio id")).filter(Boolean)).size
   const fonoOwner = person(governedFono.map((row) => value(row, "next action owner actor id")).find(Boolean) || fonoDemandRows.map((row) => value(row, "owner actor id")).find(Boolean) || "")
-  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, existingOccupancyRows, existingByTheatre, existingContracted, existingOccupied, existingVacant: Math.max(0, existingContracted - existingOccupied), existingOccupancyPercent: percent(existingOccupied, existingContracted), demandRows, supplyRows, proximityNodes, fonoPipeline, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, fonoOwner, fonoStudioCount, fonoReadyStudioCount, fonoOccupiedStudioCount, demandRequired, demandMatched, spContracted, spReady, spOccupied, spStudioCount: new Set(governedSp.map((row) => value(row, "studio id")).filter(Boolean)).size, collection, fonoCollection, spCollection, metricNumber, metricOwner, metricTemplate }
+  return { fonoSupply, fonoDemand, fonoRequirementStages, demandStages, supplyStages, occupancyRows, existingOccupancyRows, existingByTheatre, existingContracted, existingOccupied, existingVacant: Math.max(0, existingContracted - existingOccupied), existingOccupancyPercent: percent(existingOccupied, existingContracted), demandRows, supplyRows, proximityNodes, fonoPipeline: { ...fonoPipeline, report: fonoReport }, spPipeline, occupancyContracted, occupancyOccupied, occupancyPercent: percent(occupancyOccupied, occupancyContracted), fonoReady, fonoOccupied, fonoOwner, fonoStudioCount, fonoReadyStudioCount, fonoOccupiedStudioCount, demandRequired, demandMatched, spContracted, spReady, spOccupied, spStudioCount: new Set(governedSp.map((row) => value(row, "studio id")).filter(Boolean)).size, collection, fonoCollection, spCollection, metricNumber, metricOwner, metricTemplate }
 }

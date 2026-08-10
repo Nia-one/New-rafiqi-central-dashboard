@@ -23,8 +23,13 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { foc
   const shramDemand = live.demandRows
   const shramSupply = live.supplyRows
   const openDemandNodes = live.proximityNodes.filter(node => node.status !== "Matched")
+  const shramGap = Math.max(0, live.demandRequired - live.demandMatched)
+  // Keep the headline vertical-specific: FONO occupancy is not Shram Park output.
+  const mainPoint = live.demandRequired > 0
+    ? `${live.demandMatched.toLocaleString("en-IN")} of ${live.demandRequired.toLocaleString("en-IN")} named Śram Park demand records are matched; ${shramGap.toLocaleString("en-IN")} remain unmatched.`
+    : "No governed Śram Park demand records are available."
   return <DashboardSectionAccordion className="pillar-screen living-screen" ariaLabel="Living sections" sections={[
-    { title: "Main point", summary: "Named demand should become occupied Nests." },
+    { title: "Main point", summary: mainPoint },
     { title: "Allocation context", summary: "Review the active allocation mismatch and evidence." },
     { title: "Supply model", summary: "FONO and Śram Park operating model comparison." },
     { title: "Monthly pacing", summary: `FONO ${live.fonoOccupied.toLocaleString("en-IN")} · Śram Park ${live.demandMatched.toLocaleString("en-IN")} Members.` },
@@ -33,7 +38,7 @@ export function LivingScreen({ focus, allocationFocus, liveOpsData = {} }: { foc
     { title: "Śram Park supply", summary: `${openDemandNodes.length} open demand nodes need nearby options` },
     { title: "Existing occupancy", summary: `${live.existingOccupied.toLocaleString("en-IN")} occupied of ${live.existingContracted.toLocaleString("en-IN")} contracted Nests.` },
     { title: "Living summary", summary: `${live.occupancyOccupied.toLocaleString("en-IN")} occupied of ${live.occupancyContracted.toLocaleString("en-IN")} contracted Nests.` },
-  ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>Named demand should become occupied Nests.</strong></div><p>Compare both channels by Theatre, Studio, and activation date.</p></div><AllocationContextStrip mismatchId={allocationFocus} live={{ issue: `${Math.max(0, live.fonoReady - live.fonoOccupied).toLocaleString("en-IN")} activation-ready FONO Nests remain unoccupied`, owner: live.fonoOwner, current: `${live.fonoOccupied.toLocaleString("en-IN")} occupied`, target: `${live.fonoReady.toLocaleString("en-IN")} ready`, gap: `${Math.max(0, live.fonoReady - live.fonoOccupied).toLocaleString("en-IN")} Nest gap`, updated: String(liveOpsData?.meta?.updatedAt || liveOpsData?.fetchedAt || "current refresh") }} />
+  ]}><div className="decision-bar living-headline"><div><span>MAIN POINT</span><strong>{mainPoint}</strong></div><p>Automatically reconciled only from governed Śram Park demand and matching records.</p></div><AllocationContextStrip mismatchId={allocationFocus} live={{ channel: "ŚRAM PARK", issue: `${shramGap.toLocaleString("en-IN")} named demand records remain unmatched`, owner: live.metricOwner("shram_owner"), current: `${live.demandMatched.toLocaleString("en-IN")} matched`, target: `${live.demandRequired.toLocaleString("en-IN")} named demand`, gap: `${shramGap.toLocaleString("en-IN")} demand-to-Nest gap`, updated: String(liveOpsData?.meta?.updatedAt || liveOpsData?.fetchedAt || "current refresh"), action: "Convert named Śram Park demand into governed matched and occupied Nests." }} />
     <LivingSupplyModelReport liveData={live} refreshedAt={liveOpsData?.fetchedAt || liveOpsData?.meta?.updatedAt} />
     <div className="pacing-grid"><PacingCard channel="FONO" actual={live.fonoOccupied} target={live.fonoReady} owner={live.fonoOwner} /><PacingCard channel="Śram Park" actual={live.demandMatched} target={live.demandRequired} owner={live.metricOwner("shram_owner")} /></div>
     <section id="fono" className={`operating-section ${focus === "fono" ? "focused-section" : ""}`}>

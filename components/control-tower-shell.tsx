@@ -6,7 +6,9 @@ import { NiaDashboard } from "@/components/nia-dashboard"
 import { GlobalLiveSync } from "@/components/global-live-sync"
 import type { DashboardTab } from "@/lib/dashboard-model"
 import type { ComponentProps } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
+
+const ACTIVE_WORKSPACE_KEY = "rafiqi-active-workspace"
 
 type DashboardProps = ComponentProps<typeof NiaDashboard>
 
@@ -20,10 +22,21 @@ const workspaceTabs: Record<string, DashboardTab> = {
   "Collections": "Economics",
   "Nia margins": "Nia Margins",
   "Nia growth": "Nia Growth",
+  "Essentials": "Essentials",
 }
 
 export function ControlTowerShell(props: DashboardProps) {
   const [activeWorkspace, setActiveWorkspace] = useState<DashboardTab | null>(null)
+
+  useEffect(() => {
+    const stored = window.sessionStorage.getItem(ACTIVE_WORKSPACE_KEY) as DashboardTab | null
+    if (stored) setActiveWorkspace(stored)
+  }, [])
+
+  useEffect(() => {
+    if (activeWorkspace === null) window.sessionStorage.removeItem(ACTIVE_WORKSPACE_KEY)
+    else window.sessionStorage.setItem(ACTIVE_WORKSPACE_KEY, activeWorkspace)
+  }, [activeWorkspace])
 
   const workspace = activeWorkspace === null
     ? <ControlTower

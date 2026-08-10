@@ -15,6 +15,26 @@ const BOT_MIRRORS = [
 ] as const;
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const num = (v: unknown) => Number(String(v ?? "").replace(/[^0-9.-]/g, "")) || 0;
+const FULFILLED_STATUSES = new Set(["delivered", "fulfilled", "complete", "completed"]);
+const COLLECTED_PAYMENT_STATUSES = new Set(["paid", "collected", "captured", "settled", "completed", "complete"]);
+
+export const isFulfilledEssentialsOrder = (deliveryStatus: unknown, orderStatus: unknown) =>
+  FULFILLED_STATUSES.has(norm(deliveryStatus)) || FULFILLED_STATUSES.has(norm(orderStatus));
+
+export const essentialsCollectedAmount = (collectedAmount: unknown, paymentStatus: unknown, billedAmount: unknown) => {
+  const explicitlyCollected = num(collectedAmount);
+  if (explicitlyCollected > 0) return explicitlyCollected;
+  return COLLECTED_PAYMENT_STATUSES.has(norm(paymentStatus)) ? num(billedAmount) : 0;
+};
+
+export const latestEssentialsTimestamp = (current: unknown, candidate: unknown) => {
+  const currentText = String(current || "");
+  const candidateText = String(candidate || "");
+  const currentTime = Date.parse(currentText);
+  const candidateTime = Date.parse(candidateText);
+  if (!Number.isFinite(candidateTime)) return currentText;
+  return !Number.isFinite(currentTime) || candidateTime > currentTime ? candidateText : currentText;
+};
 const stableToken = (...parts: unknown[]) => crypto.createHash("sha1").update(parts.map(norm).join("|")).digest("hex").slice(0, 16).toUpperCase();
 const cell = (row: unknown[], headers: string[], ...names: string[]) => {
   const wanted = new Set(names.map(norm));
@@ -138,7 +158,7 @@ export async function ensureEssentialsBotSchema() {
     inventoryFormulaData.push({ range: inventoryFormulaRanges[5], values: [[`=ARRAYFORMULA(IF(A2:A="","",IF(COUNTIF(Order_Items!D$2:D,${productCode}2:${productCode})=0,"Yes","No")))`]] });
   }
   if (inventoryFormulaData.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: inventoryFormulaData } });
-  return { addedToTabs: data.map((entry) => entry.range.split("!")[0]), formulasAdded: [...formulaData, ...inventoryFormulaData].map((entry) => entry.range) };
+  return { addedToTabs: data.map((entry) => entry.range.split("!")[0]), formulasAdded: inventoryFormulaData.map((entry) => entry.range) };
 }
 
 async function upsert(tabName: string, keyHeader: string, records: Record<string, unknown>[]) {
@@ -154,6 +174,7 @@ async function upsert(tabName: string, keyHeader: string, records: Record<string
   const existing = new Map<string, number>();
   rows.slice(1).forEach((row, index) => { const key = norm(row[keyIndex]); if (key) existing.set(key, index + 2); });
   const append: unknown[][] = [];
+  const updates: { range: string; values: unknown[][] }[] = [];
   let updated = 0;
   for (const record of records) {
     const key = norm(record[keyHeader]);
@@ -165,7 +186,7 @@ async function upsert(tabName: string, keyHeader: string, records: Record<string
       return incoming === undefined || incoming === null || incoming === "" ? (prior[index] ?? "") : incoming;
     });
     if (rowNumber) {
-      await sheets.spreadsheets.values.update({ spreadsheetId, range: `${tabName}!A${rowNumber}`, valueInputOption: "USER_ENTERED", requestBody: { values: [output] } });
+      updates.push({ range: `${tabName}!A${rowNumber}`, values: [output] });
       updated++;
     } else append.push(output);
   }
@@ -176,13 +197,18 @@ async function upsert(tabName: string, keyHeader: string, records: Record<string
   // every governed record aligned with the canonical header row.
   if (append.length) {
     const startRow = Math.max(2, rows.length + 1);
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${tabName}!A${startRow}`,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: append },
-    });
+    const metadata = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties(sheetId,title,gridProperties.rowCount)" });
+    const target = metadata.data.sheets?.find((sheet) => sheet.properties?.title === tabName)?.properties;
+    const requiredRows = startRow + append.length - 1;
+    if (target?.sheetId != null && (target.gridProperties?.rowCount || 0) < requiredRows) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: [{ updateSheetProperties: { properties: { sheetId: target.sheetId, gridProperties: { rowCount: requiredRows } }, fields: "gridProperties.rowCount" } }] },
+      });
+    }
+    updates.push({ range: `${tabName}!A${startRow}`, values: append });
   }
+  if (updates.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "USER_ENTERED", data: updates } });
   return { inserted: append.length, updated };
 }
 
@@ -228,6 +254,7 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
     "order_item_id", "order_number", "product_code", "product_name",
     "direct_fulfilment_cost", "packaging_cost", "delivery_cost",
     "total_fulfilment_cost", "nia_contribution_margin", "source_updated_at",
+    "theatre_name", "studio_code", "studio_name",
   ];
   const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_SHEET_ID, fields: "sheets.properties(sheetId,title)" });
   if (!metadata.data.sheets?.some((sheet) => sheet.properties?.title === COST_INPUT_TAB)) {
@@ -237,19 +264,34 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
     });
     await sheets.spreadsheets.values.update({
       spreadsheetId: SOURCE_SHEET_ID,
-      range: `${COST_INPUT_TAB}!A1:J1`,
+      range: `${COST_INPUT_TAB}!A1:M1`,
       valueInputOption: "RAW",
       requestBody: { values: [headers] },
     });
   }
 
-  const current = await sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A:J`, valueRenderOption: "UNFORMATTED_VALUE" });
+  const headerResponse = await sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!1:1`, valueRenderOption: "UNFORMATTED_VALUE" });
+  const existingHeaders = (headerResponse.data.values?.[0] || []).map(String);
+  const mergedHeaders = [...existingHeaders];
+  headers.forEach((header) => {
+    if (!mergedHeaders.some((existing) => norm(existing) === norm(header))) mergedHeaders.push(header);
+  });
+  if (mergedHeaders.length !== existingHeaders.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SOURCE_SHEET_ID,
+      range: `${COST_INPUT_TAB}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [mergedHeaders] },
+    });
+  }
+
+  const current = await sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A:M`, valueRenderOption: "UNFORMATTED_VALUE" });
   const rows = (current.data.values || []) as unknown[][];
   const currentHeaders = (rows[0] || headers).map(String);
 
   const formulas = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SOURCE_SHEET_ID,
-    ranges: [`${COST_INPUT_TAB}!A2`, `${COST_INPUT_TAB}!B2`, `${COST_INPUT_TAB}!C2`, `${COST_INPUT_TAB}!D2`, `${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`, `${COST_INPUT_TAB}!J2`],
+    ranges: [`${COST_INPUT_TAB}!A2`, `${COST_INPUT_TAB}!B2`, `${COST_INPUT_TAB}!C2`, `${COST_INPUT_TAB}!D2`, `${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`, `${COST_INPUT_TAB}!J2`, `${COST_INPUT_TAB}!K2`, `${COST_INPUT_TAB}!L2`, `${COST_INPUT_TAB}!M2`],
     valueRenderOption: "FORMULA",
   });
   const formulaData: { range: string; values: string[][] }[] = [];
@@ -274,6 +316,15 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
   if (!formulas.data.valueRanges?.[6].values?.[0]?.[0]) {
     formulaData.push({ range: `${COST_INPUT_TAB}!J2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:J,10,FALSE),\"\")))"]] });
   }
+  if (!formulas.data.valueRanges?.[7].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!K2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(order_no,Orders!B:B,Orders!T:T),\"UNRESOLVED\"))))"]] });
+  }
+  if (!formulas.data.valueRanges?.[8].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!L2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!B:B),\"\"))))"]] });
+  }
+  if (!formulas.data.valueRanges?.[9].values?.[0]?.[0]) {
+    formulaData.push({ range: `${COST_INPUT_TAB}!M2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(order_no,Orders!B:B,Orders!S:S),\"\"))))"]] });
+  }
   if (formulaData.length) {
     await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
   }
@@ -291,32 +342,82 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
   return { byItemId, inserted: 0, preserved: byItemId.size };
 }
 
+async function readEssentialSummaryInputs() {
+  const sheets = await client();
+  const response = await sheets.spreadsheets.values.batchGet({
+    spreadsheetId: SOURCE_SHEET_ID,
+    ranges: [`${COST_INPUT_TAB}!R2:X200`, `${COST_INPUT_TAB}!AB2:AF5`],
+    valueRenderOption: "UNFORMATTED_VALUE",
+  });
+  type StudioSummary = { theatre: string; studioName: string; studioId: string; activeMembers: number; buyingMembers: number; buyingValue: number; studioRevenue: number };
+  const studios = new Map<string, StudioSummary>();
+  const studioRows: StudioSummary[] = [];
+  for (const row of (response.data.valueRanges?.[0].values || []) as unknown[][]) {
+    const studioName = String(row[1] || "").trim();
+    const studioId = String(row[2] || "").trim();
+    if (!studioName || !studioId) continue;
+    const summary = { theatre: String(row[0] || "").trim(), studioName, studioId, activeMembers: num(row[3]), buyingMembers: num(row[4]), buyingValue: num(row[5]), studioRevenue: num(row[6]) };
+    studioRows.push(summary);
+    studios.set(norm(studioId), summary);
+    studios.set(norm(studioName), summary);
+  }
+  const categories = new Map<string, { curryUniqueMembers: number; curryBuyingValue: number; internetEquipmentUniqueMembers: number; internetEquipmentBuyingValue: number }>();
+  for (const row of (response.data.valueRanges?.[1].values || []) as unknown[][]) {
+    const theatre = String(row[0] || "").trim();
+    if (!theatre) continue;
+    categories.set(norm(theatre), { curryUniqueMembers: num(row[1]), curryBuyingValue: num(row[2]), internetEquipmentUniqueMembers: num(row[3]), internetEquipmentBuyingValue: num(row[4]) });
+  }
+  return { studios, studioRows, categories };
+}
+
 export async function syncEssentialsBotData() {
   const source = await client();
-  const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ"];
+  const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ", "Studio_Master!A:Q"];
   const result = await source.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges });
   const rawTables = (result.data.valueRanges || []).map((v) => (v.values || []) as unknown[][]);
   const mirrors = await mirrorBotTables(rawTables);
-  const [orders, items, deliveries, customers, guests, inventory] = rawTables.map((values) => table(values));
+  const [orders, items, deliveries, customers, guests, inventory, studioMaster] = rawTables.map((values) => table(values));
+  const studioDirectory = new Map<string, { id: string; name: string; theatre: string; active: boolean }>();
+  for (const row of studioMaster.rows) {
+    const entry = {
+      id: String(cell(row, studioMaster.headers, "id", "studio_id") || "").trim(),
+      name: String(cell(row, studioMaster.headers, "studio_name") || "").trim(),
+      theatre: String(cell(row, studioMaster.headers, "theatre_name", "theatre_code") || "UNRESOLVED").trim(),
+      active: ["true", "yes", "1", "active"].includes(norm(cell(row, studioMaster.headers, "is_active"))),
+    };
+    for (const alias of [entry.id, cell(row, studioMaster.headers, "studio_code"), entry.name]) if (String(alias || "").trim()) studioDirectory.set(norm(alias), entry);
+  }
   const costInputs = await syncCostInputRows(items);
+  const summaryInputs = await readEssentialSummaryInputs();
+  for (const summary of summaryInputs.studioRows) {
+    const directory = studioDirectory.get(norm(summary.studioId));
+    if (directory?.id) summaryInputs.studios.set(norm(directory.id), summary);
+  }
   const customerById = new Map(customers.rows.map((r) => [norm(cell(r, customers.headers, "id")), r]));
   const guestById = new Map(guests.rows.map((r) => [norm(cell(r, guests.headers, "id")), r]));
   const deliveryByOrder = new Map(deliveries.rows.map((r) => [norm(cell(r, deliveries.headers, "order_id")), r]));
   const itemByOrder = new Map<string, unknown[][]>();
   items.rows.forEach((r) => { const key = norm(cell(r, items.headers, "order_id")); if (key) itemByOrder.set(key, [...(itemByOrder.get(key) || []), r]); });
   const eligibleByStudio = new Map<string, Set<string>>();
+  const eligibleStudioMeta = new Map<string, { studio: string; studioName: string; theatre: string }>();
   const registerEligible = (row: unknown[], headers: string[], kind: string) => {
-    const studio = String(cell(row, headers, "studio_id", "studio", "studio_code") || "").trim();
+    const rawStudio = String(cell(row, headers, "studio_id", "studio", "studio_code") || "").trim();
+    const directory = studioDirectory.get(norm(rawStudio)) || studioDirectory.get(norm(cell(row, headers, "studio_name")));
+    if (!directory?.active) return;
+    const studio = directory?.id || rawStudio;
     const member = String(cell(row, headers, "id", "customer_id", "guest_id", "mobile", "phone") || "").trim();
     if (!studio || !member) return;
     const key = norm(studio);
+    const theatre = directory?.theatre || String(cell(row, headers, "theatre_code", "theatre_name", "theatre") || "UNRESOLVED").trim();
+    const studioName = directory?.name || String(cell(row, headers, "studio_name") || studio).trim();
     const members = eligibleByStudio.get(key) || new Set<string>();
     members.add(`${kind}:${norm(member)}`);
     eligibleByStudio.set(key, members);
+    eligibleStudioMeta.set(key, { studio, studioName, theatre });
   };
   customers.rows.forEach((row) => registerEligible(row, customers.headers, "customer"));
   guests.rows.forEach((row) => registerEligible(row, guests.headers, "guest"));
-  type Group = { studio: string; theatre: string; captured: string; members: Set<string>; placed: number; fulfilled: number; billed: number; collected: number; cogs: number; fulfilment: number; savings: number; unresolved: number };
+  type Group = { studio: string; studioName: string; theatre: string; captured: string; members: Set<string>; placed: number; fulfilled: number; billed: number; collected: number; cogs: number; fulfilment: number; savings: number; unresolved: number };
   type CohortMember = { dates: number[]; products: Set<string> };
   type CohortGroup = { studio: string; theatre: string; captured: string; members: Map<string, CohortMember>; gmv: number; products: Set<string> };
   const groups = new Map<string, Group>();
@@ -326,23 +427,27 @@ export async function syncEssentialsBotData() {
     const orderId = norm(cell(row, orders.headers, "id", "order_id"));
     const customer = customerById.get(norm(cell(row, orders.headers, "customer_id")));
     const guest = guestById.get(norm(cell(row, orders.headers, "guest_id")));
-    const studio = String(cell(row, orders.headers, "studio_id") || (customer && cell(customer, customers.headers, "studio_id")) || (guest && cell(guest, guests.headers, "studio_id")) || `AUTO-STUDIO-${stableToken(orderId)}`);
+    const rawStudio = String(cell(row, orders.headers, "studio_id") || (customer && cell(customer, customers.headers, "studio_id", "studio_code")) || (guest && cell(guest, guests.headers, "studio_id", "studio_code")) || `AUTO-STUDIO-${stableToken(orderId)}`);
+    const studioDirectoryEntry = studioDirectory.get(norm(rawStudio)) || studioDirectory.get(norm(cell(row, orders.headers, "studio_name")));
+    const studio = studioDirectoryEntry?.id || rawStudio;
     const theatre = String(cell(row, orders.headers, "theatre_code", "theatre_name") || (customer && cell(customer, customers.headers, "theatre_code", "theatre_name")) || (guest && cell(guest, guests.headers, "theatre_code", "theatre_name")) || "UNRESOLVED");
+    const studioName = studioDirectoryEntry?.name || String(cell(row, orders.headers, "studio_name") || (customer && cell(customer, customers.headers, "studio_name")) || (guest && cell(guest, guests.headers, "studio_name")) || studio);
     const captured = String(cell(row, orders.headers, "updated_at", "order_date", "created_at"));
     // The Essentials page is a current cumulative operating view. Keep one
     // row per Studio so point-in-time eligible Members are never double-counted
     // when the same Studio receives orders in several hours.
     const key = studio;
-    const g = groups.get(key) || { studio, theatre, captured, members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 };
+    const g = groups.get(key) || { studio, studioName, theatre, captured, members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 };
     g.placed++;
     g.members.add(norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId);
     if (studio.startsWith("AUTO-STUDIO-")) g.unresolved++;
     const delivery = deliveryByOrder.get(orderId);
     const recordedDeliveryStatus = norm((delivery && cell(delivery, deliveries.headers, "delivery_status")) || cell(row, orders.headers, "order_status"));
-    const deliveryStatus = ["delivered", "fulfilled", "complete", "completed"].includes(recordedDeliveryStatus) ? recordedDeliveryStatus : "delivered";
-    if (["delivered", "fulfilled", "complete", "completed"].includes(deliveryStatus)) g.fulfilled++;
-    g.billed += num(cell(row, orders.headers, "grand_total", "subtotal"));
-    g.collected += num(cell(row, orders.headers, "collected_amount")) || num(cell(row, orders.headers, "grand_total", "subtotal"));
+    if (isFulfilledEssentialsOrder(recordedDeliveryStatus, cell(row, orders.headers, "order_status"))) g.fulfilled++;
+    const billedAmount = num(cell(row, orders.headers, "grand_total", "subtotal"));
+    g.billed += billedAmount;
+    g.collected += essentialsCollectedAmount(cell(row, orders.headers, "collected_amount"), cell(row, orders.headers, "payment_status"), billedAmount);
+    g.captured = latestEssentialsTimestamp(g.captured, captured);
     const memberKey = norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId;
     const cohort = cohortGroups.get(norm(studio)) || { studio, theatre, captured, members: new Map<string, CohortMember>(), gmv: 0, products: new Set<string>() };
     const cohortMember = cohort.members.get(memberKey) || { dates: [], products: new Set<string>() };
@@ -372,7 +477,7 @@ export async function syncEssentialsBotData() {
     const activationId = `BOT-ACTV-${stableToken(customerRef, studio)}`;
     const prior = activationGroups.get(activationId);
     const billed = num(cell(row, orders.headers, "grand_total", "subtotal"));
-    const collected = num(cell(row, orders.headers, "collected_amount")) || billed;
+    const collected = essentialsCollectedAmount(cell(row, orders.headers, "collected_amount"), cell(row, orders.headers, "payment_status"), billed);
     activationGroups.set(activationId, {
       "activation id": activationId,
       "member token": memberToken,
@@ -392,16 +497,48 @@ export async function syncEssentialsBotData() {
   const unresolvedStudioOrders = [...groups.values()]
     .filter((group) => group.studio.startsWith("AUTO-STUDIO-"))
     .reduce((sum, group) => sum + group.placed, 0);
-  const hourly = [...groups.entries()].map(([key, g]) => ({
-    "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`, "theatre id": g.theatre, "studio id": g.studio,
-    "eligible members": eligibleByStudio.get(norm(g.studio))?.size || g.members.size,
-    "buying members": g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
-    "essentials billed inr": g.billed, "essentials collected inr": g.collected, "product cogs inr": g.cogs,
+  // Eligibility is a population metric, not an order metric. Emit Studios with
+  // eligible Members even when they have no order yet so attach rate uses the
+  // complete Bot population on both Essentials and Business Report screens.
+  for (const [key, meta] of eligibleStudioMeta) {
+    if (!groups.has(key)) groups.set(key, { studio: meta.studio, studioName: meta.studioName, theatre: meta.theatre, captured: "", members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 });
+  }
+  // UI_Occupancy is the authoritative population frame. Do not retain Studios
+  // that exist only in Studio_Master, Guest_Master, or historical Bot orders.
+  const reportGroups = new Map<string, Group>();
+  for (const summary of summaryInputs.studioRows) {
+    const directory = studioDirectory.get(norm(summary.studioId));
+    const sourceGroup = directory?.id ? groups.get(directory.id) || groups.get(norm(directory.id)) : groups.get(summary.studioId) || groups.get(norm(summary.studioId));
+    const key = norm(summary.studioId);
+    reportGroups.set(key, sourceGroup
+      ? { ...sourceGroup, studio: summary.studioId, studioName: summary.studioName, theatre: summary.theatre }
+      : { studio: summary.studioId, studioName: summary.studioName, theatre: summary.theatre, captured: "", members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 });
+  }
+  const categoryApplied = new Set<string>();
+  const hourly = [...reportGroups.entries()].map(([key, g]) => {
+    // Studio names are not unique (for example, Krishna Kumar appears more
+    // than once). The UI Occupancy Studio ID is the governed join key.
+    const summary = summaryInputs.studios.get(norm(g.studio)) || summaryInputs.studios.get(norm(g.studioName));
+    const theatre = summary?.theatre || g.theatre;
+    const theatreKey = norm(theatre);
+    const category = categoryApplied.has(theatreKey) ? undefined : summaryInputs.categories.get(theatreKey);
+    if (category) categoryApplied.add(theatreKey);
+    return ({
+    "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`, "theatre id": theatre, "studio id": g.studio,
+    "eligible members": summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size),
+    "buying members": summary?.buyingMembers ?? g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
+    "essentials billed inr": summary?.buyingValue ?? g.billed, "essentials collected inr": g.collected, "product cogs inr": g.cogs,
     "direct fulfilment cost inr": g.fulfilment, "member savings inr": g.savings, "nia margin inr": g.billed - g.cogs - g.fulfilment,
-    "attach pct": (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) > 0
-      ? g.members.size / (eligibleByStudio.get(norm(g.studio))?.size || g.members.size) : "",
+    "studio revenue inr": summary?.studioRevenue || "",
+    // Write explicit zeroes for non-summary rows. Blank values are preserved by
+    // upsert, which would otherwise leave a prior category allocation behind
+    // when the first Studio for a Theatre changes between syncs.
+    "curry unique members": category?.curryUniqueMembers ?? 0, "curry buying value inr": category?.curryBuyingValue ?? 0,
+    "internet equipment unique members": category?.internetEquipmentUniqueMembers ?? 0, "internet equipment buying value inr": category?.internetEquipmentBuyingValue ?? 0,
+    "attach pct": (summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size)) > 0
+      ? (summary?.buyingMembers ?? g.members.size) / (summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size)) : "",
     "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
-  }));
+  }); });
   const quarantined: Record<string, unknown>[] = [];
   const inventoryRows = inventory.rows.map((r) => ({
     "sku": cell(r, inventory.headers, "product_code", "product_id", "id"), "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
@@ -464,6 +601,7 @@ export async function syncEssentialsBotData() {
     metricRow("essentials_headline_cm", `₹${totalMargin.toLocaleString("en-IN")}`),
     metricRow("essentials_headline_savings", `₹${totalSavings.toLocaleString("en-IN")}`),
   ];
+  await ensureBackendColumns("Essentials_Hourly", ["studio revenue inr", "curry unique members", "curry buying value inr", "internet equipment unique members", "internet equipment buying value inr"]);
   await ensureBackendColumns("Essentials_Inventory", ["owned inventory value"]);
   await ensureBackendColumns("Essentials_Cohorts", ["cohort id", "member group", "theatre", "eligible", "buyers", "attach", "gmv", "aov", "frequency", "d30", "d60", "d90", "churn", "products / member", "captured at", REPORTING_MONTH_HEADER]);
   await ensureBackendColumns("Essentials_Dashboard", ["key", "value text", "updated at"]);
@@ -490,7 +628,7 @@ export async function syncEssentialsBotData() {
   const removedStaleCohorts = await reconcileBotOwnedRows("Essentials_Cohorts", "cohort id", new Set(cohortRows.map((row) => norm(row["cohort id"]))), (row, headers) => norm(cell(row, headers, "cohort id")).startsWith("bot-ess-group-"));
   return {
     mirrors,
-    sourceRows: { orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length },
+    sourceRows: { orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length, studios: studioMaster.rows.length },
     costInputs: { inserted: costInputs.inserted, preserved: costInputs.preserved },
     unresolvedStudioOrders,
     essentialsHourly: { ...essentialsHourly, removedStale: removedStaleHourly },

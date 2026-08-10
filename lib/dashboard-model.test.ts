@@ -35,7 +35,7 @@ test("visual system uses semantic tones and reserves blue for interaction", () =
 })
 
 test("top navigation uses exact business-model order without former screens", () => {
-  assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
+  assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
   assert.equal(DASHBOARD_TABS.at(-1), "Despatch")
   for (const former of ["Śram Park", "FONO", "Demand"]) assert.equal((DASHBOARD_TABS as readonly string[]).includes(former), false)
 })
@@ -87,7 +87,7 @@ test("post-login starts directly in Self Drive instead of the obsolete chooser",
 })
 
 test("Self Learn puts Member NPS before People and ends with learning history", () => {
-  assert.deepEqual(SELF_LEARN_TABS, ["Overview", "Living", "Work", "Essentials", "Member Feedback", "People", "Definitions"])
+  assert.deepEqual(SELF_LEARN_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "Member Feedback", "People", "Definitions"])
 })
 
 test("local previews allow both supported development hosts", () => {

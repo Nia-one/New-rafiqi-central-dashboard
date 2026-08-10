@@ -1,6 +1,7 @@
 "use client"
 
 import { RefreshCw } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 const SYNC_SECONDS = 45
@@ -11,6 +12,7 @@ const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
 type SyncState = "ready" | "syncing" | "retrying" | "failed"
 
 export function GlobalLiveSync() {
+  const router = useRouter()
   const tabId = useRef(globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
   const inFlight = useRef(false)
   const [seconds, setSeconds] = useState(SYNC_SECONDS)
@@ -52,20 +54,19 @@ export function GlobalLiveSync() {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         setState(attempt === 0 ? "syncing" : "retrying")
         try {
-          const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store" })
+          const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store" })
           if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
           const report = await response.json() as { changedRows?: number }
           success = true
           setState("ready")
-          // A server-component refresh can preserve stale client props. Reload
-          // only when rows actually changed so every dashboard workspace moves
-          // to one consistent snapshot without disrupting unchanged cycles.
+          // Refresh the server-component payload in place. Next preserves the
+          // mounted client shell, so the active workspace, mode, focused card,
+          // filters and scroll position do not jump back to Control Tower.
           if ((report.changedRows ?? 0) > 0) {
-            // localStorage events notify the other open dashboard tabs. The
-            // tab doing the sync reloads itself below; follower tabs reload
-            // from the storage listener so none remain on stale server props.
+            // localStorage events notify other open dashboard tabs. Each tab
+            // refreshes only its data payload and keeps its own UI location.
             window.localStorage.setItem(LAST_CHANGED_SYNC_KEY, String(Date.now()))
-            window.location.reload()
+            router.refresh()
           }
           break
         } catch {
@@ -78,7 +79,7 @@ export function GlobalLiveSync() {
       releaseLease()
       if (!success) scheduleNext()
     }
-  }, [acquireLease, releaseLease, scheduleNext])
+  }, [acquireLease, releaseLease, router, scheduleNext])
 
   useEffect(() => {
     const current = Number(window.localStorage.getItem(NEXT_SYNC_KEY) || 0)
@@ -93,7 +94,7 @@ export function GlobalLiveSync() {
     const timer = window.setInterval(tick, 1000)
     const manual = () => void synchronize()
     const changedInAnotherTab = (event: StorageEvent) => {
-      if (event.key === LAST_CHANGED_SYNC_KEY && event.newValue) window.location.reload()
+      if (event.key === LAST_CHANGED_SYNC_KEY && event.newValue) router.refresh()
     }
     window.addEventListener("rafiqi:sync-now", manual)
     window.addEventListener("storage", changedInAnotherTab)
@@ -103,7 +104,7 @@ export function GlobalLiveSync() {
       window.removeEventListener("storage", changedInAnotherTab)
       releaseLease()
     }
-  }, [releaseLease, scheduleNext, synchronize])
+  }, [releaseLease, router, scheduleNext, synchronize])
 
   const label = state === "syncing" ? "Syncing all live feeds…"
     : state === "retrying" ? "Retrying live sync…"

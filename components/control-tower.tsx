@@ -152,6 +152,13 @@ export function canonicalMemberAddsControl(summary: NewAddsPreview["taskSummary"
   })
 }
 
+export function governanceConsole(record: { domain?: unknown; title?: unknown; exceptionId?: unknown }) {
+  const domain = String(record.domain || "Operations")
+  const identity = `${String(record.title || "")} ${String(record.exceptionId || "")}`.toLowerCase()
+  if (identity.includes("nia growth") || identity.includes("nia-growth")) return "Nia Growth"
+  return domain
+}
+
 export function buildControlTowerLivingLoop(liveOpsData: any) {
   const living = buildLivingScreenData(liveOpsData)
   return {
@@ -217,7 +224,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   ]
   const governanceRecords = (controlledAutonomyPreview.routineLoop.records ?? []) as any[]
   const governanceAlarms: readonly (readonly [string, string, string, string, string, string])[] = governanceRecords.map((record) => [
-    String(record.title || record.exceptionId), String(record.exceptionId), String(record.domain || "Operations"), String(record.ownerActorId || "Unassigned"), "Governed clock", String(record.state || "Detected"),
+    String(record.title || record.exceptionId), String(record.exceptionId), governanceConsole(record), String(record.ownerActorId || "Unassigned"), "Governed clock", String(record.state || "Detected"),
   ])
   const enterpriseAlarms: readonly (readonly [string, string, string, string, string, string])[] = (enterpriseDemandPreview?.exceptions ?? []).map((exception) => [
     exception.issue, exception.exceptionId, "Enterprise Demand", exception.owner || "Unassigned", displayDate(exception.dueAt), "New",
@@ -271,6 +278,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const [feedHeld, setFeedHeld] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [focusedAlarm, setFocusedAlarm] = useState<string>(alarms[0]?.[0] ?? "")
+  const [focusedLoop, setFocusedLoop] = useState<string>("")
   const [consoleEvents, setConsoleEvents] = useState<string[]>([])
   const [alarmStates, setAlarmStates] = useState<Record<string, string>>({})
   const [alarmEvents, setAlarmEvents] = useState<{ title: string; detail: string; at: string }[]>([])
@@ -328,7 +336,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
               <details className="tower-evidence"><summary>View evidence and recovery detail</summary><div className="tower-evidence-body"><div><span className="tower-kicker">Root cause</span><p>{view.rootCause}</p><span className="tower-kicker">Evidence to close</span>{view.evidence.map((item) => <p key={item}><CheckCircle2 aria-hidden />{item}</p>)}<p><ShieldCheck aria-hidden />Verifier · {view.verifier}</p></div><div className="tower-fix-options"><article data-chosen="true"><span>Governed route</span><strong>{view.governedRoute}</strong><small>Highest eligible route within the current control boundary.</small></article></div></div><div className="tower-fix-boundary"><p><span>Approval</span><strong>{view.approval}</strong></p><p><span>Escalation</span><strong>{view.escalation}</strong></p></div></details>
             </section>
 
-            <section className="tower-section" aria-label="Operating board"><header className="tower-section-heading"><div><span className="tower-kicker">Live control</span><h2>Operating board</h2></div><div className="tower-board-heading-meta"><p>{visibleLoops.length} {visibleLoops.length === 1 ? "loop" : "loops"} in view</p><ul className="tower-state-key" aria-label="Operating state key"><li>Verified current</li><li>Still open</li></ul></div></header><div className="tower-board">{visibleLoops.map((loop) => <article className="tower-board-tile" data-state="unconfirmed" key={loop.name}><button className="tower-tile-focus" type="button" aria-label={`Focus ${loop.name}`}><span>{loop.name}</span><ShieldAlert aria-hidden /></button><dl><div data-measure="verified"><dt>Verified current</dt><dd>{loop.current}</dd></div><div><dt>Target</dt><dd>{loop.target}</dd></div><div data-measure="unresolved"><dt>Still open</dt><dd>{loop.gap}</dd></div></dl><div className="tower-tile-meta"><span><Clock3 aria-hidden />Due · {loop.due}</span><span><ShieldCheck aria-hidden />Data updated · {loop.verified}</span></div><button className="tower-open-workspace" type="button" onClick={() => onOpenWorkspace?.(loop.name)}>Open workspace<ArrowUpRight aria-hidden /></button></article>)}</div></section>
+            <section className="tower-section" aria-label="Operating board"><header className="tower-section-heading"><div><span className="tower-kicker">Live control</span><h2>Operating board</h2></div><div className="tower-board-heading-meta"><p>{visibleLoops.length} {visibleLoops.length === 1 ? "loop" : "loops"} in view</p><ul className="tower-state-key" aria-label="Operating state key"><li>Verified current</li><li>Still open</li></ul></div></header><div className="tower-board">{visibleLoops.map((loop) => <article className="tower-board-tile" data-state="unconfirmed" data-focused={focusedLoop === loop.name || undefined} key={loop.name}><button className="tower-tile-focus" type="button" aria-label={`Focus ${loop.name}`} aria-pressed={focusedLoop === loop.name} onClick={() => setFocusedLoop(loop.name)}><span>{loop.name}</span><ShieldAlert aria-hidden /></button><dl><div data-measure="verified"><dt>Verified current</dt><dd>{loop.current}</dd></div><div><dt>Target</dt><dd>{loop.target}</dd></div><div data-measure="unresolved"><dt>Still open</dt><dd>{loop.gap}</dd></div></dl><div className="tower-tile-meta"><span><Clock3 aria-hidden />Due · {loop.due}</span><span><ShieldCheck aria-hidden />Data updated · {loop.verified}</span></div><button className="tower-open-workspace" type="button" onClick={() => onOpenWorkspace?.(loop.name)}>Open workspace<ArrowUpRight aria-hidden /></button></article>)}</div></section>
 
             {activeConsole === "All consoles" || activeConsole === "Enterprise Demand" ? <Funnel title="Enterprise demand funnel" weak="Site visit" stages={enterpriseStages} source="Enterprise_Demand governed rows" /> : null}
             {activeConsole === "All consoles" || activeConsole === "Member Adds" ? <Funnel title="Member-adds funnel" weak="Filled" stages={memberStages} source="FONO + Shrampark + Enterprise via Enterprise_Demand" /> : null}

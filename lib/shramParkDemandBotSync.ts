@@ -4,7 +4,10 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 import { ownerFor } from "./ownerRegistry";
 
-const SOURCE_SHEET_ID = process.env.SHRAM_PARK_DEMAND_BOT_SHEET_ID || "1cF4YdD3ydSwqhKCN5KzSV3CdATLZaiTR-Gu0Xm39d9Y";
+// This is the governed Nia Demand Bot — Live workbook. Do not let a stale
+// deployment environment point reconciliation at a different/empty sheet,
+// because that would incorrectly classify all governed SP rows as stale.
+const SOURCE_SHEET_ID = "1cF4YdD3ydSwqhKCN5KzSV3CdATLZaiTR-Gu0Xm39d9Y";
 const SOURCE_TAB = process.env.SHRAM_PARK_DEMAND_BOT_TAB || "Demand Visit Data";
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const slug = (value: unknown) => String(value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28);
@@ -124,9 +127,13 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
   if (!longitude || longitude < -180 || longitude > 180) errors.push("longitude_missing_or_invalid");
   if (!openedAt || Number.isNaN(new Date(openedAt).getTime())) errors.push("submission_timestamp_invalid");
 
-  const status = /lost|no action/i.test(followUp) ? "Closed"
+  // Keep the Bot Sheet's actual funnel meaning. In particular, Interested is
+  // a real stage of its own; collapsing it into Lead made both Shram Park and
+  // Enterprise report the wrong distribution.
+  const status = /drop|lost|no action|reject|cancel/i.test(followUp) ? "Dropped"
     : /won|contracted|agreement signed/i.test(followUp) ? "Contracted"
-      : /proposal|quote|commercial|contracting|escalate/i.test(followUp) ? "Contracting"
+      : /interest|proposal|quote/i.test(followUp) ? "Interested"
+        : /commercial|contracting|escalate/i.test(followUp) ? "Contracting"
         : "Lead";
   const owner = shramParkOwnerForTheatre(theatre) || String(value(row, headers, "Owner Name")).trim() || String(value(row, headers, "Assigned To")).trim();
   const record: ShramParkDemandRecord = {
@@ -137,6 +144,7 @@ export function mapShramParkDemandRow(row: unknown[], headers: string[]) {
     "enterprise name": company,
     "plant id": stable("PLANT", `${company}-${location}`),
     "plant name": location,
+    "theatre id": theatre,
     latitude,
     longitude,
     "role required": "Shram Park lead",
@@ -218,6 +226,16 @@ async function upsertEnterpriseDemand(records: ShramParkDemandRecord[]) {
   return { inserted: append.length, updated: updates.length };
 }
 
+export function shramParkRowsToDelete(rows: unknown[][], keyIndex: number, desired: ReadonlySet<string>) {
+  const lastRowForKey = new Map<string, number>();
+  rows.slice(1).forEach((row, index) => {
+    const key = norm(row[keyIndex]);
+    if (key.startsWith("sp-bot-")) lastRowForKey.set(key, index + 1);
+  });
+  return rows.slice(1).map((row, index) => ({ key: norm(row[keyIndex]), rowIndex: index + 1 })).filter(({ key, rowIndex }) =>
+    key.startsWith("sp-bot-") && (!desired.has(key) || lastRowForKey.get(key) !== rowIndex));
+}
+
 async function reconcileShramParkDemand(records: ShramParkDemandRecord[]) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
@@ -232,7 +250,11 @@ async function reconcileShramParkDemand(records: ShramParkDemandRecord[]) {
   const sheetId = metadata.data.sheets?.find((sheet) => sheet.properties?.title === "Enterprise_Demand")?.properties?.sheetId;
   if (keyIndex < 0 || sheetId == null) return 0;
   const desired = new Set(records.map((record) => norm(record["demand id"])));
-  const stale = rows.slice(1).map((row, index) => ({ key: norm(row[keyIndex]), rowIndex: index + 1 })).filter(({ key }) => key.startsWith("sp-bot-") && !desired.has(key));
+  // Historical syncs could append an already-governed demand ID more than
+  // once. Keep the final row (the row upsert updates) and remove both stale
+  // IDs and earlier duplicates so dashboard counts stay one source row = one
+  // governed demand record.
+  const stale = shramParkRowsToDelete(rows, keyIndex, desired);
   if (stale.length) await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: stale.sort((a, b) => b.rowIndex - a.rowIndex).map(({ rowIndex }) => ({ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 } } })) } });
   return stale.length;
 }

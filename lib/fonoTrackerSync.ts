@@ -21,10 +21,31 @@ const SUPPLY_STAGES = new Set(["contracted", "onboarded-(takeover-pending)"]);
 
 const sourceDate = (value: unknown) => { const raw = String(value ?? "").trim(); if (!raw) return ""; const parsed = new Date(raw); return Number.isNaN(parsed.getTime()) ? raw : parsed.toISOString(); };
 
-async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, tab: string, keyHeader: string, prefix: string, records: Record<string, unknown>[]) {
+async function replaceOwned(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, tab: string, keyHeader: string, prefix: string, records: Record<string, unknown>[], requiredHeaders: string[] = []) {
   const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${tab}!A:AZ` });
   const rows = (response.data.values || []) as unknown[][];
   const headers = (rows[0] || []).map(String);
+  const missingHeaders = requiredHeaders.filter((required) => !headers.some((header) => norm(header) === norm(required)));
+  if (missingHeaders.length) {
+    const startColumn = headers.length + 1;
+    const columnName = (column: number) => {
+      let value = column;
+      let result = "";
+      while (value > 0) {
+        value -= 1;
+        result = String.fromCharCode(65 + (value % 26)) + result;
+        value = Math.floor(value / 26);
+      }
+      return result;
+    };
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tab}!${columnName(startColumn)}1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [missingHeaders] },
+    });
+    headers.push(...missingHeaders);
+  }
   const keyIndex = headers.findIndex((header) => norm(header) === norm(keyHeader));
   if (keyIndex < 0) throw new Error(`${tab} is missing ${keyHeader}`);
   const keep = rows.slice(1).filter((row) => !String(row[keyIndex] ?? "").startsWith(prefix));
@@ -60,7 +81,7 @@ export async function syncFonoTrackerData() {
     const date = sourceDate(cell(row, headers, "Date"));
     const acquirer = String(cell(row, headers, "Acquirer")).trim();
     const ownerActorId = fonoActorId(acquirer);
-    const theatre = String(cell(row, headers, "Theatre")).trim();
+    const theatre = String(cell(row, headers, "Theatre", "Theater", "Theatre Name", "Theater Name", "Theatre_ID", "Theater_ID")).trim();
     const corridor = String(cell(row, headers, "Corridor")).trim();
     const prospect = String(cell(row, headers, "Prospect (PG / owner)")).trim();
     const locationId = String(cell(row, headers, "Location_ID", "Location ID")).trim();
@@ -116,7 +137,7 @@ export async function syncFonoTrackerData() {
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
     }];
   });
-  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords]);
+  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords], ["theatre id"]);
   const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
   const peopleWritten = await replaceOwned(sheets, backendId, "People_Roster", "actor id", "ACT-FONO-", [...actorRecords.values()]);
   return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,

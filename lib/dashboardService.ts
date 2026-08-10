@@ -124,7 +124,10 @@ export async function getDashboardData(period: string = "all") {
     "Studio_Master!A:Z",
     "People_Roster!A:Z",
     "Owner_Registry!A:Z",
-    "Enterprise_Demand!A:Z",
+    // FONO/imported demand dimensions (including theatre id and reporting
+    // metadata) can be appended after the original A:Z schema. Read the full
+    // governed range so every consumer receives the same canonical row.
+    "Enterprise_Demand!A:AZ",
     "Member_Activation!A:Z",
     "Hourly_Heartbeat!A:Z",
     "Incident_Log!A:Z",

@@ -14,9 +14,9 @@ const railCss = readFileSync(new URL("./central-sidebar.css", import.meta.url), 
 
 test("the route inventory remains complete and unchanged by the presentation redesign", () => {
   assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
-  assert.deepEqual(SELF_LEARN_TABS, ["Overview", "Living", "Work", "Essentials", "Member Feedback", "People", "Definitions"])
+  assert.deepEqual(SELF_LEARN_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "Member Feedback", "People", "Definitions"])
   assert.deepEqual(FINANCE_TABS, ["Finance control"])
-  assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
+  assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])
 })
 
 test("all current workspaces share exactly one global rail and a compact context strip", () => {

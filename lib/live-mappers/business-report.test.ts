@@ -1,0 +1,67 @@
+import assert from "node:assert/strict"
+import test from "node:test"
+import { buildBusinessReportData } from "./business-report"
+
+test("Business Report projects the governed Shram Park lane as Enterprise Demand and never labels it BD", () => {
+  const report = buildBusinessReportData({
+    living: [{ "studio id": "A", "theatre id": "RN", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 90 }],
+    enterpriseDemand: [
+      { "demand id": "SP-BOT-1", status: "Lead", "theatre id": "DCN", "headcount required": 1 },
+      { "demand id": "SP-BOT-2", status: "Interested", "theatre id": "DCN", "headcount required": 1 },
+      { "demand id": "SP-BOT-3", status: "Closed", "theatre id": "WLG", "headcount required": 1 },
+      { "demand id": "FONO-1", status: "Contracted", "theatre id": "RJT", "headcount required": 32 },
+    ],
+    enterpriseWorkspaceDemand: [
+      { "demand id": "UI-ENTERPRISE-DEMAND-1", status: "Lead", "theatre id": "DCN", "headcount required": 1 },
+      { "demand id": "UI-ENTERPRISE-DEMAND-2", status: "Interested", "theatre id": "DCN", "headcount required": 1 },
+      { "demand id": "UI-ENTERPRISE-DEMAND-3", status: "Closed", "theatre id": "WLG", "headcount required": 1 },
+    ],
+    essentials: [{ "theatre id": "TH-RJT", "eligible members": 10, "buying members": 4, "essentials billed inr": 1000, "studio revenue inr": 20000, "nia margin inr": 100, "member savings inr": 50, "curry unique members": 2, "curry buying value inr": 300, "internet equipment unique members": 1, "internet equipment buying value inr": 200 }],
+  })
+  assert.equal(report.occupancy.percent, 90)
+  assert.deepEqual(report.enterprise.stages, { Lead: 1, Interested: 1, Contracting: 0, Contracted: 0, Dropped: 1 })
+  assert.equal(report.enterprise.records, 3)
+  assert.deepEqual(report.fono.stages, { Lead: 0, Contracting: 0, Contracted: 32 })
+  assert.deepEqual(report.fono.byTheatre, [{ theatre: "Rajputana", Lead: 0, Contracting: 0, Contracted: 32, total: 32 }])
+  assert.equal(report.essentials.attachPct, 70)
+  assert.equal(report.essentials.byTheatre[0]?.theatre, "Rajputana")
+  assert.equal(report.essentials.byTheatre[0]?.attachRevenuePct, 7.5)
+  assert.equal(report.essentials.revenue, 1500)
+  assert.equal(report.essentials.curryBuyingValue, 300)
+  assert.equal(report.essentials.internetEquipmentUniqueMembers, 1)
+  assert.equal(JSON.stringify(report).includes('"BD"'), false)
+})
+
+test("Business Report keeps missing pipeline CM unavailable instead of inventing a value", () => {
+  const report = buildBusinessReportData({ work: [{ "work billed inr": 5000 }], essentials: [] })
+  assert.equal(report.contribution.pipelineRecorded, false)
+  assert.equal(report.contribution.pipeline, 0)
+  assert.equal(report.projectedRevenue, 5000)
+})
+
+test("Business Report places recorded Living CM beside occupancy by Theatre", () => {
+  const report = buildBusinessReportData({
+    living: [
+      { "studio id": "ST-RJT", "theatre id": "RJT", "contracted nests": 10, "occupied nests": 9 },
+      { "studio id": "ST-WLG", "theatre id": "WLG", "contracted nests": 10, "occupied nests": 8 },
+    ],
+    finance: [
+      { "studio id": "ST-RJT", "living cm2 inr": 680000, "cm2 inr": 999999 },
+      { "studio id": "ST-WLG", "living cm2 inr": 392000, "cm2 inr": 999999 },
+    ],
+  })
+  assert.equal(report.contribution.living, 1_072_000)
+  assert.deepEqual(report.contribution.livingByTheatre, [
+    { theatre: "Rajputana", cmInr: 680000 },
+    { theatre: "Wellington", cmInr: 392000 },
+  ])
+})
+
+test("Business Report uses raw Proposal / Quote as Interested over a stale normalized status", () => {
+  const report = buildBusinessReportData({
+    enterpriseDemand: [
+      { "demand id": "SP-BOT-PROPOSAL", status: "Contracting", certainty: "Send Proposal / Quote", "headcount required": 1 },
+    ],
+  })
+  assert.deepEqual(report.enterprise.stages, { Lead: 0, Interested: 1, Contracting: 0, Contracted: 0, Dropped: 0 })
+})

@@ -47,22 +47,18 @@ export default async function Page() {
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const liveOpsData = await buildOpsDataWithRetry()
   const liveSnapshot = buildLiveSelfDriveSnapshot(liveOpsData)
-  // Bot demand and FONO tracker rows feed their own operating loops. They are
-  // not Enterprise workspace records and must never become the active
-  // Enterprise card merely because they share the backend table.
+  // In the current operating model Enterprise Demand mirrors the canonical
+  // Shram Park Bot lead ledger across the workspace, report and interlinks.
+  // The offline UI_Enterprise_Demand rows remain available in the backend but
+  // must not create a second, divergent Enterprise view.
   const enterpriseWorkspaceRows = liveSnapshot.enterpriseDemand.filter((row) => {
     const demandId = String(row["demand id"] ?? "").toUpperCase()
-    const sourceId = String(row["source submission id"] ?? "").toUpperCase()
-    return !demandId.startsWith("SP-BOT-")
-      && !demandId.startsWith("OPS-RPT-FONO-")
-      && !sourceId.startsWith("SP-BOT-")
-      && !sourceId.startsWith("FONO-TRACKER-")
+    return demandId.startsWith("SP-BOT-")
   })
   const enterpriseDemandPreview = buildLiveEnterpriseDemandLoopPreview(enterpriseWorkspaceRows, liveSnapshot.asOf)
   // Keep the complete governed demand ledger available to Living/Growth. The
-  // Enterprise workspace receives its narrower lane separately so channel bot
-  // rows cannot become Enterprise cards and are not accidentally hidden from
-  // the FONO/SP comparison.
+  // Keep the complete governed demand ledger available to Living/Growth while
+  // Enterprise receives only its operator-owned offline lane.
   const dashboardOpsData = { ...liveOpsData, enterpriseWorkspaceDemand: enterpriseWorkspaceRows }
   const newAddsPreview = buildLiveNewAddsPreview(liveSnapshot)
   const memberEngagementPreview = buildLiveMemberEngagementPreview(liveSnapshot)

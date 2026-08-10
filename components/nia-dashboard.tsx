@@ -22,6 +22,7 @@ import { ControlledAutonomyWorkspace } from "@/components/controlled-autonomy-wo
 import { MemberFeedbackScreen } from "@/components/member-feedback-screen"
 import { OverviewStory, type OverviewMode } from "@/components/overview/overview-story"
 import { WorkScreen } from "@/components/work-screen"
+import { BusinessReportScreen } from "@/components/business-report-screen"
 import { LiveOverviewWorkspace, LiveSheetWorkspace } from "@/components/live-sheet-workspace"
 import { NiaMarginsWorkspace } from "@/components/nia-margins-workspace"
 import { NewAddsWorkspace } from "@/components/new-adds-workspace"
@@ -31,7 +32,7 @@ import { NiaGrowthWorkspace } from "@/components/nia-growth-workspace"
 import { CashControlWorkspace } from "@/components/cash-control-workspace"
 import { LearningHistoryWorkspace, type LearningHistoryEntry } from "@/components/learning-history-workspace"
 import { ContextStrip, SegmentedControl } from "@/components/operating-ui"
-import { dashboardDisplayLabel, POST_LOGIN_DASHBOARD_STATE, TABLE_SCREENS, workspaceLandingTab, type DashboardRoute, type DashboardTab, type DashboardWorkspace, type LivingSection } from "@/lib/dashboard-model"
+import { dashboardDisplayLabel, FINANCE_TABS, POST_LOGIN_DASHBOARD_STATE, SELF_LEARN_TABS, TABLE_SCREENS, workspaceLandingTab, type DashboardRoute, type DashboardTab, type DashboardWorkspace, type LivingSection } from "@/lib/dashboard-model"
 import { executionActions } from "@/lib/execution-data"
 import { memberFeedbackActions } from "@/lib/member-feedback-data"
 import type { MemberFeedbackItem, NpsResponse } from "@/lib/member-feedback"
@@ -62,6 +63,7 @@ const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: 
   Living: { title: "Community Living and Well-Being.", subtitle: "Create a safe, connected community where Members can live well and thrive.", view: "This month · every 2 hours" },
   Work: { title: "Enable upskilling and higher incomes.", subtitle: "Connect Members to skills, better work, and sustained income growth.", view: "Data needed" },
   Essentials: TABLE_SCREENS.Essentials,
+  "Business Report": { title: "Business Report", subtitle: "One live board view across occupancy, contribution, FONO, Enterprise Demand and Essentials.", view: "Live · governed sources" },
   Economics: TABLE_SCREENS.Economics,
   People: TABLE_SCREENS.People,
   "Member Feedback": { title: "Fix the signal before a Member exits.", subtitle: "Turn feedback and monthly NPS into named actions, proof and verified closure.", view: "Governed live data" },
@@ -83,6 +85,7 @@ const PAGE_CONTEXT_ITEMS: Record<DashboardTab, readonly string[]> = {
   Living: ["FONO", "Demand", "Supply", "Reconciliation"],
   Work: ["Data requirement"],
   Essentials: ["Main point", "Buying journey", "Demand", "Supply", "Savings", "Working capital"],
+  "Business Report": ["Board summary", "Occupancy", "Contribution margin", "FONO pipeline", "Enterprise Demand", "Essentials", "Sources"],
   Economics: ["Main point", "Headline measures", "Contribution bridge", "Studio economics", "Source"],
   People: ["Main point", "People summary", "Follow-through", "Demand teams", "Supply teams"],
   "Member Feedback": ["Connection status", "Closure loop", "Summary", "Member signals", "Privacy"],
@@ -99,6 +102,7 @@ const OUTLINE_MANAGED_TABS = new Set<DashboardTab>([
   "Member Savings", "Nia Margins", "Nia Growth", "Your Sign-Off",
   "Finance control", "Living", "Work", "Essentials", "Economics", "People",
   "Member Feedback", "Definitions", "Despatch",
+  "Business Report",
 ])
 
 function Filters({ className = "" }: { className?: string }) {
@@ -212,6 +216,20 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
   const [railOpen, setRailOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [commitments, setCommitments] = useState<ExecutionAction[]>([])
+  useEffect(() => {
+    const storedActive = window.sessionStorage.getItem("rafiqi-dashboard-page") as DashboardTab | null
+    const storedWorkspace = window.sessionStorage.getItem("rafiqi-dashboard-workspace") as DashboardWorkspace | null
+    const restoredActive = storedActive || initialActive
+    const inferredWorkspace: DashboardWorkspace = (SELF_LEARN_TABS as readonly string[]).includes(restoredActive)
+      ? "self-learn"
+      : (FINANCE_TABS as readonly string[]).includes(restoredActive) ? "finance" : "self-drive"
+    setActive(restoredActive)
+    setWorkspace(storedWorkspace === inferredWorkspace ? storedWorkspace : inferredWorkspace)
+  }, [])
+  useEffect(() => {
+    window.sessionStorage.setItem("rafiqi-dashboard-page", active)
+    window.sessionStorage.setItem("rafiqi-dashboard-workspace", workspace)
+  }, [active, workspace])
   // Keep the page shell stable while the Overview mode changes. The mode bar
   // and the report body already explain the active operating view.
   const meta = decisionRoomOpen
@@ -323,6 +341,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       ["self-learn", "Living", "living studio"],
       ["self-learn", "Work", "work income"],
       ["self-learn", "Essentials", "essentials orders stock"],
+      ["self-learn", "Business Report", "business report board summary enterprise occupancy fono cm"],
       ["self-learn", "Member Feedback", "member nps feedback"],
       ["self-learn", "People", "people owner person"],
       ["self-learn", "Definitions", "learning history definitions"],
@@ -366,7 +385,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
         <button type="button" className={filtersOpen ? "utility-button active" : "utility-button"} aria-expanded={filtersOpen} onClick={() => setFiltersOpen((current) => !current)}><SlidersHorizontal aria-hidden /><span>Filters</span></button>
         <button type="button" className="utility-icon" title="Governed live data" aria-label="Governed live data"><ShieldCheck aria-hidden /></button>
         <button type="button" className="utility-button period"><CalendarDays aria-hidden /><span>{dashboardPeriod}</span></button>
-        <button type="button" className="utility-icon" title="Refresh data" aria-label="Refresh data" onClick={() => window.location.reload()}><RefreshCw aria-hidden /></button>
+        <button type="button" className="utility-icon" title="Refresh data" aria-label="Refresh data" onClick={() => window.dispatchEvent(new Event("rafiqi:sync-now"))}><RefreshCw aria-hidden /></button>
         <button type="button" className="utility-primary" onClick={() => navigateFromRail("self-drive", "Despatch")}><Truck aria-hidden /><span>Open Despatch</span></button>
       </div>
       </>}
@@ -406,6 +425,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen liveRows={liveOpsData?.work ?? []} />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], hourly: liveOpsData?.essentials ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}
+      {active === "Business Report" && <BusinessReportScreen liveOpsData={liveOpsData} />}
       {active === "People" && <PeopleScreen commitments={commitments} liveData={{ dashboard: liveOpsData?.peopleDashboard ?? [], performance: liveOpsData?.peoplePerformance ?? [], followThrough: liveOpsData?.peopleFollowThrough ?? [], roster: liveOpsData?.people ?? [] }} />}
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} items={memberFeedbackItems} responses={memberNpsResponses} sourceAsOf={String(liveOpsData?.fetchedAt ?? "")} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}

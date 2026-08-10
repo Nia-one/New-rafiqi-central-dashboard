@@ -49,6 +49,7 @@ const CONTINUITY: readonly NavigationItem[] = [
   { label: "Living", tab: "Living", icon: House },
   { label: "Work", tab: "Work", icon: WalletCards },
   { label: "Essentials", tab: "Essentials", icon: PackageCheck },
+  { label: "Business Report", tab: "Business Report", icon: ChartNoAxesCombined },
   { label: "Member NPS", tab: "Member Feedback", icon: HeartHandshake },
   { label: "People", tab: "People", icon: Users },
   { label: "Learning History", tab: "Definitions", icon: BookOpen },

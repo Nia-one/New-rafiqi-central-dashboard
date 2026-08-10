@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import test from "node:test"
-import { canonicalMemberAddsControl, canonicalNiaGrowthControl } from "./control-tower"
+import { canonicalMemberAddsControl, canonicalNiaGrowthControl, governanceConsole } from "./control-tower"
 
 test("Control Tower uses the current Nia Growth summary instead of stale action baselines", () => {
   const result = canonicalNiaGrowthControl({
@@ -16,6 +16,11 @@ test("Control Tower uses the current Nia Growth summary instead of stale action 
   assert.equal(result.target, "FONO 5625 demand · SP 150 leads")
   assert.match(result.prescription, /FONO 4738 gap · SP 150 open/)
   assert.doesNotMatch(JSON.stringify(result), /1151|4474/)
+})
+
+test("Nia Growth readiness alarms are classified into the Nia Growth console", () => {
+  assert.equal(governanceConsole({ domain: "Operations", title: "Nia Growth FONO readiness gap", exceptionId: "OPS-NIA-GROWTH-FONO-2026-08" }), "Nia Growth")
+  assert.equal(governanceConsole({ domain: "Operations", title: "Recover Nia Nest", exceptionId: "ACT-NIA-CM2" }), "Operations")
 })
 
 test("healthy Member Adds keeps its named owner and complete source values", () => {
