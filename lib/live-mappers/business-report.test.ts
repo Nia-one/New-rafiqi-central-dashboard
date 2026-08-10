@@ -43,6 +43,7 @@ test("Business Report combines automated Living CM with governed CM Actions actu
   const report = buildBusinessReportData({
     finance: [{ "theatre id": "RJT", "total billed inr": 8_779_050, "living cm2 inr": 1_433_400 }],
     actionLog: [
+      { "action id": "OPS-RPT-CM-COMP-LIVING", "operating objective": "Living", "expected metric": "CM Actual", "baseline value": 1_433_400, "target value": 8_779_050 },
       { "action id": "OPS-RPT-CM-COMP-WORK", "operating objective": "Work", "expected metric": "CM Actual", "baseline value": 500_000, "target value": 500_000 },
       { "action id": "OPS-RPT-CM-COMP-B2B", "operating objective": "B2B", "expected metric": "CM Actual", "baseline value": 0, "target value": 0 },
       { "action id": "OPS-RPT-CM-COMP-ITC", "operating objective": "ITC", "expected metric": "CM Pipeline", "baseline value": 600_000, "target value": 2_000_000 },
@@ -51,7 +52,7 @@ test("Business Report combines automated Living CM with governed CM Actions actu
   assert.equal(report.contribution.actual, 1_933_400)
   assert.equal(report.contribution.pipeline, 600_000)
   assert.equal(report.contribution.pipelineRecorded, true)
-  assert.equal(report.projectedRevenue, 9_279_050)
+  assert.equal(report.projectedRevenue, 11_279_050)
 })
 
 test("Business Report counts a governed FONO demand ID once across case-variant live payloads", () => {

@@ -256,7 +256,7 @@ export async function syncVerticalInputs() {
     const component = value(row, cmActions!.headers, "CM Component");
     const cmInr = number(value(row, cmActions!.headers, "CM INR"));
     const revenueInr = number(value(row, cmActions!.headers, "Revenue INR"));
-    return component && norm(component) !== "living" && (cmInr !== 0 || revenueInr !== 0);
+    return component && (cmInr !== 0 || revenueInr !== 0);
   }).map((row) => {
     const component = value(row, cmActions!.headers, "CM Component");
     const cmType = value(row, cmActions!.headers, "CM Type") || "Actual";
