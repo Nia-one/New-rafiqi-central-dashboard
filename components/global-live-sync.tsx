@@ -8,9 +8,9 @@ const SYNC_SECONDS = 45
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
-const SYNC_TIMEOUT_MS = 5_000
+const SYNC_TIMEOUT_MS = 40_000
 
-type SyncState = "ready" | "syncing" | "retrying" | "failed"
+type SyncState = "ready" | "syncing" | "failed"
 
 export function GlobalLiveSync() {
   const router = useRouter()
@@ -56,29 +56,26 @@ export function GlobalLiveSync() {
     scheduleNext()
     let success = false
     try {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        setState(attempt === 0 ? "syncing" : "retrying")
-        try {
-          const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
-          if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
-          const report = await response.json() as { changedRows?: number }
-          success = true
-          setState("ready")
-          // Refresh the server-component payload in place. Next preserves the
-          // mounted client shell, so the active workspace, mode, focused card,
-          // filters and scroll position do not jump back to Control Tower.
-          if ((report.changedRows ?? 0) > 0) {
-            // localStorage events notify other open dashboard tabs. Each tab
-            // refreshes only its data payload and keeps its own UI location.
-            window.localStorage.setItem(LAST_CHANGED_SYNC_KEY, String(Date.now()))
-            router.refresh()
-          }
-          break
-        } catch {
-          if (attempt < 2) await new Promise((resolve) => window.setTimeout(resolve, 1000 * 2 ** attempt))
-        }
+      setState("syncing")
+      // UI_Occupancy through UI_Targets are ingested by one batched connector.
+      // Bot feeds have their own server cadence; running every connector from
+      // every browser tab exhausted the shared Google Sheets read quota.
+      const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
+      if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
+      const report = await response.json() as { changedRows?: number }
+      success = true
+      setState("ready")
+      // Refresh the server-component payload in place. Next preserves the
+      // mounted client shell, so the active workspace, mode, focused card,
+      // filters and scroll position do not jump back to Control Tower.
+      if ((report.changedRows ?? 0) > 0) {
+        // localStorage events notify other open dashboard tabs. Each tab
+        // refreshes only its data payload and keeps its own UI location.
+        window.localStorage.setItem(LAST_CHANGED_SYNC_KEY, String(Date.now()))
+        router.refresh()
       }
-      if (!success) setState("failed")
+    } catch {
+      setState("failed")
     } finally {
       inFlight.current = false
       releaseLease()
@@ -112,10 +109,9 @@ export function GlobalLiveSync() {
     }
   }, [releaseLease, router, scheduleNext, synchronize])
 
-  const label = state === "syncing" ? "Syncing all live feeds…"
-    : state === "retrying" ? "Retrying live sync…"
-      : state === "failed" ? `Sync retry in ${seconds}s`
-        : `All feeds sync in ${seconds}s`
+  const label = state === "syncing" ? "Syncing dashboard inputs…"
+    : state === "failed" ? `Sync retry in ${seconds}s`
+      : `Dashboard inputs sync in ${seconds}s`
 
-  return <div className="global-live-sync" data-state={state} role="status" aria-live="polite"><RefreshCw aria-hidden className={state === "syncing" || state === "retrying" ? "is-spinning" : ""} /><span>{label}</span></div>
+  return <div className="global-live-sync" data-state={state} role="status" aria-live="polite"><RefreshCw aria-hidden className={state === "syncing" ? "is-spinning" : ""} /><span>{label}</span></div>
 }
