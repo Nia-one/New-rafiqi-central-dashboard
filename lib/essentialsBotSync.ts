@@ -78,6 +78,7 @@ export async function ensureEssentialsBotSchema() {
     Orders: ["payment_collected_at", "collected_amount"],
     Delivery_Status: ["order_id", "dispatched_at", "delivered_at", "delivery_status", "delivery_owner", "updated_at"],
     Order_Items: ["direct_fulfilment_cost", "packaging_cost", "delivery_cost", "total_fulfilment_cost", "nia_contribution_margin"],
+    Inventory_Master: ["studio_id", "mrp", "selling_price", "unit_cost", "member_savings", "owned_inventory_value", "days_cover", "zero_sale"],
   };
   const tabs = Object.keys(required);
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges: tabs.map((tab) => `${tab}!1:1`) });
@@ -123,7 +124,54 @@ export async function ensureEssentialsBotSchema() {
     formulaData.push({ range: formulaRanges[1], values: [[`=ARRAYFORMULA(IF(A2:A="","",${baseMargin}-N(${total}2:${total})))`]] });
   }
   if (formulaData.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
-  return { addedToTabs: data.map((entry) => entry.range.split("!")[0]), formulasAdded: formulaData.map((entry) => entry.range) };
+
+  const inventoryHeaders = [...((response.data.valueRanges?.[3].values?.[0] || []).map(String))];
+  required.Inventory_Master.forEach((header) => {
+    if (!inventoryHeaders.some((existing) => norm(existing) === norm(header))) inventoryHeaders.push(header);
+  });
+  const inventoryColumn = (...names: string[]) => {
+    const wanted = new Set(names.map(norm));
+    const index = inventoryHeaders.findIndex((header) => wanted.has(norm(header)));
+    return index < 0 ? "" : columnLetter(index);
+  };
+  const availableStock = inventoryColumn("available_stock");
+  const mrp = inventoryColumn("mrp");
+  const sellingPrice = inventoryColumn("selling_price");
+  const unitCost = inventoryColumn("unit_cost");
+  const memberSavings = inventoryColumn("member_savings");
+  const ownedInventoryValue = inventoryColumn("owned_inventory_value");
+  const productCode = inventoryColumn("product_code");
+  const zeroSale = inventoryColumn("zero_sale");
+  const inventoryFormulaRanges = [
+    `Inventory_Master!${mrp}2`,
+    `Inventory_Master!${sellingPrice}2`,
+    `Inventory_Master!${unitCost}2`,
+    `Inventory_Master!${memberSavings}2`,
+    `Inventory_Master!${ownedInventoryValue}2`,
+    `Inventory_Master!${zeroSale}2`,
+  ];
+  const existingInventoryFormulas = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges: inventoryFormulaRanges, valueRenderOption: "FORMULA" });
+  const inventoryFormulaData: { range: string; values: string[][] }[] = [];
+  if (!existingInventoryFormulas.data.valueRanges?.[0].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[0], values: [[`=MAP(${productCode}2:${productCode},LAMBDA(sku,IF(sku="","",IFERROR(XLOOKUP(sku,Product_Master!B$2:B,Product_Master!I$2:I,""),""))))`]] });
+  }
+  if (!existingInventoryFormulas.data.valueRanges?.[1].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[1], values: [[`=MAP(${productCode}2:${productCode},LAMBDA(sku,IF(sku="","",IFERROR(XLOOKUP(sku,Product_Master!B$2:B,Product_Master!J$2:J,""),""))))`]] });
+  }
+  if (!existingInventoryFormulas.data.valueRanges?.[2].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[2], values: [[`=MAP(${productCode}2:${productCode},LAMBDA(sku,IF(sku="","",IFERROR(XLOOKUP(sku,Product_Master!B$2:B,Product_Master!H$2:H,""),""))))`]] });
+  }
+  if (!existingInventoryFormulas.data.valueRanges?.[3].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[3], values: [[`=ARRAYFORMULA(IF(A2:A="","",IF((${mrp}2:${mrp}="")+(${sellingPrice}2:${sellingPrice}=""),"",N(${mrp}2:${mrp})-N(${sellingPrice}2:${sellingPrice}))))`]] });
+  }
+  if (!existingInventoryFormulas.data.valueRanges?.[4].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[4], values: [[`=ARRAYFORMULA(IF(A2:A="","",IF(${unitCost}2:${unitCost}="","",N(${availableStock}2:${availableStock})*N(${unitCost}2:${unitCost}))))`]] });
+  }
+  if (!existingInventoryFormulas.data.valueRanges?.[5].values?.[0]?.[0]) {
+    inventoryFormulaData.push({ range: inventoryFormulaRanges[5], values: [[`=ARRAYFORMULA(IF(A2:A="","",IF(COUNTIF(Order_Items!D$2:D,${productCode}2:${productCode})=0,"Yes","No")))`]] });
+  }
+  if (inventoryFormulaData.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: inventoryFormulaData } });
+  return { addedToTabs: data.map((entry) => entry.range.split("!")[0]), formulasAdded: [...formulaData, ...inventoryFormulaData].map((entry) => entry.range) };
 }
 
 async function upsert(tabName: string, keyHeader: string, records: Record<string, unknown>[]) {
@@ -169,6 +217,24 @@ async function upsert(tabName: string, keyHeader: string, records: Record<string
     });
   }
   return { inserted: append.length, updated };
+}
+
+async function ensureBackendColumns(tabName: string, requiredHeaders: string[]) {
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
+  const sheets = await client(true);
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${tabName}!1:1` });
+  const headers = (response.data.values?.[0] || []).map(String);
+  const missing = requiredHeaders.filter((wanted) => !headers.some((existing) => norm(existing) === norm(wanted)));
+  if (missing.length) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${tabName}!A1`,
+      valueInputOption: "RAW",
+      requestBody: { values: [[...headers, ...missing]] },
+    });
+  }
+  return missing;
 }
 
 async function reconcileBotOwnedRows(tabName: string, keyHeader: string, desiredKeys: Set<string>, owns: (row: unknown[], headers: string[]) => boolean) {
@@ -289,8 +355,15 @@ export async function syncEssentialsBotData() {
   const inventoryRows = inventory.rows.map((r) => ({
     "sku": cell(r, inventory.headers, "product_code", "product_id", "id"), "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
     "supply model": "Existing bot", "stockout": num(cell(r, inventory.headers, "available_stock")) <= 0 ? "Yes" : "No",
-    "days cover": "", "zero sale": "", "owner": cell(r, inventory.headers, "warehouse_location") || "Essentials",
+    "mrp": cell(r, inventory.headers, "mrp"), "selling": cell(r, inventory.headers, "selling_price"),
+    "savings": cell(r, inventory.headers, "member_savings"),
+    "fill": num(cell(r, inventory.headers, "total_stock")) > 0
+      ? num(cell(r, inventory.headers, "available_stock")) / num(cell(r, inventory.headers, "total_stock")) : "",
+    "days cover": cell(r, inventory.headers, "days_cover"), "zero sale": cell(r, inventory.headers, "zero_sale"),
+    "owned inventory value": cell(r, inventory.headers, "owned_inventory_value"),
+    "owner": cell(r, inventory.headers, "warehouse_location") || "Essentials",
   }));
+  await ensureBackendColumns("Essentials_Inventory", ["owned inventory value"]);
   const essentialsHourly = await upsert("Essentials_Hourly", "essentials hourly id", [...hourly, ...quarantined]);
   const essentialsInventory = await upsert("Essentials_Inventory", "sku", inventoryRows);
   const memberActivations = await upsert("Member_Activation", "activation id", [...activationGroups.values()]);
@@ -298,10 +371,15 @@ export async function syncEssentialsBotData() {
     "Essentials_Hourly",
     "essentials hourly id",
     new Set([...hourly, ...quarantined].map((row) => norm(row["essentials hourly id"]))),
-    // Historical append inference shifted bot IDs beyond the governed key
-    // column. Treat a BOT-ESS identifier anywhere in the row as bot-owned so
-    // reconciliation can remove those malformed duplicates safely.
-    (row) => row.some((value) => norm(value).startsWith("bot-ess-")),
+    // Essentials Bot is the sole authority. Remove historical report-owned
+    // rows and malformed keyless rows left by the old append inference, while
+    // preserving any unrelated governed record with a valid non-bot key.
+    (row, headers) => {
+      const key = norm(cell(row, headers, "essentials hourly id"));
+      return row.some((value) => norm(value).startsWith("bot-ess-"))
+        || key.startsWith("ops-rpt-ess-")
+        || (!key && row.some((value) => String(value ?? "").trim()));
+    },
   );
   const removedStaleInventory = await reconcileBotOwnedRows("Essentials_Inventory", "sku", new Set(inventoryRows.map((row) => norm(row.sku))), (row, headers) => norm(cell(row, headers, "supply model")) === "existing bot");
   return {
