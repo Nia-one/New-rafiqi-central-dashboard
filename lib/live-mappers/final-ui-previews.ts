@@ -130,15 +130,33 @@ function liveSavingsServices(snapshot: LiveSelfDriveSnapshot): readonly ServiceG
   return Object.freeze(snapshot.essentials.flatMap((row, index) => {
     const serviceId = text(row, "service id", "essentials hourly id", "product id")
     const serviceName = text(row, "service name", "product name", "category")
-    if (!serviceId && !serviceName) return []
+    const isBotOwned = serviceId.toLowerCase().startsWith("bot-ess-")
+    const hasBotTradingActivity = number(row, "orders placed") > 0
+      || number(row, "orders fulfilled") > 0
+      || number(row, "essentials billed inr") !== 0
+      || number(row, "product cogs inr") !== 0
+      || number(row, "direct fulfilment cost inr") !== 0
+      || number(row, "member savings inr") !== 0
+      || number(row, "nia margin inr") !== 0
+    if ((!serviceId && !serviceName) || !isBotOwned || !hasBotTradingActivity) return []
     const saving = number(row, "member savings inr", "verified member savings inr", "savings inr")
     const margin = number(row, "nia margin inr", "margin inr", "cm inr")
     const attach = number(row, "attach pct", "attach percent")
     const repeat = number(row, "repeat pct", "repeat percent")
+    const studioId = text(row, "studio id")
+    const studioMaster = snapshot.studios.find((studio) => text(studio, "studio id", "studio code") === studioId)
+    const studioName = text(row, "studio name") || text(studioMaster ?? {}, "studio name", "name") || studioId
+    const theatre = text(row, "theatre", "theatre name", "theatre id") || text(studioMaster ?? {}, "theatre name", "theatre", "theatre id") || "Unassigned"
     return [{
       serviceId: serviceId || `service-${index + 1}`,
-      serviceName: serviceName || serviceId,
-      studio: text(row, "studio name", "studio id", "theatre id") || "Unassigned",
+      serviceName: serviceName || text(row, "studio name", "studio id") || serviceId,
+      studio: studioName || "Unassigned",
+      studioId,
+      theatre,
+      buyingMembers: number(row, "buying members", "unique buyers", "unique member buy essential"),
+      ordersPlaced: number(row, "orders placed"),
+      ordersFulfilled: number(row, "orders fulfilled"),
+      billedInr: number(row, "essentials billed inr", "buying value", "revenue inr"),
       memberSavingsInr: saving,
       niaMarginInr: margin,
       status: saving > 0 && margin > 0 ? "Pass" as const : "Exception" as const,
@@ -170,9 +188,9 @@ export function buildLiveMemberSavingsPreview(snapshot: LiveSelfDriveSnapshot): 
     fixtureLabel: "Governed live data",
     mode: "Live read-only",
     question: "Which service must recover Member saving or Nia margin next?",
-    source: { name: "Essentials · Action Log · Evidence Log", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: freshness.staleFeedCount ? "Attention" : "Current", synthetic: false },
-    headline: `${exceptions} service exceptions require verified recovery.`,
-    summary: { target: `${services.length} dual-gate passes`, current: `${passing} pass`, gap: `${exceptions} exceptions`, owner: tasks[0]?.owner || "Unassigned", progress: `${tasks.length} actions`, verifiedResult: `${passing} verified passes` },
+    source: { name: "Essentials Bot · Rafiqi_Order_Item_Costs", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: freshness.staleFeedCount ? "Attention" : "Current", synthetic: false },
+    headline: `${exceptions} service exception${exceptions === 1 ? "" : "s"} require${exceptions === 1 ? "s" : ""} verified recovery.`,
+    summary: { target: `${services.length} dual-gate passes`, current: `${passing} pass`, gap: `${exceptions} exception${exceptions === 1 ? "" : "s"}`, owner: tasks[0]?.owner || "Unassigned", progress: `${tasks.length} actions`, verifiedResult: `${passing} verified passes` },
     measures,
     services,
     tasks,

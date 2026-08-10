@@ -71,6 +71,7 @@ export async function syncFonoTrackerData() {
   const sourceRows = values.slice(headerIndex + 1).filter((row) => row.some((value) => String(value ?? "").trim()));
   const livingRecords: Record<string, unknown>[] = [];
   const memberAddsRecords: Record<string, unknown>[] = [];
+  const monthlyTargetRecords = new Map<string, Record<string, unknown>>();
   const actorRecords = new Map<string, Record<string, unknown>>();
   const records = sourceRows.flatMap((row) => {
     const after = String(cell(row, headers, "Stage After")).trim();
@@ -90,6 +91,7 @@ export async function syncFonoTrackerData() {
     const studiosCount = number(cell(row, headers, "Studios_Count", "Studios Count"));
     const activationReady = number(cell(row, headers, "Activation_Ready_Nests", "Activation Ready Nests"));
     const memberAdds = number(cell(row, headers, "Member_Adds", "Member Adds"));
+    const monthlyFonoTarget = number(cell(row, headers, "Monthly_FONO_Target", "Monthly FONO Target"));
     const lastUpdated = sourceDate(cell(row, headers, "Last_Updated", "Last Updated")) || date;
     const evidence = String(cell(row, headers, "Evidence_Ref", "Evidence Ref")).trim();
     const remarks = String(cell(row, headers, "Remarks")).trim();
@@ -101,6 +103,17 @@ export async function syncFonoTrackerData() {
       "updated at": lastUpdated, "source id": `FONO-ACQUIRER-${ownerActorId}`,
     });
     const key = stable("FONO-TRACKER", [date, acquirer, theatre, corridor, prospect, after, nests]);
+    const reportingMonth = reportingMonthFromDate(lastUpdated) || reportingMonthFromDate(date) || "";
+    if (monthlyFonoTarget > 0 && reportingMonth) monthlyTargetRecords.set(reportingMonth, {
+      "demand id": `FONO-MONTHLY-TARGET-${reportingMonth}`,
+      "enterprise id": "UI_FONO_SUPPLY", "enterprise name": "FONO",
+      "role required": "Member Adds Target", "headcount required": monthlyFonoTarget,
+      "headcount matched": 0, "headcount remaining": monthlyFonoTarget,
+      certainty: "Governed monthly target", status: "Target", "owner actor id": ownerActorId,
+      "opened at": date, "updated at": lastUpdated, "source submission id": `FONO-MONTHLY-TARGET-${reportingMonth}`,
+      "source note": `Fono Funnel governed monthly Member Adds target=${monthlyFonoTarget}`,
+      [REPORTING_MONTH_HEADER]: reportingMonth,
+    });
     const isSupply = SUPPLY_STAGES.has(normalizedStage);
     if (isSupply) {
       livingRecords.push({
@@ -138,10 +151,11 @@ export async function syncFonoTrackerData() {
     }];
   });
   const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords], ["theatre id"]);
+  const monthlyTargetsWritten = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-MONTHLY-TARGET-", [...monthlyTargetRecords.values()], ["theatre id"]);
   const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
   const peopleWritten = await replaceOwned(sheets, backendId, "People_Roster", "actor id", "ACT-FONO-", [...actorRecords.values()]);
   return { sourceSpreadsheetId: SOURCE_ID, sourceTab: SOURCE_TAB, sourceRows: sourceRows.length, demandRows: records.length,
     demandNests: records.reduce((sum, row) => sum + number(row["headcount required"]), 0), supplyNests: records.reduce((sum, row) => sum + number(row["headcount matched"]), 0),
     gapNests: records.reduce((sum, row) => sum + number(row["headcount remaining"]), 0), memberAddsRows: memberAddsRecords.length,
-    memberAdds: memberAddsRecords.reduce((sum, row) => sum + number(row["headcount matched"]), 0), written, livingWritten, peopleWritten };
+    memberAdds: memberAddsRecords.reduce((sum, row) => sum + number(row["headcount matched"]), 0), written, monthlyTargetsWritten, livingWritten, peopleWritten };
 }

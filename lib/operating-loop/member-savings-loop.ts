@@ -228,6 +228,12 @@ export type ServiceGateProjection = {
   serviceId: string
   serviceName: string
   studio: string
+  studioId?: string
+  theatre?: string
+  buyingMembers?: number
+  ordersPlaced?: number
+  ordersFulfilled?: number
+  billedInr?: number
   memberSavingsInr: number
   niaMarginInr: number
   status: "Pass" | "Exception"

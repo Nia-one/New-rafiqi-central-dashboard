@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import test from "node:test"
 import { buildNewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
+import { memberAddsDecisionCopy } from "@/lib/member-adds-decision-copy"
 
 const componentSource = readFileSync(new URL("./new-adds-workspace.tsx", import.meta.url), "utf8")
 const cssSource = readFileSync(new URL("./new-adds-workspace.module.css", import.meta.url), "utf8")
@@ -22,10 +23,31 @@ test("workspace ends with an explicit owner-and-done-when ask before the footer"
   const askIndex = componentSource.indexOf("styles.askBand")
   const footerIndex = componentSource.indexOf("styles.footer")
   assert.ok(askIndex >= 0 && askIndex < footerIndex, "closing ask must precede the footer")
-  assert.match(componentSource, /Decision required/)
-  assert.match(componentSource, /accountability sits with \{owner\}/)
-  assert.match(componentSource, /<dt>Owner<\/dt>/)
-  assert.match(componentSource, /<dt>Done when<\/dt>/)
+  assert.match(componentSource, /memberAddsDecisionCopy/)
+  assert.match(componentSource, /decisionCopy\.explanation/)
+  assert.match(componentSource, /decisionCopy\.ownerLabel/)
+  assert.match(componentSource, /decisionCopy\.doneLabel/)
+  assert.match(componentSource, /decisionCopy\.doneWhen/)
+})
+
+test("zero gap renders an honest no-decision success state", () => {
+  assert.match(componentSource, /const decisionRequired = gap > 0 \|\| openSignOff > 0/)
+  assert.match(componentSource, /decisionCopy\.label/)
+  assert.match(componentSource, /decisionCopy\.headline/)
+})
+
+test("decision copy is fully data-driven and omits zero-count instructions", () => {
+  const gapOnly = memberAddsDecisionCopy({ gap: 1668, target: 1700, current: 32, openSignOff: 0, owner: "Santosh" })
+  assert.equal(gapOnly.headline, "Recover 1,668 verified Member additions to achieve the monthly target of 1,700.")
+  assert.doesNotMatch(gapOnly.headline, /sign-off/)
+  assert.equal(gapOnly.doneWhen, "1,700 verified additions achieved · gap reaches 0")
+
+  const gapAndSignOff = memberAddsDecisionCopy({ gap: 4, target: 100, current: 96, openSignOff: 2, owner: "Priya" })
+  assert.match(gapAndSignOff.headline, /Clear 2 blocked sign-offs and recover 4/)
+
+  const achieved = memberAddsDecisionCopy({ gap: 0, target: 100, current: 100, openSignOff: 0, owner: "Priya" })
+  assert.equal(achieved.label, "No decision required")
+  assert.match(achieved.headline, /100 of 100/)
 })
 
 test("the first viewport renders Target to verified result in the locked order", () => {
@@ -84,7 +106,7 @@ test("audit details stay closed natively and expose safety without a duplicated 
 })
 
 test("the visible R-0 strip and Despatch rows use the shared domain projection", () => {
-  for (const label of ["Data freshness", "Clocks running", "Outcome checks"]) assert.match(componentSource, new RegExp(label))
+  for (const label of ["Data freshness", "Clocks running", "Billing-record checks"]) assert.match(componentSource, new RegExp(label))
   assert.match(componentSource, /preview\.loopHealth/)
   assert.match(componentSource, /preview\.despatchEscalations/)
   assert.ok(buildNewAddsPreview().despatchEscalations.length > 0)

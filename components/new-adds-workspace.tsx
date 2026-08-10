@@ -6,6 +6,7 @@ import { resolveNewAddsShadowOutcome, type FillTask, type NewAddsMeasureChart, t
 import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/components/operational-card"
 import { TokenSelect } from "@/components/token-select"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { memberAddsDecisionCopy } from "@/lib/member-adds-decision-copy"
 import styles from "./new-adds-workspace.module.css"
 
 type Props = { preview: NewAddsPreview }
@@ -157,14 +158,16 @@ export function NewAddsWorkspace({ preview }: Props) {
   const verdictState = behind ? "behind" : "on-track"
   const verdictLabel = behind ? `Behind · ${gap} to go` : "On track"
   const openSignOff = preview.despatchEscalations.length
+  const decisionRequired = gap > 0 || openSignOff > 0
+  const decisionCopy = memberAddsDecisionCopy({ gap, target, current, openSignOff, owner })
 
   return <DashboardSectionAccordion className={styles.workspace} data-domain="new-adds" data-supply-model="FONO" ariaLabel="Member Adds sections" sections={[
     { title: "Fill status", summary: verdictLabel },
     { title: "Theatre progress", summary: `${current}/${target} verified · ${gap} still needed`, lens: "decide" },
-    { title: "Spots to fill", summary: `${preview.taskSummary.gap} Nests awaiting verified billing`, lens: "operate" },
+    { title: "Remaining this month", summary: `${preview.taskSummary.gap} verified Member additions remaining`, lens: "operate" },
     { title: "Your sign-off", summary: `${openSignOff} blocked decision${openSignOff === 1 ? "" : "s"}`, lens: "decide" },
-    { title: "Proof and controls", summary: `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} outcomes confirmed` },
-    { title: "Decision required", summary: `${gap} verified fill${gap === 1 ? "" : "s"} to recover · owner ${owner}` },
+    { title: "Proof and controls", summary: `${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} billing records confirmed` },
+    { title: decisionRequired ? "Decision required" : "No decision required", summary: decisionRequired ? `${gap} verified fill${gap === 1 ? "" : "s"} to recover · owner ${owner}` : `${current}/${target} verified · target achieved` },
     { title: "Source and confidence", summary: `${preview.source.freshness} inputs · ${preview.quarantineCount} quarantined` },
   ]}>
     <section className={styles.questionBand} data-state={verdictState}>
@@ -191,10 +194,10 @@ export function NewAddsWorkspace({ preview }: Props) {
     </div>
 
     <div className={styles.zone}>
-      <p className={styles.stepLabel}><span>03</span>Spots to fill today · {owner}</p>
-      <section className={styles.workPanel} aria-label="Spots to fill today">
+      <p className={styles.stepLabel}><span>03</span>Remaining this month · {owner}</p>
+      <section className={styles.workPanel} aria-label="Member additions remaining this month">
         <div className={styles.sectionHeader}>
-          <div><span>Spots to fill today</span><strong>{preview.taskSummary.gap} Nests awaiting verified billing</strong></div>
+          <div><span>Member additions remaining this month</span><strong>{preview.taskSummary.gap} verified billing-live Members still required</strong></div>
           <p><MessageSquareDashed aria-hidden />WhatsApp stays shadow-only</p>
         </div>
         <OperationalCardStack label="Member Adds synthetic fill tasks">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.studioId} domain={`${task.theatre} · ${task.channel} · FONO`} status={task.state} progress={actionStageFromStatus(task.state)} description={<p>{task.nextAction}</p>} fields={[{ label: "Owner", value: task.ownerRole }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected outcome", value: task.expectedOutcome }]}><div className={styles.shadowControls}><TokenSelect ariaLabel={`Shadow outcome for ${task.studioId}`} value={selected[task.actionId] ?? "No answer"} options={outcomes} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No message or Production write</small></div></OperationalCard>)}</OperationalCardStack>
@@ -216,7 +219,7 @@ export function NewAddsWorkspace({ preview }: Props) {
       <section className={styles.loopHealthStrip} data-health-state={preview.loopHealth.state} aria-label="Data and check status">
         <article data-status={preview.loopHealth.feeds.some((feed) => feed.stale) ? "bad" : "ok"}><span>Data freshness</span><strong>{preview.loopHealth.feeds.some((feed) => feed.stale) ? `${preview.loopHealth.feeds.filter((feed) => feed.stale).length} stale feeds` : "All feeds current"}</strong><FeedFreshness feeds={preview.loopHealth.feeds} /></article>
         <article data-status={preview.loopHealth.clocks.some((clock) => clock.breached) ? "bad" : "ok"}><span>Clocks running</span><strong>{preview.loopHealth.clocks.filter((clock) => clock.state === "Running").length} active · {preview.loopHealth.clocks.filter((clock) => clock.breached).length} breached</strong><LoopBar label="Clocks on track versus breached" parts={[{ label: "On track", value: preview.loopHealth.clocks.filter((clock) => clock.state === "Running" && !clock.breached).length, tone: "ok" }, { label: "Breached", value: preview.loopHealth.clocks.filter((clock) => clock.breached).length, tone: "bad" }]} /><small>{preview.loopHealth.clocks.find((clock) => clock.breached)?.ownerRole ?? "No breached owner wait"}</small></article>
-        <article data-status={preview.loopHealth.verification.reopened > 0 ? "bad" : preview.loopHealth.verification.awaiting > 0 ? "warn" : "ok"}><span>Outcome checks</span><strong>{preview.loopHealth.verification.verified} of {preview.loopHealth.verification.claimed} confirmed</strong><LoopBar label="Confirmed, waiting and reopened outcomes" parts={[{ label: "Confirmed", value: preview.loopHealth.verification.verified, tone: "ok" }, { label: "Waiting", value: preview.loopHealth.verification.awaiting, tone: "warn" }, { label: "Reopened", value: preview.loopHealth.verification.reopened, tone: "bad" }]} /><small>{preview.loopHealth.verification.awaiting} waiting · {preview.loopHealth.verification.reopened} reopened</small></article>
+        <article data-status={preview.loopHealth.verification.reopened > 0 ? "bad" : preview.loopHealth.verification.awaiting > 0 ? "warn" : "ok"}><span>Billing-record checks</span><strong>{preview.loopHealth.verification.verified} of {preview.loopHealth.verification.claimed} confirmed</strong><LoopBar label="Confirmed, waiting and reopened billing records" parts={[{ label: "Confirmed", value: preview.loopHealth.verification.verified, tone: "ok" }, { label: "Waiting", value: preview.loopHealth.verification.awaiting, tone: "warn" }, { label: "Reopened", value: preview.loopHealth.verification.reopened, tone: "bad" }]} /><small>{preview.loopHealth.verification.awaiting} waiting · {preview.loopHealth.verification.reopened} reopened</small></article>
       </section>
       <p className={styles.subLabel}>Four key numbers</p>
       <section className={styles.measures} data-kpi-group aria-label="Four key numbers">
@@ -235,15 +238,15 @@ export function NewAddsWorkspace({ preview }: Props) {
     </details>
     </div>
 
-    <section className={styles.askBand} aria-label="Decision required" data-state={verdictState}>
+    <section className={styles.askBand} aria-label={decisionRequired ? "Decision required" : "No decision required"} data-state={verdictState}>
       <div className={styles.askCopy}>
-        <span>Decision required</span>
-        <strong>Clear the {openSignOff} blocked sign-off{openSignOff === 1 ? "" : "s"} and recover {gap} verified fill{gap === 1 ? "" : "s"} in the two Theatres below target.</strong>
-        <p>Each recovery needs billing-live proof before it closes; accountability sits with {owner} until the gap is verified to zero.</p>
+        <span>{decisionCopy.label}</span>
+        <strong>{decisionCopy.headline}</strong>
+        <p>{decisionCopy.explanation}</p>
       </div>
       <dl className={styles.askMeta}>
-        <div><dt>Owner</dt><dd>{owner}</dd></div>
-        <div><dt>Done when</dt><dd>{gap} gap reaches 0 verified</dd></div>
+        <div><dt>{decisionCopy.ownerLabel}</dt><dd>{owner}</dd></div>
+        <div><dt>{decisionCopy.doneLabel}</dt><dd>{decisionCopy.doneWhen}</dd></div>
       </dl>
     </section>
 

@@ -52,6 +52,18 @@ const userDateTargetHeaders = new Set([
 /** Converts a user-entered DD-MM-YYYY date into the canonical Sheet value. */
 export function normalizeTeamInputDate(header: string, value: unknown) {
   const field = normal(header);
+  if (typeof value === "number" && Number.isFinite(value) && userDateTargetHeaders.has(field)) {
+    // Google Sheets returns date cells as serial day numbers when read with
+    // UNFORMATTED_VALUE. Converting the serial avoids locale-dependent
+    // ambiguity such as 8-7-2026 being interpreted as 8 July instead of
+    // 7 August.
+    const milliseconds = Math.round((value - 25569) * 86_400_000);
+    const parsed = new Date(milliseconds);
+    if (!Number.isNaN(parsed.getTime())) {
+      const date = parsed.toISOString().slice(0, 10);
+      return dateOnlyTargetHeaders.has(field) ? date : `${date}T00:00:00+05:30`;
+    }
+  }
   const raw = String(value ?? "").trim();
   if (!raw || !userDateTargetHeaders.has(field)) return value;
   if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw;
@@ -349,7 +361,11 @@ export async function syncTeamInputs() {
   // Fetch all mapped tabs in two batch requests. Calling values.get twice per
   // mapping exhausted the service-account per-minute read quota in production.
   const [mappedSources, mappedTargets] = await Promise.all([
-    sheets.spreadsheets.values.batchGet({ spreadsheetId: sourceSpreadsheetId, ranges: activeMappings.map(([source]) => `${source}!A:AZ`) }),
+    sheets.spreadsheets.values.batchGet({
+      spreadsheetId: sourceSpreadsheetId,
+      ranges: activeMappings.map(([source]) => `${source}!A:AZ`),
+      valueRenderOption: "UNFORMATTED_VALUE",
+    }),
     sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: activeMappings.map(([, target]) => `${target}!A:AZ`) }),
   ]);
 

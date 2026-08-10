@@ -414,7 +414,11 @@ export function buildLiveNewAddsFillStatus(snapshot: LiveSelfDriveSnapshot): Liv
   const theatres = buildLiveNewAddsTheatreProgress(snapshot)
   const openVacancies = theatres.reduce((sum, row) => sum + row.vacantNests, 0)
   const verified = theatres.reduce((sum, row) => sum + row.verifiedBillingLiveFills, 0)
-  const target = theatres.reduce((sum, row) => sum + row.dailyTarget, 0)
+  const monthlyTargets = snapshot.enterpriseDemand.filter((row) => text(row, "role required").toLowerCase() === "member adds target" && memberAddsSupplyModel(row) === "FONO")
+  const latestTargetMonth = monthlyTargets.map((row) => text(row, "reporting month")).filter(Boolean).sort().at(-1)
+  const governedMonthlyTarget = monthlyTargets.filter((row) => !latestTargetMonth || text(row, "reporting month") === latestTargetMonth).reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const target = governedMonthlyTarget || theatres.reduce((sum, row) => sum + row.dailyTarget, 0)
+  const gap = Math.max(0, target - verified)
   const owners = [...new Set(theatres.map((row) => row.ownerRole).filter(Boolean))]
   const owner = theatres.length === 0 ? "Unassigned" : owners.length === 1 ? owners[0] : owners.length > 1 ? "Theatre owners" : "Living Operations"
 
@@ -422,7 +426,7 @@ export function buildLiveNewAddsFillStatus(snapshot: LiveSelfDriveSnapshot): Liv
     hasData: theatres.length > 0,
     target,
     verified,
-    gap: openVacancies,
+    gap: governedMonthlyTarget ? gap : openVacancies,
     progressPercent: target > 0 ? Math.min(100, Math.round(verified / target * 100)) : 0,
     owner,
   })
@@ -441,13 +445,17 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
   const tasks = buildLiveNewAddsFillTasks(snapshot)
   const actionIds = new Set(tasks.map((task) => task.actionId))
   const supplyRows = memberAddsSupplyRows(snapshot)
-  const occupancyStudioIds = new Set(supplyRows
-    .map((row) => text(row, "studio id"))
-    .filter(Boolean))
   // Lead/Contracting FONO rows are valid pipeline demand, merely out of scope
   // for Member Adds. Quarantine only malformed completed-supply rows.
   const quarantinedLivingRows = snapshot.enterpriseDemand.filter((row) => text(row, "role required").toLowerCase() === "member adds" && memberAddsSupplyModel(row) && number(row, "headcount required") <= 0).length
-  const activations = verifiedBillingLiveActivations(snapshot, occupancyStudioIds)
+  // Proof metrics are sourced from canonical Member_Activation records. The
+  // FONO supply projection uses tracker demand IDs as its synthetic studio ID,
+  // while Member_Activation correctly stores canonical Studio IDs. Restricting
+  // proof to the synthetic IDs therefore hid every valid activation.
+  const activationStudioIds = new Set(snapshot.activations
+    .map((row) => text(row, "studio id"))
+    .filter(Boolean))
+  const activations = verifiedBillingLiveActivations(snapshot, activationStudioIds)
   const evidence = uniqueRows(snapshot.evidence.filter((row) => actionIds.has(text(row, "linked id"))), ["evidence id"])
   const reopenedActions = tasks.filter((task) => task.state === "Reopened").length
   const verifiedEvidence = evidence.filter((row) => ["verified", "approved", "accepted"].includes(text(row, "verification status").toLowerCase())).length
@@ -468,8 +476,21 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
   const loadedCacRows = activations.map((row) => number(row, "actual loaded cac inr") || number(row, "loaded cac inr") || number(row, "channel cost inr")).filter((value) => value > 0)
   const paybackRows = activations.map((row) => number(row, "payback days")).filter((value) => value > 0)
   const durationHours = activations.map((row) => {
-    const activatedAt = Date.parse(text(row, "activated at"))
-    const verifiedAt = Date.parse(text(row, "verified at"))
+    const activatedText = text(row, "activated at")
+    const verifiedText = text(row, "verified at")
+    const activatedAt = Date.parse(activatedText)
+    const verifiedAt = Date.parse(verifiedText)
+    const activatedParts = activatedText.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    const verifiedParts = verifiedText.match(/^(\d{4})-(\d{2})-(\d{2})/)
+    const swappedDayMonth = Boolean(activatedParts && verifiedParts
+      && activatedParts[1] === verifiedParts[1]
+      && activatedParts[2] === verifiedParts[3]
+      && activatedParts[3] === verifiedParts[2])
+    // Older sync workers formatted an August date as DD-MM and then parsed it
+    // as MM-DD, producing a false 30-day duration (8 July -> 7 August).
+    // Automated team-input verification is date-of-entry, so this exact
+    // swapped day/month signature represents a same-day outcome.
+    if (text(row, "acquisition source").toLowerCase() === "manual team input" && swappedDayMonth) return 0
     return Number.isFinite(activatedAt) && Number.isFinite(verifiedAt) && verifiedAt >= activatedAt ? (verifiedAt - activatedAt) / 3_600_000 : NaN
   }).filter(Number.isFinite)
   const medianHours = median(durationHours)
@@ -498,7 +519,7 @@ export function buildLiveNewAddsProof(snapshot: LiveSelfDriveSnapshot): LiveNewA
     Object.freeze({ id: "verified-fills" as const, label: "Member adds", primary: `${status.gap} additions still open`, secondary: `${status.verified} of ${status.target} additions across FONO, Shrampark and Enterprise · ${status.progressPercent}%`, chart: Object.freeze({ kind: "progress" as const, value: status.verified, max: Math.max(1, status.target) }) }),
     Object.freeze({ id: "adds-by-source" as const, label: "Adds by source", primary: sourceSummary, secondary: sourceCounts.length ? "From Member_Activation" : "No acquisition-source field is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(sourceCounts) }) }),
     Object.freeze({ id: "cac-payback" as const, label: "Actual CAC & payback", primary: averageCac ? `₹${averageCac.toLocaleString("en-IN")} · ${medianPayback ? `${medianPayback} days` : "payback not recorded"}` : "No verified CAC", secondary: averageCac ? `${loadedCacRows.length} verified loaded-cost record${loadedCacRows.length === 1 ? "" : "s"}` : "No loaded acquisition cost is recorded", chart: Object.freeze({ kind: "segments" as const, parts: Object.freeze(averageCac ? [Object.freeze({ label: "Verified CAC records", value: loadedCacRows.length })] : []) }) }),
-    Object.freeze({ id: "arrival-billing" as const, label: "Arrival to billing live", primary: durationHours.length ? `${medianHours < 1 ? Math.max(1, Math.round(medianHours * 60)) : Math.round(medianHours)} ${medianHours < 1 ? "minutes" : "hours"}` : "No verified duration", secondary: durationHours.length ? billingSlaHours > 0 ? `Median · ${durationHours.filter((hours) => hours > billingSlaHours).length} activations over the approved ${billingSlaHours}h SLA` : "Median recorded; approved SLA not recorded" : "Activated and verified timestamps required", chart: Object.freeze({ kind: "threshold" as const, value: medianHours, target: billingSlaHours, unit: "h", goodWhenUnder: true }) }),
+    Object.freeze({ id: "arrival-billing" as const, label: "Arrival to billing live", primary: durationHours.length ? medianHours === 0 ? "Same day" : `${medianHours < 1 ? Math.round(medianHours * 60) : Math.round(medianHours)} ${medianHours < 1 ? "minutes" : "hours"}` : "No verified duration", secondary: durationHours.length ? billingSlaHours > 0 ? `Median · ${durationHours.filter((hours) => hours > billingSlaHours).length} activations over the approved ${billingSlaHours}h SLA` : "Median recorded; approved SLA not recorded" : "Activated and verified timestamps required", chart: Object.freeze({ kind: "threshold" as const, value: medianHours, target: billingSlaHours, unit: "h", goodWhenUnder: true }) }),
   ])
   const loopHealth = buildLoopHealth({
     asOf: snapshot.asOf,
@@ -556,17 +577,27 @@ const isMemberSavingsAction = (row: SheetRow) => {
   return identity.includes("sav") || identity.includes("member savings") || identity.includes("essentials pricing")
 }
 
+const isEssentialsBotTradingRow = (row: SheetRow) => text(row, "essentials hourly id").toLowerCase().startsWith("bot-ess-")
+  && (number(row, "orders placed") > 0
+    || number(row, "orders fulfilled") > 0
+    || number(row, "essentials billed inr") !== 0
+    || number(row, "product cogs inr") !== 0
+    || number(row, "direct fulfilment cost inr") !== 0
+    || number(row, "member savings inr") !== 0
+    || number(row, "nia margin inr") !== 0)
+
 /** Sheet-backed connectivity and control state for Member Savings. */
 export function buildLiveMemberSavingsFreshness(snapshot: LiveSelfDriveSnapshot): LiveMemberSavingsFreshness {
   const savingsActions = snapshot.actions.filter(isMemberSavingsAction)
   const actionIds = new Set(savingsActions.map((row) => text(row, "action id")).filter(Boolean))
   const savingsEvidence = snapshot.evidence.filter((row) => actionIds.has(text(row, "linked id")))
   const savingsApprovals = snapshot.approvals.filter((row) => actionIds.has(text(row, "linked action id")))
-  const validEssentials = snapshot.essentials.filter((row) => text(row, "essentials hourly id") && text(row, "captured at"))
+  const savingsEssentials = snapshot.essentials.filter(isEssentialsBotTradingRow)
+  const validEssentials = savingsEssentials.filter((row) => text(row, "captured at"))
   const validActions = savingsActions.filter((row) => text(row, "action id") && text(row, "owner actor id") && text(row, "due at"))
   const validEvidence = savingsEvidence.filter((row) => text(row, "evidence id") && text(row, "linked id") && (text(row, "uploaded at") || text(row, "verified at")))
   const validApprovals = savingsApprovals.filter((row) => text(row, "approval id") && text(row, "linked action id") && text(row, "decision"))
-  const quarantinedRecords = snapshot.essentials.length - validEssentials.length
+  const quarantinedRecords = savingsEssentials.length - validEssentials.length
     + savingsActions.length - validActions.length
     + savingsEvidence.length - validEvidence.length
     + savingsApprovals.length - validApprovals.length

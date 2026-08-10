@@ -1,6 +1,5 @@
 import { Analytics } from "@vercel/analytics/next"
 import type { Metadata, Viewport } from "next"
-import Script from "next/script"
 import "./globals.css"
 import "../components/decision-room.css"
 import "../components/despatch-screen.css"
@@ -17,11 +16,9 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const themeScript = "try{var t=localStorage.getItem('nia-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}"
   return (
     <html lang="en" className="bg-background" suppressHydrationWarning>
       <body>
-        <Script id="nia-theme-bootstrap" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: themeScript }} />
         {children}
         {process.env.VERCEL === "1" ? <Analytics /> : null}
       </body>

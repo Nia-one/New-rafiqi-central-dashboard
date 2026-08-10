@@ -254,6 +254,49 @@ test("Member Adds proof and controls never retain synthetic KPI values", () => {
   assert.equal(proof.loopHealth.quarantinedRecords, 0)
 })
 
+test("Member Adds proof accepts canonical activation Studio IDs independent of FONO tracker IDs", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-08-10T12:00:00+05:30" },
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-1", "role required": "Member Adds", status: "Contracted", "headcount required": "32", "headcount matched": "32" },
+    ],
+    memberActivation: [
+      { "activation id": "ACTV-CANONICAL-1", "member token": "M1", "studio id": "RJT-FN-D01-S23", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-08-10T10:00:00+05:30", "verified at": "2026-08-10T10:30:00+05:30" },
+    ],
+  })
+
+  const proof = buildLiveNewAddsProof(live)
+  assert.equal(proof.measures[3].primary, "30 minutes")
+  assert.equal(proof.loopHealth.verification.verified, 1)
+})
+
+test("Member Adds shows same-day activation without inventing a one-minute duration", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    memberActivation: [
+      { "activation id": "ACTV-SAME-DAY", "member token": "M1", "studio id": "RJT-FN-D01-S23", "verification status": "Verified", "membership billed inr": "1500", "activated at": "2026-08-07T00:00:00+05:30", "verified at": "2026-08-07T00:00:00+05:30" },
+    ],
+  })
+  assert.equal(buildLiveNewAddsProof(live).measures[3].primary, "Same day")
+})
+
+test("Member Adds corrects the legacy manual-input day/month swap", () => {
+  const live = buildLiveSelfDriveSnapshot({ memberActivation: [
+    { "activation id": "ACTV-SWAPPED", "member token": "M1", "studio id": "RJT-FN-D01-S23", "verification status": "Verified", "membership billed inr": "1500", "acquisition source": "Manual team input", "activated at": "2026-07-08T00:00:00+05:30", "verified at": "2026-08-07T00:00:00+05:30" },
+  ] })
+  assert.equal(buildLiveNewAddsProof(live).measures[3].primary, "Same day")
+})
+
+test("Member Adds uses one governed monthly FONO target across all Studio actuals", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    enterpriseDemand: [
+      { "demand id": "FONO-MONTHLY-TARGET-2026-08", "enterprise id": "UI_FONO_SUPPLY", "role required": "Member Adds Target", "headcount required": "1700", "reporting month": "2026-08" },
+      { "demand id": "FONO-TRACKER-MEMBER-ADDS-1", "enterprise id": "UI_FONO_SUPPLY", "role required": "Member Adds", "headcount required": "100", "headcount matched": "20" },
+      { "demand id": "FONO-TRACKER-MEMBER-ADDS-2", "enterprise id": "UI_FONO_SUPPLY", "role required": "Member Adds", "headcount required": "200", "headcount matched": "12" },
+    ],
+  })
+  assert.deepEqual(buildLiveNewAddsFillStatus(live), { hasData: true, target: 1700, verified: 32, gap: 1668, progressPercent: 2, owner: "Living Operations" })
+})
+
 test("Member Adds returns an honest no-data state instead of a fixture fallback", () => {
   assert.deepEqual(buildLiveNewAddsFillStatus(buildLiveSelfDriveSnapshot({})), {
     hasData: false,

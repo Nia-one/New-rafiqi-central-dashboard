@@ -377,6 +377,13 @@ export async function syncEssentialsBotData() {
   const rawTables = (result.data.valueRanges || []).map((v) => (v.values || []) as unknown[][]);
   const mirrors = await mirrorBotTables(rawTables);
   const [orders, items, deliveries, customers, guests, inventory, studioMaster] = rawTables.map((values) => table(values));
+  const inventoryByProduct = new Map<string, unknown[]>();
+  for (const row of inventory.rows) {
+    for (const productRef of [cell(row, inventory.headers, "product_code"), cell(row, inventory.headers, "product_id"), cell(row, inventory.headers, "id")]) {
+      const key = norm(productRef);
+      if (key) inventoryByProduct.set(key, row);
+    }
+  }
   const studioDirectory = new Map<string, { id: string; name: string; theatre: string; active: boolean }>();
   for (const row of studioMaster.rows) {
     const entry = {
@@ -458,13 +465,23 @@ export async function syncEssentialsBotData() {
     for (const item of itemByOrder.get(orderId) || []) {
       const qty = num(cell(item, items.headers, "quantity")) || 1;
       const product = String(cell(item, items.headers, "product_code") || cell(item, items.headers, "product_id") || cell(item, items.headers, "id") || "").trim();
+      const inventoryRow = inventoryByProduct.get(norm(product));
       if (product) { cohort.products.add(product); cohortMember.products.add(product); }
       const savedCosts = costInputs.byItemId.get(norm(cell(item, items.headers, "id", "order_item_id")));
       g.cogs += num(cell(item, items.headers, "cost")) || qty * num(cell(item, items.headers, "purchase_rate"));
       g.fulfilment += savedCosts
         ? savedCosts.direct + savedCosts.packaging + savedCosts.delivery
         : num(cell(item, items.headers, "direct_fulfilment_cost")) + num(cell(item, items.headers, "packaging_cost")) + num(cell(item, items.headers, "delivery_cost"));
-      g.savings += qty * num(cell(item, items.headers, "nia_savings"));
+      // Member saving is owned by the Essentials Bot. Prefer its explicit
+      // order-item value, then Inventory_Master, then derive MRP - selling.
+      const itemSaving = cell(item, items.headers, "nia_savings", "member_savings");
+      const inventorySaving = inventoryRow ? cell(inventoryRow, inventory.headers, "member_savings") : "";
+      const mrp = num(cell(item, items.headers, "mrp") || (inventoryRow && cell(inventoryRow, inventory.headers, "mrp")));
+      const selling = num(cell(item, items.headers, "selling_price", "unit_price", "price") || (inventoryRow && cell(inventoryRow, inventory.headers, "selling_price")));
+      const savingPerUnit = String(itemSaving ?? "").trim() !== ""
+        ? num(itemSaving)
+        : String(inventorySaving ?? "").trim() !== "" ? num(inventorySaving) : Math.max(0, mrp - selling);
+      g.savings += qty * savingPerUnit;
     }
     cohort.members.set(memberKey, cohortMember);
     cohortGroups.set(norm(studio), cohort);

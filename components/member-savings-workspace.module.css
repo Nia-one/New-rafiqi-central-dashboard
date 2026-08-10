@@ -18,6 +18,28 @@
 .freshness svg { width: 16px; }
 .freshness b { margin-left: auto; }
 
+.savingsOverview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.savingsOverview article { min-width: 0; padding: 17px 19px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.savingsOverview article:nth-child(3n) { border-right: 0; }
+.savingsOverview article:nth-child(n+4) { border-bottom: 0; }
+.savingsOverview span, .savingsOverview strong, .savingsOverview small { display: block; }
+.savingsOverview span { color: var(--muted); font-size: 9px; font-weight: var(--weight-semibold); letter-spacing: .06em; text-transform: uppercase; }
+.savingsOverview strong { margin: 7px 0 5px; font-size: 23px; letter-spacing: -.025em; }
+.savingsOverview small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+
+.dataPanel { min-width: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.dataPanel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
+.dataPanel header span { color: var(--indigo); font-size: 10px; font-weight: var(--weight-semibold); letter-spacing: .07em; text-transform: uppercase; }
+.dataPanel header strong { display: block; margin-top: 4px; font-size: 16px; }
+.dataPanel header p { margin: 1px 0 0; color: var(--muted); font-size: 10px; }
+.dataPanel table { width: 100%; min-width: 900px; border-collapse: collapse; }
+.dataPanel th, .dataPanel td { padding: 11px 12px; border-bottom: 1px solid var(--border); font-size: 10px; text-align: right; white-space: nowrap; }
+.dataPanel th { color: var(--muted); font-size: 8px; letter-spacing: .05em; text-transform: uppercase; }
+.dataPanel th:first-child, .dataPanel td:first-child, .dataPanel th:nth-child(2), .dataPanel td:nth-child(2), .dataPanel th:nth-child(3), .dataPanel td:nth-child(3), .dataPanel th:nth-child(4), .dataPanel td:nth-child(4) { text-align: left; }
+.dataPanel tfoot th { color: var(--ink); background: var(--surface-subtle); font-weight: var(--weight-semibold); }
+.goodStatus, .badStatus { display: inline-flex; padding: 4px 7px; border-radius: 999px; background: var(--status-good-surface); color: var(--status-good); font-size: 9px; font-weight: var(--weight-semibold); }
+.badStatus { background: var(--status-warn-surface); color: var(--status-warn); }
+
 .taskBand { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; padding: 24px 26px; border: 1px solid var(--border); border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-card); }
 .taskBand > div:first-child > span, .panel header span, .workPanel header span, .exceptions header span { color: var(--indigo); font-size: 11px; font-weight: var(--weight-semibold); letter-spacing: .08em; text-transform: uppercase; }
 .taskBand h2 { max-width: 820px; margin: 7px 0; font-size: clamp(22px, 2.2vw, 34px); line-height: 1.12; letter-spacing: -.035em; }
@@ -149,6 +171,11 @@
 }
 
 @media (max-width: 700px) {
+  .savingsOverview { grid-template-columns: 1fr 1fr; }
+  .savingsOverview article:nth-child(3n) { border-right: 1px solid var(--line); }
+  .savingsOverview article:nth-child(2n) { border-right: 0; }
+  .savingsOverview article:nth-child(n+4) { border-bottom: 1px solid var(--line); }
+  .savingsOverview article:nth-child(n+5) { border-bottom: 0; }
   .loopHealthStrip { grid-template-columns: 1fr; }
   .loopHealthStrip article { border-right: 0; border-bottom: 1px solid var(--line); }
   .loopHealthStrip article:last-child { border-bottom: 0; }

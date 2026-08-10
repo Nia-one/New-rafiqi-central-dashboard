@@ -38,6 +38,26 @@ export function MemberSavingsWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])
+  const money = (value: number) => `₹${Math.round(value).toLocaleString("en-IN")}`
+  const totals = preview.services.reduce((sum, service) => ({
+    savings: sum.savings + service.memberSavingsInr,
+    margin: sum.margin + service.niaMarginInr,
+    billed: sum.billed + (service.billedInr ?? 0),
+    buyers: sum.buyers + (service.buyingMembers ?? 0),
+    orders: sum.orders + (service.ordersFulfilled ?? service.ordersPlaced ?? 0),
+  }), { savings: 0, margin: 0, billed: 0, buyers: 0, orders: 0 })
+  const theatres = [...preview.services.reduce((groups, service) => {
+    const theatre = service.theatre || "Unassigned"
+    const current = groups.get(theatre) ?? { theatre, studios: new Set<string>(), buyers: 0, orders: 0, billed: 0, savings: 0, margin: 0 }
+    current.studios.add(service.studioId || service.studio)
+    current.buyers += service.buyingMembers ?? 0
+    current.orders += service.ordersFulfilled ?? service.ordersPlaced ?? 0
+    current.billed += service.billedInr ?? 0
+    current.savings += service.memberSavingsInr
+    current.margin += service.niaMarginInr
+    groups.set(theatre, current)
+    return groups
+  }, new Map<string, { theatre: string; studios: Set<string>; buyers: number; orders: number; billed: number; savings: number; margin: number }>()).values()]
 
   function recordShadowOutcome(actionId: string) {
     const outcome = selected[actionId] ?? "Unresolved"
@@ -51,6 +71,9 @@ export function MemberSavingsWorkspace({ preview }: Props) {
 
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Member Savings sections" sections={[
     { title: "Data freshness", summary: `Last refresh ${date(preview.source.lastRefreshAt)} · ${preview.quarantineCount} quarantined` },
+    { title: "Savings overview", summary: `${money(totals.savings)} saved by ${totals.buyers} members` },
+    { title: "Theatre-wise savings", summary: `${theatres.length} theatres · ${money(totals.savings)} Member savings` },
+    { title: "Studio-wise savings", summary: `${preview.services.length} active Bot trading rows` },
     { title: "Savings command", summary: `${preview.summary.gap} failing the dual gate · owner ${preview.summary.owner}` },
     { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} confirmed` },
     { title: "Savings vs goal", summary: `${preview.summary.current} current · ${preview.summary.target} target` },
@@ -59,7 +82,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     { title: "Savings, margin and repeat", summary: `${preview.services.filter((service) => service.status === "Pass").length}/${preview.services.length} services pass`, lens: "decide" },
     { title: "Service implication", summary: "Fix cost or attach without withdrawing Member savings.", lens: "decide" },
     { title: "Services needing action", summary: `${tasks.length} service actions open`, lens: "operate" },
-    { title: "Issues needing review", summary: `${preview.despatchEscalations.length} repeated failures need help` },
+    { title: "Issues needing review", summary: `${preview.services.filter((service) => service.status === "Exception").length} Bot exception needs review` },
     { title: "Background record", summary: `${audit.length} local shadow events · governed controls retained`, lens: "operate" },
     { title: "Decision required", summary: `Recover ${preview.summary.gap} dual-gate failure` },
     { title: "Source and confidence", summary: `${preview.source.name} · Production confidence Low` },
@@ -70,6 +93,29 @@ export function MemberSavingsWorkspace({ preview }: Props) {
       <span>Last refresh {date(preview.source.lastRefreshAt)} · {preview.source.name}</span>
       <b>{preview.quarantineCount} protected-input rows quarantined</b>
     </div>
+
+    <section className={styles.savingsOverview} aria-label="Member savings overview">
+      <article><span>Member savings</span><strong>{money(totals.savings)}</strong><small>Verified saving from Essentials Bot rows</small></article>
+      <article><span>Buying members</span><strong>{totals.buyers.toLocaleString("en-IN")}</strong><small>Members represented by active trading rows</small></article>
+      <article><span>Fulfilled orders</span><strong>{totals.orders.toLocaleString("en-IN")}</strong><small>Fulfilled; placed used only where fulfilment is unavailable</small></article>
+      <article><span>Essentials billed</span><strong>{money(totals.billed)}</strong><small>Governed billed value</small></article>
+      <article><span>Nia margin</span><strong>{money(totals.margin)}</strong><small>Recorded contribution after Bot costs</small></article>
+      <article><span>Saving rate</span><strong>{totals.billed > 0 ? `${(totals.savings / totals.billed * 100).toFixed(1)}%` : "0.0%"}</strong><small>Member saving ÷ billed value</small></article>
+    </section>
+
+    <section className={styles.dataPanel} aria-label="Theatre-wise Member savings">
+      <header><div><span>Theatre-wise savings</span><strong>Where members received value</strong></div><p>{theatres.length} governed theatres</p></header>
+      <div className={styles.tableWrap}><table><thead><tr><th>Theatre</th><th>Studios</th><th>Buying members</th><th>Orders</th><th>Billed</th><th>Member saving</th><th>Nia margin</th><th>Saving rate</th></tr></thead><tbody>
+        {theatres.map((row) => <tr key={row.theatre}><td><strong>{row.theatre}</strong></td><td>{row.studios.size}</td><td>{row.buyers.toLocaleString("en-IN")}</td><td>{row.orders.toLocaleString("en-IN")}</td><td>{money(row.billed)}</td><td>{money(row.savings)}</td><td>{money(row.margin)}</td><td>{row.billed > 0 ? `${(row.savings / row.billed * 100).toFixed(1)}%` : "0.0%"}</td></tr>)}
+      </tbody><tfoot><tr><th>Grand total</th><th>{preview.services.length}</th><th>{totals.buyers.toLocaleString("en-IN")}</th><th>{totals.orders.toLocaleString("en-IN")}</th><th>{money(totals.billed)}</th><th>{money(totals.savings)}</th><th>{money(totals.margin)}</th><th>{totals.billed > 0 ? `${(totals.savings / totals.billed * 100).toFixed(1)}%` : "0.0%"}</th></tr></tfoot></table></div>
+    </section>
+
+    <section className={styles.dataPanel} aria-label="Studio-wise Member savings">
+      <header><div><span>Studio-wise savings</span><strong>Exact Bot trading rows</strong></div><p>{preview.services.length} active rows</p></header>
+      <div className={styles.tableWrap}><table><thead><tr><th>Theatre</th><th>Studio</th><th>Studio ID</th><th>Service</th><th>Members</th><th>Orders</th><th>Billed</th><th>Saving</th><th>Margin</th><th>Gate</th></tr></thead><tbody>
+        {preview.services.map((service) => <tr key={service.serviceId}><td>{service.theatre || "Unassigned"}</td><td><strong>{service.studio}</strong></td><td>{service.studioId || "Not recorded"}</td><td>{service.serviceName}</td><td>{(service.buyingMembers ?? 0).toLocaleString("en-IN")}</td><td>{(service.ordersFulfilled ?? service.ordersPlaced ?? 0).toLocaleString("en-IN")}</td><td>{money(service.billedInr ?? 0)}</td><td>{money(service.memberSavingsInr)}</td><td>{money(service.niaMarginInr)}</td><td><span className={service.status === "Pass" ? styles.goodStatus : styles.badStatus}>{service.status}</span></td></tr>)}
+      </tbody></table></div>
+    </section>
 
     <section className={styles.taskBand} aria-labelledby="member-savings-heading">
       <div>
@@ -135,8 +181,11 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     </section>
 
     <section className={styles.exceptions} aria-label="Issues needing your review">
-      <header><div><span>Issues needing your review</span><strong>{preview.despatchEscalations.length} repeated failures need help</strong></div><p>Evidence retained</p></header>
-      <OperationalCardStack label="Issues needing your review">{preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Savings" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Confirmed the repeated dual-gate failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover both Member savings and Nia margin, then submit verified evidence." }]} />)}<OperationalCard title="Repricing proposal" status="Recommendation only" domain="Member Savings" fields={[{ label: "Owner", value: "Pushkar" }]} story={[{ label: "Why it matters", value: "Price changes affect both Member savings and Nia margin." }, { label: "What Nia already did", value: "Prepared an evidence-backed recommendation without changing the price." }, { label: "What happens next", value: "Pushkar reviews and approves or declines the proposal." }]} progress="evidence" /></OperationalCardStack>
+      <header><div><span>Issues needing your review</span><strong>{preview.services.filter((service) => service.status === "Exception").length} Bot exception needs review</strong></div><p>Evidence retained</p></header>
+      <OperationalCardStack label="Issues needing your review">
+        {preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Savings" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Confirmed the repeated dual-gate failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover both Member savings and Nia margin, then submit verified evidence." }]} />)}
+        {preview.services.filter((service) => service.status === "Exception").map((service) => <OperationalCard key={service.serviceId} title={`${service.studio} savings exception`} status="Detected from Bot" domain={`${service.theatre || "Unassigned"} · ${service.serviceName}`} fields={[{ label: "Member saving", value: money(service.memberSavingsInr) }, { label: "Nia margin", value: money(service.niaMarginInr) }, { label: "Buying members", value: String(service.buyingMembers ?? 0) }, { label: "Orders", value: String(service.ordersFulfilled ?? service.ordersPlaced ?? 0) }]} story={[{ label: "Why it matters", value: service.statusReason }, { label: "What Nia already did", value: "Detected the governed Bot row; no price or supplier change was made." }, { label: "What happens next", value: "Create a governed recovery action and verify that both savings and margin clear ₹0." }]} progress="assigned" />)}
+      </OperationalCardStack>
     </section>
 
     <details className={styles.auditDetails}>
