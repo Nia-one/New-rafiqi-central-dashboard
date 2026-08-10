@@ -33,6 +33,16 @@ function num(value: any) {
 }
 
 const SHEETS_SERIAL_EPOCH_UTC = Date.UTC(1899, 11, 30);
+const MIN_SOURCE_DATE_UTC = Date.UTC(2000, 0, 1);
+
+function plausibleSourceDate(date: Date): Date | null {
+  const timestamp = date.getTime();
+  // Reject malformed calendar values such as 01 Jan 46244. A source timestamp
+  // may be future-dated for a reporting boundary, but never by decades.
+  return Number.isFinite(timestamp) && timestamp >= MIN_SOURCE_DATE_UTC && timestamp <= Date.now() + 366 * 86_400_000
+    ? date
+    : null;
+}
 
 /** Normalise Google Sheets/Excel serial dates as well as ordinary date strings. */
 function parseSourceDate(value: any): Date | null {
@@ -44,13 +54,13 @@ function parseSourceDate(value: any): Date | null {
   const serial = Number(text);
   if (/^\d+(?:\.\d+)?$/.test(text) && Number.isFinite(serial) && serial >= 20_000 && serial <= 80_000) {
     const date = new Date(SHEETS_SERIAL_EPOCH_UTC + serial * 86_400_000);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return plausibleSourceDate(date);
   }
 
   // Do not accidentally treat ordinary metric values (for example, 500) as dates.
   if (!/[\-/:T]/.test(text)) return null;
   const timestamp = Date.parse(text);
-  return Number.isNaN(timestamp) ? null : new Date(timestamp);
+  return Number.isNaN(timestamp) ? null : plausibleSourceDate(new Date(timestamp));
 }
 
 /**
