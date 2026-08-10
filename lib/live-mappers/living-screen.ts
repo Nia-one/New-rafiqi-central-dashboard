@@ -116,7 +116,10 @@ export function buildLivingScreenData(ops: any) {
   }
   const latestDemandById = new Map<string, Row>()
   demand.forEach((row, index) => {
-    const id = value(row, "demand id") || value(row, "source submission id") || `row-${index}`
+    // The backend and live-sync payload can contain the same governed demand
+    // ID with different casing. Treat IDs case-insensitively so one FONO
+    // prospect is never counted twice in Nests totals.
+    const id = (value(row, "demand id") || value(row, "source submission id") || `row-${index}`).toUpperCase()
     const previous = latestDemandById.get(id)
     const rowTime = Date.parse(value(row, "updated at") || value(row, "opened at") || "1970-01-01")
     const previousTime = Date.parse(value(previous, "updated at") || value(previous, "opened at") || "1970-01-01")

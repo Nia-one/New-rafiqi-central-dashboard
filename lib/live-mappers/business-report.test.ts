@@ -39,6 +39,20 @@ test("Business Report keeps missing pipeline CM unavailable instead of inventing
   assert.equal(report.projectedRevenue, 5000)
 })
 
+test("Business Report counts a governed FONO demand ID once across case-variant live payloads", () => {
+  const report = buildBusinessReportData({
+    enterpriseDemand: [
+      { "demand id": "FONO-TRACKER-ABC", status: "Contracted", "headcount required": 32 },
+      { "demand id": "fono-tracker-abc", status: "Contracted", "headcount required": 32 },
+      { "demand id": "FONO-TRACKER-DEF", status: "Contracting", "headcount required": 240 },
+      { "demand id": "fono-tracker-def", status: "Contracting", "headcount required": 240 },
+      { "demand id": "FONO-TRACKER-GHI", status: "Lead", "headcount required": 1110 },
+      { "demand id": "fono-tracker-ghi", status: "Lead", "headcount required": 1110 },
+    ],
+  })
+  assert.deepEqual(report.fono.stages, { Lead: 1110, Contracting: 240, Contracted: 32 })
+})
+
 test("Business Report places recorded Living CM beside occupancy by Theatre", () => {
   const report = buildBusinessReportData({
     living: [
