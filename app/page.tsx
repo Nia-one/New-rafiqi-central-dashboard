@@ -18,23 +18,19 @@ import { cookies } from "next/headers"
 import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessionSecretFromEnvironment } from "@/lib/auth"
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { getLatestFreshEnterpriseDemandRows } from "@/lib/freshDashboardInputSync"
+import { unstable_cache } from "next/cache"
 
 export const dynamic = "force-dynamic"
 
-const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds))
-
-async function buildOpsDataWithRetry() {
-  let lastError: unknown
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await buildOpsData()
-    } catch (error) {
-      lastError = error
-      if (attempt < 2) await wait(300 * 2 ** attempt)
-    }
-  }
-  throw lastError
-}
+// Share the last successful governed snapshot across serverless invocations.
+// The Sheets client already retries transient failures; retrying the complete
+// 38-range dashboard read here multiplied quota usage and could turn a 429 into
+// a full-page outage on a freshly deployed instance.
+const buildCachedOpsData = unstable_cache(
+  () => buildOpsData(),
+  ["governed-dashboard-ops-data-v1"],
+  { revalidate: 60 },
+)
 
 export default async function Page() {
   if (!selfDrivePlatformEnabled()) return <LegacyNiaDashboard />
@@ -47,7 +43,7 @@ export default async function Page() {
   const role = sessionEmail ? roleAssignments().get(sessionEmail) ?? (process.env.NODE_ENV !== "production" && sessionEmail === configuredEmail ? "administrator" : null) : null
   const hasFinanceRole = financeAccessAllowed(role)
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
-  const liveOpsData = await buildOpsDataWithRetry()
+  const liveOpsData = await buildCachedOpsData()
   const liveSnapshot = buildLiveSelfDriveSnapshot(liveOpsData)
   // Enterprise Demand is governed by the explicit UI_Enterprise_Demand input
   // lane. Retain SP-BOT only as a backwards-compatible fallback while an older
