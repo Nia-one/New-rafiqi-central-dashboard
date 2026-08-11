@@ -165,7 +165,11 @@ async function fetchBatch(ranges: string[], stale?: string[][][]) {
     }
     if (response?.ok) break;
     if (response && response.status !== 429 && response.status < 500) throw new Error(await response.text());
-    if (attempt < 2) await wait(response?.status === 429 ? 10_000 * (attempt + 1) : 1_000 * 2 ** attempt);
+    // A per-minute quota cannot recover during short exponential retries. Stop
+    // immediately and serve the stale snapshot when available; retrying here
+    // only consumes more quota and keeps the request open longer.
+    if (response?.status === 429) break;
+    if (attempt < 2) await wait(1_000 * 2 ** attempt);
   }
 
   if (!response?.ok) {

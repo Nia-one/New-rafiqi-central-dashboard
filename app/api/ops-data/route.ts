@@ -2,9 +2,19 @@ import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
 import { syncAllSources, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
 import { clearSheetCache } from "@/lib/googleSheets";
+import { unstable_cache } from "next/cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+// Deduplicate automatic syncs across browsers and serverless instances. The
+// source is still live, but at most one governed input sync is executed in a
+// five-minute quota window.
+const syncCachedUserInputs = unstable_cache(
+  () => syncUserInputs(),
+  ["governed-user-input-sync-v1"],
+  { revalidate: 300 },
+);
 
 export async function GET() {
   try {
@@ -38,7 +48,7 @@ export async function POST(request: Request) {
     const fullSync = url.searchParams.get("full") === "1";
     const liveSync = url.searchParams.get("live") === "1";
     const inputSync = url.searchParams.get("input") === "1";
-    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncUserInputs() : null;
+    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncCachedUserInputs() : null;
     clearSheetCache();
     return NextResponse.json(
       { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : inputSync ? "input-sync" : "refresh", ...(result ?? {}) },

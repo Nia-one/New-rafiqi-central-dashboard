@@ -7,8 +7,8 @@ const shell = readFileSync(new URL("./control-tower-shell.tsx", import.meta.url)
 const dashboard = readFileSync(new URL("./nia-dashboard.tsx", import.meta.url), "utf8")
 const sourceSync = readFileSync(new URL("../lib/sourceSync.ts", import.meta.url), "utf8")
 
-test("global live sync runs one quota-safe dashboard-input batch every 45 seconds", () => {
-  assert.match(source, /const SYNC_SECONDS = 45/)
+test("global live sync runs one quota-safe dashboard-input batch every five minutes", () => {
+  assert.match(source, /const SYNC_SECONDS = 300/)
   assert.match(source, /LEASE_KEY/)
   assert.match(source, /AbortSignal\.timeout\(SYNC_TIMEOUT_MS\)/)
   assert.match(source, /rafiqi:sync-complete/)

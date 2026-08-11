@@ -4,7 +4,11 @@ import { RefreshCw } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-const SYNC_SECONDS = 45
+// Google Sheets quotas are shared by every production user through one service
+// account. A 45-second browser timer multiplied the same expensive sync across
+// users and local tabs. Five minutes keeps the dashboard current without a
+// quota burst; the server also deduplicates these requests globally.
+const SYNC_SECONDS = 300
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
