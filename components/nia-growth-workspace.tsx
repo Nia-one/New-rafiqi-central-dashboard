@@ -46,6 +46,12 @@ export function NiaGrowthWorkspace({ preview }: Props) {
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; supplyModel: "FONO" | "SP"; outcome: ShadowOutcome; route: string; at: string }[]>([])
   const liveActions = preview.liveActions ?? []
+  const openGrowthActions = liveActions.filter((action) => !["verified", "closed"].includes(action.state.toLowerCase()))
+  const decisionCount = openGrowthActions.length || preview.signOffs.length
+  const nextDueAt = openGrowthActions
+    .map((action) => action.dueAt)
+    .filter((value) => value && Number.isFinite(Date.parse(value)))
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0]
 
   function recordShadowOutcome(task: GrowthTaskPreview) {
     const outcome = selected[task.actionId] ?? "Unresolved"
@@ -142,12 +148,12 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     <section className={styles.askBand} aria-label="Decision required">
       <div className={styles.askCopy}>
         <span>Decision required</span>
-        <strong>Close the {preview.summary.gap} capacity gap by approving the {preview.signOffs.length} channel-correct growth decisions waiting.</strong>
+        <strong>Close the {preview.summary.gap} capacity gap by resolving {decisionCount} governed growth action{decisionCount === 1 ? "" : "s"} with channel-correct evidence and approval.</strong>
         <p>No contract, property or capital action happens automatically; accountability sits with {preview.summary.owner} until verified activation-ready capacity meets plan.</p>
       </div>
       <dl className={styles.askMeta}>
         <div><dt>Owner</dt><dd>{preview.summary.owner}</dd></div>
-        <div><dt>By</dt><dd>{preview.tasks[0]?.dueAt ? <time dateTime={preview.tasks[0].dueAt}>{date(preview.tasks[0].dueAt)}</time> : "No open action"}</dd></div>
+        <div><dt>By</dt><dd>{nextDueAt ? <time dateTime={nextDueAt}>{date(nextDueAt)}</time> : decisionCount ? "Due date not recorded" : "No open action"}</dd></div>
       </dl>
     </section>
 

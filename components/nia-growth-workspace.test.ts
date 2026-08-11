@@ -69,6 +69,8 @@ test("lane states use written labels and do not rely on colour", () => {
 
 test("recommendation cards retain named human authority and pending approval", () => {
   assert.match(componentSource, /Growth decisions waiting/)
+  assert.match(componentSource, /resolving \{decisionCount\} governed growth action/)
+  assert.match(componentSource, /Due date not recorded/)
   assert.match(componentSource, /Human approval required/)
   assert.ok(preview.signOffs.every((row) => row.status === "Pending human approval"))
   assert.deepEqual(preview.signOffs.map((row) => row.owner), ["CEO/COO", "Pushkar"])
