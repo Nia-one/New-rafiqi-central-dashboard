@@ -66,7 +66,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
   }
 
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Nia Growth sections" sections={[
-    { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} verified` },
+    { title: "Loop health", summary: `${preview.loopHealth.state} · ${preview.loopHealth.verification.verified}/${preview.loopHealth.verification.claimed} governed actions verified` },
     { title: "Data freshness", summary: `Last refresh ${date(preview.source.lastRefreshAt)} · ${preview.quarantineCount} quarantined` },
     { title: "Growth command", summary: `${preview.summary.gap} capacity gap · owner ${preview.summary.owner}` },
     { title: "Growth vs plan", summary: `${preview.summary.current} current · ${preview.summary.target} target` },

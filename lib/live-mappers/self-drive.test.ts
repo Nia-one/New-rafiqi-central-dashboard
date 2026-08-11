@@ -751,6 +751,24 @@ test("Member Savings removes a live action after linked independent evidence ver
   assert.deepEqual(buildLiveMemberSavingsTasks(live), [])
 })
 
+test("Nia Growth uses the governed Fono Funnel monthly target against Contracted Nests", () => {
+  const live = buildLiveSelfDriveSnapshot({
+    meta: { updatedAt: "2026-08-11T10:45:00+05:30" },
+    enterpriseDemand: [
+      { "demand id": "FONO-MONTHLY-TARGET-2026-08", "role required": "Member Adds Target", "headcount required": "1700", "updated at": "2026-08-11T10:45:00+05:30" },
+      { "demand id": "FONO-TRACKER-CONTRACTED", "role required": "Living supply", "headcount required": "32", "headcount matched": "32", "updated at": "2026-08-11T10:45:00+05:30" },
+      { "demand id": "FONO-TRACKER-LEAD", "role required": "Living supply", "headcount required": "100", "headcount matched": "0", "updated at": "2026-08-11T10:45:00+05:30" },
+      { "demand id": "SP-BOT-1", "headcount required": "150", "headcount matched": "0", "updated at": "2026-08-11T10:45:00+05:30" },
+    ],
+  })
+  const projection = buildLiveNiaGrowthProjection(live)
+  assert.equal(projection.summary.target, "FONO 1700 target · SP 150 required")
+  assert.equal(projection.summary.current, "FONO 32 contracted Nests · SP 0 matched")
+  assert.equal(projection.summary.gap, "FONO 1668 gap · SP 150 open")
+  assert.match(projection.measures[0].value, /32 contracted Nests/)
+  assert.equal(projection.measures[0].target, "Monthly target 1700")
+})
+
 test("Living summary excludes Existing Occupancy from the FONO and SP channel comparison", () => {
   const live = buildLiveSelfDriveSnapshot({
     living: [

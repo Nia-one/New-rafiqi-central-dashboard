@@ -209,12 +209,20 @@ export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaG
   const projection = buildLiveNiaGrowthProjection(snapshot)
   const channelRows = (channel: "FONO" | "SP") => snapshot.enterpriseDemand.filter((row) => {
     const identity = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
-    if (text(row, "role required").toLowerCase() === "member adds") return false
+    const role = text(row, "role required").toLowerCase()
+    if (role === "member adds" || role === "member adds target" || identity.includes("fono-monthly-target-")) return false
     return channel === "SP" ? identity.includes("sp-bot") : identity.includes("ops-rpt-fono") || identity.includes("fono-tracker-")
   })
+  const fonoTargetRow = snapshot.enterpriseDemand.find((row) => {
+    const identity = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
+    return text(row, "role required").toLowerCase() === "member adds target" || identity.includes("fono-monthly-target-")
+  })
+  const governedFonoTarget = number(fonoTargetRow ?? {}, "headcount required")
   const lane = (channel: "FONO" | "SP") => {
     const rows = channelRows(channel)
-    const planned = rows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+    const planned = channel === "FONO" && governedFonoTarget > 0
+      ? governedFonoTarget
+      : rows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
     const ready = rows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
     const gap = Math.max(0, planned - ready)
     return { supplyModel: channel, capacityLabel: `${channel} capacity`, plannedNests: planned, activationReadyNests: ready, gapNests: gap, timeToReadyLabel: "From governed demand stages", coverageLabel: `${ready}/${planned || 0} matched`, coverageDetail: `${rows.length} governed demand records`, progressPct: planned ? Math.min(100, ready / planned * 100) : 0, stages: [
@@ -224,11 +232,19 @@ export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaG
     ] }
   }
   const lanes = [lane("FONO"), lane("SP")] as const
-  const claimed = lanes.reduce((sum, row) => sum + row.plannedNests, 0)
-  const verified = lanes.reduce((sum, row) => sum + row.activationReadyNests, 0)
-  const loopHealth = buildLoopHealth({ asOf: snapshot.asOf, feeds: [], clocks: [], verification: { claimed, verified: Math.min(claimed, verified), awaiting: Math.max(0, claimed - verified), reopened: 0, oldestAwaitingAt: claimed > verified ? snapshot.asOf : null } })
   const growthActions = snapshot.actions.filter((row) => /nia[- ]growth/.test(`${text(row, "action id")} ${text(row, "operating objective")}`.toLowerCase()))
   const growthApprovals = snapshot.approvals.filter((row) => growthActions.some((action) => text(action, "action id") === text(row, "linked action id")))
+  const verifiedGrowthActions = growthActions.filter((action) => {
+    const actionId = text(action, "action id")
+    const state = text(action, "state").toLowerCase()
+    const approval = growthApprovals.find((row) => text(row, "linked action id") === actionId)
+    const evidence = snapshot.evidence.filter((row) => text(row, "linked id") === actionId)
+    return ["verified", "closed"].includes(state) || (text(approval ?? {}, "decision").toLowerCase() === "approved"
+      && evidence.some((row) => ["verified", "approved", "accepted"].includes(text(row, "verification status").toLowerCase())))
+  }).length
+  const claimed = growthActions.length
+  const verified = Math.min(claimed, verifiedGrowthActions)
+  const loopHealth = buildLoopHealth({ asOf: snapshot.asOf, feeds: [], clocks: [], verification: { claimed, verified, awaiting: Math.max(0, claimed - verified), reopened: 0, oldestAwaitingAt: claimed > verified ? snapshot.asOf : null } })
   const liveActions = growthActions.map((row) => {
     const actionId = text(row, "action id")
     const identity = `${actionId} ${text(row, "operating objective")}`.toLowerCase()

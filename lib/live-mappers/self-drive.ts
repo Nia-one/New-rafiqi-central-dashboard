@@ -1065,9 +1065,15 @@ export function buildLiveMemberEngagementLoopHealth(snapshot: LiveSelfDriveSnaps
 }
 
 export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): LiveNiaGrowthProjection {
+  const fonoTargetRow = snapshot.enterpriseDemand.find((row) => {
+    const ids = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
+    return text(row, "role required").toLowerCase() === "member adds target" || ids.includes("fono-monthly-target-")
+  })
+  const governedFonoTarget = number(fonoTargetRow ?? {}, "headcount required")
   const channel = (row: SheetRow) => {
     const ids = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
-    if (text(row, "role required").toLowerCase() === "member adds") return ""
+    const role = text(row, "role required").toLowerCase()
+    if (role === "member adds" || role === "member adds target" || ids.includes("fono-monthly-target-")) return ""
     // FONO must be identified by its governed source lineage. A generic
     // `Living supply` role is also used by Enterprise Demand and must never be
     // folded into the FONO funnel total.
@@ -1085,7 +1091,8 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const spRows = governedLiving.filter((row) => channel(row) === "SP")
   const fonoReady = fonoRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
   const spReady = spRows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
-  const fonoContracted = fonoRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const fonoPipeline = fonoRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
+  const fonoContracted = governedFonoTarget > 0 ? governedFonoTarget : fonoPipeline
   const spContracted = spRows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
   const growthAction = snapshot.actions.find((row) => {
     const identity = `${text(row, "action id")} ${text(row, "operating objective")}`.toLowerCase()
@@ -1094,11 +1101,13 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const growthApproval = snapshot.approvals.find((row) => text(row, "linked action id") === text(growthAction ?? {}, "action id"))
   const ownerActorId = text(growthAction ?? {}, "owner actor id") || text(growthApproval ?? {}, "approver actor id") || governedLiving.map((row) => text(row, "owner actor id")).find(Boolean) || ""
   const owner = String(snapshot.people.find((row) => text(row, "actor id") === ownerActorId)?.["display name"] || ownerActorId || "Unassigned").trim()
-  const progress = contractedNests > 0 ? `${Math.round(activationReadyNests / contractedNests * 100)}%` : "No data"
+  const totalPlan = fonoContracted + spContracted
+  const progress = totalPlan > 0 ? `${Math.round(activationReadyNests / totalPlan * 100)}%` : "No data"
+  const hasGovernedFonoTarget = governedFonoTarget > 0
   const summary = Object.freeze({
-    target: `FONO ${fonoContracted} demand · SP ${spContracted} leads`,
-    current: `FONO ${fonoReady} supply · SP ${spReady} won`,
-    gap: `FONO ${Math.max(0, fonoContracted - fonoReady)} gap · SP ${Math.max(0, spContracted - spReady)} open`,
+    target: hasGovernedFonoTarget ? `FONO ${fonoContracted} target · SP ${spContracted} required` : `${contractedNests} required Nests`,
+    current: hasGovernedFonoTarget ? `FONO ${fonoReady} contracted Nests · SP ${spReady} matched` : `${activationReadyNests} matched Nests`,
+    gap: hasGovernedFonoTarget ? `FONO ${Math.max(0, fonoContracted - fonoReady)} gap · SP ${Math.max(0, spContracted - spReady)} open` : `${gapNests} Nests`,
     owner,
     progress,
     verifiedResult: "FONO Nest capacity and Shrampark lead counts kept separate",
@@ -1110,9 +1119,15 @@ export function buildLiveNiaGrowthProjection(snapshot: LiveSelfDriveSnapshot): L
   const readinessSlaValue = text(readinessSlaPolicy ?? {}, "policy value") || text(readinessSlaPolicy ?? {}, "value")
   const readinessSlaUnit = text(readinessSlaPolicy ?? {}, "unit")
   const measures: NiaGrowthPreview["measures"] = Object.freeze([
-    Object.freeze({ id: "ready-capacity", label: "Matched pipeline capacity", value: `${activationReadyNests} matched Nests · FONO ${fonoReady} · SP ${spReady}`, target: `Required: ${fonoContracted} · ${spContracted}`, detail: "Current FONO Funnel and Shram Park demand records" }),
-    Object.freeze({ id: "time-to-ready", label: "Opportunity gap", value: `${gapNests} Nest gap`, target: readinessSlaValue ? `Approved SLA ${readinessSlaValue}${readinessSlaUnit ? ` ${readinessSlaUnit}` : ""}` : "Approved readiness SLA not recorded", detail: "Required minus matched demand capacity" }),
-    Object.freeze({ id: "fono-health", label: "FONO conversion health", value: `FONO ${fonoReady} matched · ${fonoContracted} required`, target: "Kept separate", detail: "FONO Funnel only; Studio occupancy is not inferred" }),
+    Object.freeze(hasGovernedFonoTarget
+      ? { id: "ready-capacity", label: "Contracted vs target", value: `FONO ${fonoReady} contracted Nests`, target: `Monthly target ${fonoContracted}`, detail: "Both values come from Fono Funnel; SP is shown separately" }
+      : { id: "ready-capacity", label: "Matched pipeline capacity", value: `${activationReadyNests} matched Nests · FONO ${fonoReady} · SP ${spReady}`, target: `Required: ${fonoContracted} · ${spContracted}`, detail: "Current FONO Funnel and Shram Park demand records" }),
+    Object.freeze(hasGovernedFonoTarget
+      ? { id: "time-to-ready", label: "FONO target gap", value: `${Math.max(0, fonoContracted - fonoReady)} Nest gap`, target: readinessSlaValue ? `Approved SLA ${readinessSlaValue}${readinessSlaUnit ? ` ${readinessSlaUnit}` : ""}` : "Approved readiness SLA not recorded", detail: "Monthly FONO target minus Contracted-stage Nests" }
+      : { id: "time-to-ready", label: "Opportunity gap", value: `${gapNests} Nest gap`, target: readinessSlaValue ? `Approved SLA ${readinessSlaValue}${readinessSlaUnit ? ` ${readinessSlaUnit}` : ""}` : "Approved readiness SLA not recorded", detail: "Required minus matched demand capacity" }),
+    Object.freeze(hasGovernedFonoTarget
+      ? { id: "fono-health", label: "FONO progress", value: `${fonoReady} contracted of ${fonoContracted} target`, target: `${fonoContracted ? Math.round(fonoReady / fonoContracted * 100) : 0}% achieved`, detail: "Fono Funnel only; Lead and Contracting stages are not counted as contracted" }
+      : { id: "fono-health", label: "FONO conversion health", value: `FONO ${fonoReady} matched · ${fonoContracted} required`, target: "Kept separate", detail: "FONO Funnel only; Studio occupancy is not inferred" }),
     Object.freeze({ id: "sp-exposure", label: "SP pipeline coverage", value: spRows.length ? `SP ${spReady} matched · ${spContracted} required` : "No current governed SP data", target: "Shram Park demand ledger", detail: "Shram Park remains separate from existing Studio occupancy" }),
   ])
   return Object.freeze({ summary, measures })
