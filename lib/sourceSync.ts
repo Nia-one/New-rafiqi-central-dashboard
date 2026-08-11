@@ -92,7 +92,9 @@ export function syncUserInputs() {
     // Fresh dashboard inputs own the UI_* tabs. Run them explicitly; the live
     // bot sync does not ingest UI_Enterprise_Demand.
     const liveSourceReport = await syncLiveSources();
-    const freshDashboardInputReport = await syncFreshInputs();
+    // The live batch already includes UI_* inputs; do not consume quota and
+    // write the same source a second time in the same 45-second cycle.
+    const freshDashboardInputReport = liveSourceReport.freshDashboardInputReport;
     const teamInputReport = await syncTeamInputs();
     clearSheetCache();
     const teamChangedRows = teamInputReport.slice(1).reduce((sum, row) => {
@@ -104,7 +106,7 @@ export function syncUserInputs() {
       liveSourceReport,
       freshDashboardInputReport,
       teamInputReport,
-      changedRows: (Number(liveSourceReport.changedRows) || 0) + (Number(freshDashboardInputReport.changedRows) || 0) + teamChangedRows,
+      changedRows: (Number(liveSourceReport.changedRows) || 0) + teamChangedRows,
       syncedAt: new Date().toISOString(),
     };
   })().finally(() => { activeUserInputSync = null; });
