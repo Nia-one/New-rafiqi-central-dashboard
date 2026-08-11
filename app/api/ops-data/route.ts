@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
-import { syncAllSources, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
+import { syncAllSources, syncFreshInputs, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
 import { clearSheetCache } from "@/lib/googleSheets";
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -14,6 +14,11 @@ const syncCachedUserInputs = unstable_cache(
   () => syncUserInputs(),
   ["governed-user-input-sync-v1"],
   { revalidate: 300 },
+);
+const syncCachedFreshInputs = unstable_cache(
+  () => syncFreshInputs(),
+  ["governed-fresh-input-sync-v1"],
+  { revalidate: 60 },
 );
 
 export async function GET() {
@@ -48,10 +53,14 @@ export async function POST(request: Request) {
     const fullSync = url.searchParams.get("full") === "1";
     const liveSync = url.searchParams.get("live") === "1";
     const inputSync = url.searchParams.get("input") === "1";
-    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncCachedUserInputs() : null;
-    clearSheetCache();
+    const freshSync = url.searchParams.get("fresh") === "1";
+    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncCachedUserInputs() : freshSync ? await syncCachedFreshInputs() : null;
+    if (result && typeof result === "object" && "changedRows" in result && Number(result.changedRows) > 0) {
+      clearSheetCache();
+      revalidateTag("governed-ops-data", { expire: 0 });
+    }
     return NextResponse.json(
-      { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : inputSync ? "input-sync" : "refresh", ...(result ?? {}) },
+      { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : inputSync ? "input-sync" : freshSync ? "fresh-input-sync" : "refresh", ...(result ?? {}) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic"
 const buildCachedOpsData = unstable_cache(
   () => buildOpsData(),
   ["governed-dashboard-ops-data-v1"],
-  { revalidate: 60 },
+  { revalidate: 60, tags: ["governed-ops-data"] },
 )
 
 export default async function Page() {

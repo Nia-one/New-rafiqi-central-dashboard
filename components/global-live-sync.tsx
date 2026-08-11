@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 // account. A 45-second browser timer multiplied the same expensive sync across
 // users and local tabs. Five minutes keeps the dashboard current without a
 // quota burst; the server also deduplicates these requests globally.
-const SYNC_SECONDS = 300
+const SYNC_SECONDS = 60
 const NEXT_SYNC_KEY = "rafiqi-global-next-sync-at"
 const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
@@ -64,7 +64,7 @@ export function GlobalLiveSync() {
       setState("syncing")
       // All operator-owned UI_* and TEAM_* tabs plus connected bot feeds are
       // ingested by one server-coordinated sync cycle.
-      const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
+      const response = await fetch("/api/ops-data?fresh=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
       if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
       const report = await response.json() as { changedRows?: number }
       success = true
