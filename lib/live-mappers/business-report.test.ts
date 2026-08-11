@@ -96,6 +96,21 @@ test("Business Report uses raw Proposal / Quote as Proposal Sent over a stale no
   assert.deepEqual(report.enterprise.stages, { Lead: 0, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0 })
 })
 
+test("Business Report breaks Enterprise Demand stages down by Theatre", () => {
+  const report = buildBusinessReportData({
+    enterpriseDemand: [
+      { "demand id": "SP-BOT-DCN-1", "theatre id": "DCN", certainty: "Lead" },
+      { "demand id": "SP-BOT-DCN-2", "theatre id": "DCN", certainty: "Propsal Sent" },
+      { "demand id": "SP-BOT-WLG-1", "theatre id": "WLG", certainty: "Contracted" },
+    ],
+  })
+
+  assert.deepEqual(report.enterprise.byTheatre, [
+    { theatre: "Deccan", Lead: 1, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0, records: 2 },
+    { theatre: "Wellington", Lead: 0, Interested: 0, "Proposal Sent": 0, Contracting: 0, Contracted: 1, records: 1 },
+  ])
+})
+
 test("Business Report maps Enterprise Supply in the approved stage order and excludes Drop", () => {
   const report = buildBusinessReportData({
     enterpriseDemand: [

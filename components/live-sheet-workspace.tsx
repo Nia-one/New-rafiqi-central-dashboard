@@ -1,6 +1,7 @@
 import { Database, RefreshCw } from "lucide-react"
 import { DataTable } from "@/components/data-table"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
+import { ENTERPRISE_PIPELINE_STAGES, enterprisePipelineStage } from "@/lib/enterprise-pipeline-stage"
 
 type Row = Record<string, unknown>
 
@@ -55,6 +56,60 @@ function CollectionsControl({ rows }: { rows: readonly Row[] }) {
 }
 
 export type LiveWorkspaceKind = "Living" | "Work" | "Essentials" | "People" | "Economics" | "Member Feedback" | "Actions" | "Enterprise Demand"
+
+const rowValue = (row: Row, ...keys: string[]) => {
+  const wanted = new Set(keys.map((key) => key.toLowerCase()))
+  return Object.entries(row).find(([key]) => wanted.has(key.trim().toLowerCase().replaceAll("_", " ")))?.[1]
+}
+
+export function EnterpriseStageWorkspace({ rows, asOf }: { rows: readonly Row[]; asOf: string }) {
+  const staged = rows.map((row) => ({
+    row,
+    stage: enterprisePipelineStage(rowValue(row, "stage", "certainty"), rowValue(row, "status")),
+  }))
+  const counts = Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((stage) => [stage, staged.filter((entry) => entry.stage === stage).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number>
+  const approved = ENTERPRISE_PIPELINE_STAGES.reduce((sum, stage) => sum + counts[stage], 0)
+  const excluded = rows.length - approved
+  const maximum = Math.max(1, ...ENTERPRISE_PIPELINE_STAGES.map((stage) => counts[stage]))
+  const theatres = [...new Set(rows.map((row) => String(rowValue(row, "theatre name", "theatre", "theatre id") ?? "Unassigned").trim() || "Unassigned"))]
+    .map((theatre) => {
+      const entries = staged.filter(({ row }) => (String(rowValue(row, "theatre name", "theatre", "theatre id") ?? "Unassigned").trim() || "Unassigned") === theatre)
+      return { theatre, counts: Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((stage) => [stage, entries.filter((entry) => entry.stage === stage).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number> }
+    })
+    .sort((a, b) => ENTERPRISE_PIPELINE_STAGES.reduce((sum, stage) => sum + b.counts[stage] - a.counts[stage], 0))
+
+  const tabs = [
+    { title: "Stage-wise leads", summary: `${approved} active lead records` },
+    { title: "Theatre performance", summary: `${theatres.length} theatres · stage-wise` },
+    { title: "Lead records", summary: `${rows.length} live sheet rows` },
+    { title: "Supporting detail", summary: "Source mapping & exclusions" },
+    { title: "Proof & health", summary: `Last refreshed · ${clean(asOf)}` },
+  ]
+  return <section className="pillar-screen enterprise-stage-workspace" aria-label="Enterprise Demand stage-wise lead counts">
+    <div className="decision-bar"><div><span>LIVE ENTERPRISE DEMAND</span><strong>Lead records by current pipeline stage</strong></div><p>Last refreshed: {clean(asOf)}</p></div>
+    <DashboardSectionAccordion className="enterprise-outline" ariaLabel="Enterprise Demand sections" sections={tabs}>
+    <section className="operating-section enterprise-stage-summary">
+      <div className="enterprise-stage-heading"><div><p className="pillar-kicker">STAGE-WISE LEAD COUNT</p><h2>{approved} active lead records</h2></div><p>{rows.length} live sheet rows{excluded > 0 ? ` · ${excluded} Drop/invalid excluded` : ""}</p></div>
+      <div className="enterprise-record-funnel">
+        {ENTERPRISE_PIPELINE_STAGES.map((stage, index) => <article key={stage} style={{ "--stage-delay": `${index * 70}ms` } as React.CSSProperties}>
+          <div><span>{String(index + 1).padStart(2, "0")}</span><strong>{stage}</strong><b>{counts[stage]}</b></div>
+          <i><b style={{ width: `${counts[stage] ? Math.max(3, counts[stage] / maximum * 100) : 0}%` }} /></i>
+          <small>{counts[stage]} lead record{counts[stage] === 1 ? "" : "s"}</small>
+        </article>)}
+      </div>
+    </section>
+    <section className="operating-section enterprise-theatre-performance">
+      <div className="enterprise-stage-heading"><div><p className="pillar-kicker">THEATRE PERFORMANCE</p><h2>Theatre-wise stage distribution</h2></div><p>Record counts, not Nest potential</p></div>
+      <div className="enterprise-theatre-table-wrap"><table><thead><tr><th>Theatre</th>{ENTERPRISE_PIPELINE_STAGES.map((stage) => <th key={stage}>{stage}</th>)}<th>Total</th></tr></thead><tbody>
+        {theatres.map(({ theatre, counts: theatreCounts }, rowIndex) => { const total = ENTERPRISE_PIPELINE_STAGES.reduce((sum, stage) => sum + theatreCounts[stage], 0); return <tr key={theatre} style={{ "--stage-delay": `${rowIndex * 90}ms` } as React.CSSProperties}><th>{theatre}</th>{ENTERPRISE_PIPELINE_STAGES.map((stage) => <td key={stage}><span style={{ "--cell-width": `${total ? theatreCounts[stage] / total * 100 : 0}%` } as React.CSSProperties}>{theatreCounts[stage]}</span></td>)}<td><strong>{total}</strong></td></tr> })}
+      </tbody></table></div>
+    </section>
+    <section className="operating-section"><h2>Live Enterprise lead records</h2>{rows.length ? <DataTable caption="Enterprise Demand live lead records" columns={table(rows).columns} rows={table(rows).rows} /> : <p className="footer-note">No current live rows are available.</p>}</section>
+    <section className="operating-section"><h2>Source mapping</h2><p className="footer-note">Counts use one row per live Enterprise Demand record. Headcount and Nest-potential fields do not affect any stage total. Drop and unknown stages are excluded.</p></section>
+    <section className="operating-section"><h2>Proof &amp; health</h2><p className="footer-note"><RefreshCw aria-hidden /> Governed source: UI_Enterprise_Demand · last refreshed {clean(asOf)}.</p></section>
+    </DashboardSectionAccordion>
+  </section>
+}
 
 export function LiveSheetWorkspace({ kind, rows, secondaryRows = [], asOf, allocationFocus }: { kind: LiveWorkspaceKind; rows: readonly Row[]; secondaryRows?: readonly Row[]; asOf: string; allocationFocus?: string }) {
   const primary = table(rows)

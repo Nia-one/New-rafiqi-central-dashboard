@@ -17,6 +17,7 @@ import {
 import { cookies } from "next/headers"
 import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessionSecretFromEnvironment } from "@/lib/auth"
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
+import { getLatestFreshEnterpriseDemandRows } from "@/lib/freshDashboardInputSync"
 
 export const dynamic = "force-dynamic"
 
@@ -48,18 +49,28 @@ export default async function Page() {
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const liveOpsData = await buildOpsDataWithRetry()
   const liveSnapshot = buildLiveSelfDriveSnapshot(liveOpsData)
-  // In the current operating model Enterprise Demand mirrors the canonical
-  // Shram Park Bot lead ledger across the workspace, report and interlinks.
-  // The offline UI_Enterprise_Demand rows remain available in the backend but
-  // must not create a second, divergent Enterprise view.
-  const enterpriseWorkspaceRows = liveSnapshot.enterpriseDemand.filter((row) => {
+  // Enterprise Demand is governed by the explicit UI_Enterprise_Demand input
+  // lane. Retain SP-BOT only as a backwards-compatible fallback while an older
+  // payload refreshes, so the workspace and Business Report never diverge.
+  const freshlySyncedEnterpriseRows = getLatestFreshEnterpriseDemandRows()
+  const lineageEnterpriseRows = liveSnapshot.enterpriseDemand.filter((row) => {
+    const demandId = String(row["demand id"] ?? "").toUpperCase()
+    const sourceId = String(row["source submission id"] ?? "").toUpperCase()
+    return demandId.startsWith("UI-ENTERPRISE-DEMAND-") || sourceId.startsWith("UI-ENTERPRISE-DEMAND-")
+  })
+  const compatibilityEnterpriseRows = liveSnapshot.enterpriseDemand.filter((row) => {
+    const role = String(row["role required"] ?? "").trim().toLowerCase()
+    const stage = String(row.certainty ?? row.status ?? "").trim().toLowerCase()
+    return role !== "member adds" && /lead|interest|proposal|propsal|propsaal|contract|drop/.test(stage)
+  })
+  const uiEnterpriseDemandRows = freshlySyncedEnterpriseRows.length ? [...freshlySyncedEnterpriseRows] : lineageEnterpriseRows.length ? lineageEnterpriseRows : compatibilityEnterpriseRows
+  const enterpriseWorkspaceRows = uiEnterpriseDemandRows.length ? uiEnterpriseDemandRows : liveSnapshot.enterpriseDemand.filter((row) => {
     const demandId = String(row["demand id"] ?? "").toUpperCase()
     return demandId.startsWith("SP-BOT-")
   })
   const enterpriseDemandPreview = buildLiveEnterpriseDemandLoopPreview(enterpriseWorkspaceRows, liveSnapshot.asOf)
-  // Keep the complete governed demand ledger available to Living/Growth. The
   // Keep the complete governed demand ledger available to Living/Growth while
-  // Enterprise receives only its operator-owned offline lane.
+  // Enterprise receives its explicit operator-owned UI lane.
   const dashboardOpsData = { ...liveOpsData, enterpriseWorkspaceDemand: enterpriseWorkspaceRows }
   const newAddsPreview = buildLiveNewAddsPreview(liveSnapshot)
   const memberEngagementPreview = buildLiveMemberEngagementPreview(liveSnapshot)

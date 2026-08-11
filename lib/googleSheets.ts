@@ -1,5 +1,8 @@
 import { GoogleAuth } from "google-auth-library";
 import { googleServiceAccountCredentials } from "./googleCredentials";
+import { readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const credentials = googleServiceAccountCredentials();
 const auth = new GoogleAuth({
@@ -22,6 +25,27 @@ const sheetCache = new Map<
 
 const batchCache = new Map<string, { timestamp: number; data: string[][][] }>();
 const batchRequests = new Map<string, Promise<string[][][]>>();
+const persistedBatchPath = join(tmpdir(), "rafiqi-google-sheets-batch-cache.json");
+
+async function readPersistedBatch(key: string) {
+  try {
+    const snapshots = JSON.parse(await readFile(persistedBatchPath, "utf8")) as Record<string, string[][][]>;
+    return snapshots[key];
+  } catch {
+    return undefined;
+  }
+}
+
+async function persistBatch(key: string, data: string[][][]) {
+  try {
+    let snapshots: Record<string, string[][][]> = {};
+    try { snapshots = JSON.parse(await readFile(persistedBatchPath, "utf8")); } catch {}
+    snapshots[key] = data;
+    await writeFile(persistedBatchPath, JSON.stringify(snapshots), "utf8");
+  } catch (error) {
+    console.warn("Unable to persist Google Sheets batch snapshot.", error);
+  }
+}
 
 const wait = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -88,10 +112,12 @@ export async function batchGet(ranges: string[]) {
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) return cached.data;
   const active = batchRequests.get(key);
   if (active) return active;
+  const stale = cached?.data ?? await readPersistedBatch(key);
 
-  const request = fetchBatch(ranges, cached?.data)
+  const request = fetchBatch(ranges, stale)
     .then((data) => {
       batchCache.set(key, { timestamp: Date.now(), data });
+      void persistBatch(key, data);
       return data;
     })
     .finally(() => { batchRequests.delete(key); });

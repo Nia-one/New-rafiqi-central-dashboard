@@ -16,14 +16,13 @@ import { LivingScreen } from "@/components/living-screen"
 import { EssentialsScreen } from "@/components/essentials-screen"
 import { PeopleScreen } from "@/components/people-screen"
 import { DespatchScreen } from "@/components/despatch-screen"
-import { EnterpriseDemandWorkspace } from "@/components/enterprise-demand-workspace"
 import { FinanceExpansionWorkspace } from "@/components/finance-expansion-workspace"
 import { ControlledAutonomyWorkspace } from "@/components/controlled-autonomy-workspace"
 import { MemberFeedbackScreen } from "@/components/member-feedback-screen"
 import { OverviewStory, type OverviewMode } from "@/components/overview/overview-story"
 import { WorkScreen } from "@/components/work-screen"
 import { BusinessReportScreen } from "@/components/business-report-screen"
-import { LiveOverviewWorkspace, LiveSheetWorkspace } from "@/components/live-sheet-workspace"
+import { EnterpriseStageWorkspace, LiveOverviewWorkspace, LiveSheetWorkspace } from "@/components/live-sheet-workspace"
 import { NiaMarginsWorkspace } from "@/components/nia-margins-workspace"
 import { NewAddsWorkspace } from "@/components/new-adds-workspace"
 import { MemberEngagementWorkspace } from "@/components/member-engagement-workspace"
@@ -398,9 +397,8 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     <div className="platform-workspace x-page-workspace">
     <section className={`content platform-content ${active === "Overview" ? "overview-content" : ""} pillar-${active.toLowerCase().replaceAll(" ", "-")}`}>
       {decisionRoomOpen ? <h1 className="sr-only">Decision Room</h1> : null}
-      {!decisionRoomOpen && active !== "Enterprise Demand" ? <PageContextHeader active={active} /> : null}
-      {!decisionRoomOpen && active === "Enterprise Demand" && enterpriseDemandPreview && !OUTLINE_MANAGED_TABS.has(active) ? <EnterpriseContextHeader preview={enterpriseDemandPreview} /> : null}
-      {!decisionRoomOpen && active !== "Enterprise Demand" ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: meta.view }]} /> : null}
+      {!decisionRoomOpen ? <PageContextHeader active={active} /> : null}
+      {!decisionRoomOpen ? <ContextStrip label={`${sectionTitle} context`} items={[{ label: "Workspace", value: workspace === "self-drive" ? "Self Drive" : workspace === "self-learn" ? "Self Learn" : "Finance" }, { label: "Page", value: sectionTitle }, { label: "Period / state", value: meta.view }]} /> : null}
       <div className="x-page-body">
       {decisionRoomOpen ? <DecisionRoom
         enterpriseDemandPreview={enterpriseDemandPreview}
@@ -417,7 +415,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       /> : <LensProvider lens={lens}>
       {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} onModeChange={setOverviewMode} onNavigate={navigate} />}
       {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users.</h2><p>Operating teams can continue through the remaining Self Drive tabs. Financial goals, cash, opex and leakage remain protected.</p></section>)}
-      {active === "Enterprise Demand" && (enterpriseDemandPreview ? <EnterpriseDemandWorkspace preview={enterpriseDemandPreview} /> : <LiveSheetWorkspace kind="Enterprise Demand" rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />)}
+      {active === "Enterprise Demand" && <EnterpriseStageWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
       {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsDisplay} />}

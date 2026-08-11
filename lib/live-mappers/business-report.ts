@@ -65,7 +65,10 @@ export function buildBusinessReportData(ops: any) {
   // Reuse Living's canonical, de-duplicated FONO demand pipeline so every
   // source page and the board report refresh from one calculation.
   const fonoStages = living.fonoPipeline.report.totals
-  const enterpriseByTheatre = [...new Set(enterpriseRows.map((row) => theatre(raw(row, "theatre id", "theatre"))))].map((name) => ({ theatre: name, records: enterpriseRows.filter((row) => theatre(raw(row, "theatre id", "theatre")) === name).length })).sort((a, b) => b.records - a.records)
+  const enterpriseByTheatre = [...new Set(enterpriseRows.map((row) => theatre(raw(row, "theatre id", "theatre"))))].map((name) => {
+    const rows = enterpriseRows.filter((row) => theatre(raw(row, "theatre id", "theatre")) === name)
+    return { theatre: name, ...stageCounts(rows), records: rows.length }
+  }).sort((a, b) => b.records - a.records)
 
   const essentialsReport = buildEssentialsReport(essentials)
   const essentialsRevenue = essentialsReport.revenue

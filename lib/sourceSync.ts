@@ -89,10 +89,10 @@ export function syncFreshInputs() {
 export function syncUserInputs() {
   if (activeUserInputSync) return activeUserInputSync;
   activeUserInputSync = (async () => {
-    // syncLiveSources includes all UI_* tabs plus Shram Park, FONO and
-    // Essentials bot connectors. Team sync then covers the remaining governed
-    // TEAM_* inputs, including ownership, growth, activation and learning.
+    // Fresh dashboard inputs own the UI_* tabs. Run them explicitly; the live
+    // bot sync does not ingest UI_Enterprise_Demand.
     const liveSourceReport = await syncLiveSources();
+    const freshDashboardInputReport = await syncFreshInputs();
     const teamInputReport = await syncTeamInputs();
     clearSheetCache();
     const teamChangedRows = teamInputReport.slice(1).reduce((sum, row) => {
@@ -102,8 +102,9 @@ export function syncUserInputs() {
     }, 0);
     return {
       liveSourceReport,
+      freshDashboardInputReport,
       teamInputReport,
-      changedRows: (Number(liveSourceReport.changedRows) || 0) + teamChangedRows,
+      changedRows: (Number(liveSourceReport.changedRows) || 0) + (Number(freshDashboardInputReport.changedRows) || 0) + teamChangedRows,
       syncedAt: new Date().toISOString(),
     };
   })().finally(() => { activeUserInputSync = null; });
