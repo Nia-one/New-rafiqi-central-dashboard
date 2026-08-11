@@ -20,7 +20,9 @@ test("Business Report projects the governed Shram Park lane as Enterprise Demand
   })
   assert.equal(report.occupancy.percent, 90)
   assert.deepEqual(report.enterprise.stages, { Lead: 1, Interested: 1, "Proposal Sent": 0, Contracting: 0, Contracted: 0 })
-  assert.equal(report.enterprise.records, 3)
+  assert.equal(report.enterprise.records, 2)
+  assert.equal(report.enterprise.sourceRecords, 3)
+  assert.equal(report.enterprise.excludedRecords, 1)
   assert.deepEqual(report.fono.stages, { Lead: 0, Contracting: 0, Contracted: 32 })
   assert.deepEqual(report.fono.byTheatre, [{ theatre: "Rajputana", Lead: 0, Contracting: 0, Contracted: 32, total: 32 }])
   assert.equal(report.essentials.attachPct, 70)
@@ -123,6 +125,6 @@ test("Business Report maps Enterprise Supply in the approved stage order and exc
     ],
   })
 
-  assert.equal(report.enterprise.supplyRecords, 6)
+  assert.equal(report.enterprise.supplyRecords, 5)
   assert.deepEqual(report.enterprise.supplyStages, { Lead: 1, Interested: 1, "Proposal Sent": 1, Contracting: 1, Contracted: 1 })
 })

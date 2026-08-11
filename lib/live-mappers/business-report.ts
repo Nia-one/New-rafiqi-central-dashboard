@@ -44,6 +44,11 @@ export function buildBusinessReportData(ops: any) {
   })
   const enterpriseRows = [...(sheetDemandById.size ? sheetDemandById : fallbackDemandById).values()]
   const enterpriseSupplyRows = [...supplyById.values()]
+  // Business Report uses the same active-pipeline population as the Enterprise
+  // workspace. Drop, blank and invalid stages belong to Exceptions and must not
+  // inflate the headline or Theatre totals while being absent from the funnel.
+  const activeEnterpriseRows = enterpriseRows.filter((row) => stage(row) !== null)
+  const activeEnterpriseSupplyRows = enterpriseSupplyRows.filter((row) => stage(row) !== null)
   const essentials: Row[] = ops?.essentials ?? []
   const work: Row[] = ops?.work ?? []
   const finance: Row[] = ops?.finance ?? []
@@ -60,13 +65,13 @@ export function buildBusinessReportData(ops: any) {
   })).sort((a, b) => b.occupancyPct - a.occupancyPct)
 
   const stageCounts = (rows: readonly Row[]) => Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((name) => [name, rows.filter((row) => stage(row) === name).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number>
-  const enterpriseStages = stageCounts(enterpriseRows)
-  const enterpriseSupplyStages = stageCounts(enterpriseSupplyRows)
+  const enterpriseStages = stageCounts(activeEnterpriseRows)
+  const enterpriseSupplyStages = stageCounts(activeEnterpriseSupplyRows)
   // Reuse Living's canonical, de-duplicated FONO demand pipeline so every
   // source page and the board report refresh from one calculation.
   const fonoStages = living.fonoPipeline.report.totals
-  const enterpriseByTheatre = [...new Set(enterpriseRows.map((row) => theatre(raw(row, "theatre id", "theatre"))))].map((name) => {
-    const rows = enterpriseRows.filter((row) => theatre(raw(row, "theatre id", "theatre")) === name)
+  const enterpriseByTheatre = [...new Set(activeEnterpriseRows.map((row) => theatre(raw(row, "theatre id", "theatre"))))].map((name) => {
+    const rows = activeEnterpriseRows.filter((row) => theatre(raw(row, "theatre id", "theatre")) === name)
     return { theatre: name, ...stageCounts(rows), records: rows.length }
   }).sort((a, b) => b.records - a.records)
 
@@ -120,7 +125,7 @@ export function buildBusinessReportData(ops: any) {
       components: contributionComponents,
     },
     fono: { records: living.fonoPipeline.report.byTheatre.length, stages: fonoStages, byTheatre: living.fonoPipeline.report.byTheatre },
-    enterprise: { records: enterpriseRows.length, supplyRecords: enterpriseSupplyRows.length, stages: enterpriseStages, supplyStages: enterpriseSupplyStages, byTheatre: enterpriseByTheatre },
+    enterprise: { records: activeEnterpriseRows.length, sourceRecords: enterpriseRows.length, excludedRecords: enterpriseRows.length - activeEnterpriseRows.length, supplyRecords: activeEnterpriseSupplyRows.length, stages: enterpriseStages, supplyStages: enterpriseSupplyStages, byTheatre: enterpriseByTheatre },
     essentials: essentialsReport,
   }
 }
