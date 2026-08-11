@@ -1,5 +1,6 @@
 import { buildLivingScreenData } from "@/lib/live-mappers/living-screen"
 import { buildEssentialsReport } from "@/lib/live-mappers/essentials-report"
+import { ENTERPRISE_PIPELINE_STAGES, enterprisePipelineStage } from "@/lib/enterprise-pipeline-stage"
 
 type Row = Record<string, unknown>
 
@@ -25,26 +26,24 @@ const theatre = (value: unknown) => {
   if (/deccan|^(?:th-)?dcn$/.test(input)) return "Deccan"
   return String(value ?? "").trim() || "Unassigned"
 }
-const stage = (row: Row) => {
-  const state = `${raw(row, "status") ?? ""} ${raw(row, "certainty") ?? ""}`.toLowerCase()
-  if (/drop|lost|reject|cancel|closed/.test(state)) return "Dropped"
-  if (/contracted|onboard|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
-  if (/interest|proposal|quote/.test(state)) return "Interested"
-  if (/contracting|negotiat|proposal|commercial/.test(state)) return "Contracting"
-  return "Lead"
-}
+const stage = (row: Row) => enterprisePipelineStage(raw(row, "stage", "certainty"), raw(row, "status"))
 export function buildBusinessReportData(ops: any) {
   const living = buildLivingScreenData(ops)
-  // For the current operating model Enterprise Demand mirrors the governed
-  // Shram Park Bot demand lane. Do not mix in the separate offline Enterprise
-  // workspace ledger; that produced two extra rows and divergent stages.
+  // Prefer the explicit Enterprise Demand input tab. Retain the governed bot
+  // lane only as a backwards-compatible fallback while older payloads refresh.
   const demandRows: Row[] = ops?.enterpriseDemand ?? []
-  const enterpriseById = new Map<string, Row>()
+  const sheetDemandById = new Map<string, Row>()
+  const fallbackDemandById = new Map<string, Row>()
+  const supplyById = new Map<string, Row>()
   demandRows.forEach((row, index) => {
     const id = String(raw(row, "demand id") ?? `row-${index}`).trim()
-    if (id.toUpperCase().startsWith("SP-BOT-")) enterpriseById.set(id, row)
+    const sourceId = String(raw(row, "source submission id") ?? id).toUpperCase()
+    if (sourceId.startsWith("UI-ENTERPRISE-DEMAND-")) sheetDemandById.set(id.toUpperCase(), row)
+    else if (sourceId.startsWith("UI-ENTERPRISE-SUPPLY-") || id.toUpperCase().startsWith("MEMBER-ADDS-UI-ENTERPRISE-SUPPLY-")) supplyById.set(id.toUpperCase(), row)
+    else if (id.toUpperCase().startsWith("SP-BOT-")) fallbackDemandById.set(id.toUpperCase(), row)
   })
-  const enterpriseRows = [...enterpriseById.values()]
+  const enterpriseRows = [...(sheetDemandById.size ? sheetDemandById : fallbackDemandById).values()]
+  const enterpriseSupplyRows = [...supplyById.values()]
   const essentials: Row[] = ops?.essentials ?? []
   const work: Row[] = ops?.work ?? []
   const finance: Row[] = ops?.finance ?? []
@@ -60,9 +59,9 @@ export function buildBusinessReportData(ops: any) {
     occupancyPct: Number(String(row[5]).replace("%", "")) || 0,
   })).sort((a, b) => b.occupancyPct - a.occupancyPct)
 
-  const stageNames = ["Lead", "Interested", "Contracting", "Contracted", "Dropped"] as const
-  const stageCounts = (rows: readonly Row[]) => Object.fromEntries(stageNames.map((name) => [name, rows.filter((row) => stage(row) === name).length])) as Record<(typeof stageNames)[number], number>
+  const stageCounts = (rows: readonly Row[]) => Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((name) => [name, rows.filter((row) => stage(row) === name).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number>
   const enterpriseStages = stageCounts(enterpriseRows)
+  const enterpriseSupplyStages = stageCounts(enterpriseSupplyRows)
   // Reuse Living's canonical, de-duplicated FONO demand pipeline so every
   // source page and the board report refresh from one calculation.
   const fonoStages = living.fonoPipeline.report.totals
@@ -118,7 +117,7 @@ export function buildBusinessReportData(ops: any) {
       components: contributionComponents,
     },
     fono: { records: living.fonoPipeline.report.byTheatre.length, stages: fonoStages, byTheatre: living.fonoPipeline.report.byTheatre },
-    enterprise: { records: enterpriseRows.length, stages: enterpriseStages, byTheatre: enterpriseByTheatre },
+    enterprise: { records: enterpriseRows.length, supplyRecords: enterpriseSupplyRows.length, stages: enterpriseStages, supplyStages: enterpriseSupplyStages, byTheatre: enterpriseByTheatre },
     essentials: essentialsReport,
   }
 }

@@ -58,10 +58,10 @@ test("FONO and Śram Park demand pipelines remain independent", () => {
   })
 
   assert.deepEqual(result.fonoPipeline.stageCounts.map(({ stage, count, requirement }) => [stage, count, requirement]), [
-    ["Lead", 1, 100], ["Interested", 0, 0], ["Contracting", 1, 80], ["Contracted", 1, 60], ["Dropped", 1, 40],
+    ["Lead", 1, 100], ["Interested", 0, 0], ["Proposal Sent", 0, 0], ["Contracting", 1, 80], ["Contracted", 1, 60],
   ])
   assert.deepEqual(result.spPipeline.stageCounts.map(({ stage, count }) => [stage, count]), [
-    ["Lead", 1], ["Interested", 0], ["Contracting", 1], ["Contracted", 0], ["Dropped", 0],
+    ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 1], ["Contracted", 0],
   ])
   assert.equal(result.demandRows.length, 2)
   assert.equal(result.demandRequired, 1100)
@@ -79,7 +79,7 @@ test("FONO Stage After uses Nests Potential and treats takeover-pending as contr
     ],
   })
 
-  assert.deepEqual(result.fonoRequirementStages.map(({ label, mtd }) => [label, mtd]), [["Lead", 4474], ["Interested", 0], ["Contracting", 264], ["Contracted", 887], ["Dropped", 0]])
+  assert.deepEqual(result.fonoRequirementStages.map(({ label, mtd }) => [label, mtd]), [["Lead", 4474], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 264], ["Contracted", 887]])
   assert.equal(result.fonoSupply[0].mtd, 887)
   assert.equal(result.fonoStudioCount, 1)
   assert.equal(result.occupancyRows[0][0], "Studio One")
@@ -104,7 +104,7 @@ test("FONO report groups canonical Theatre codes and shares cumulative stage tot
   ])
 })
 
-test("closed Shram Park demand is shown in the Dropped funnel bucket", () => {
+test("closed Shram Park demand is excluded from the approved stage funnel", () => {
   const result = buildLivingScreenData({
     enterpriseDemand: [
       { "demand id": "SP-BOT-CLOSED", status: "Closed", "headcount required": 1 },
@@ -113,11 +113,11 @@ test("closed Shram Park demand is shown in the Dropped funnel bucket", () => {
   })
 
   assert.deepEqual(result.demandStages.map((item) => [item.label, item.today]), [
-    ["Lead", 1], ["Interested", 0], ["Contracting", 0], ["Contracted", 0], ["Dropped", 1],
+    ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 0], ["Contracted", 0],
   ])
 })
 
-test("Shram Park treats the Bot's Send Proposal / Quote action as Interested even with a stale Contracting status", () => {
+test("Shram Park treats the Bot's Send Proposal / Quote action as Proposal Sent even with a stale Contracting status", () => {
   const result = buildLivingScreenData({
     enterpriseDemand: [
       { "demand id": "SP-BOT-PROPOSAL", status: "Contracting", certainty: "Send Proposal / Quote", "headcount required": 1 },
@@ -125,7 +125,7 @@ test("Shram Park treats the Bot's Send Proposal / Quote action as Interested eve
   })
 
   assert.deepEqual(result.demandStages.map((item) => [item.label, item.today]), [
-    ["Lead", 0], ["Interested", 1], ["Contracting", 0], ["Contracted", 0], ["Dropped", 0],
+    ["Lead", 0], ["Interested", 0], ["Proposal Sent", 1], ["Contracting", 0], ["Contracted", 0],
   ])
 })
 

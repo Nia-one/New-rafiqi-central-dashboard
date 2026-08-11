@@ -1,4 +1,5 @@
 import type { DemandProximityNode, FunnelStage } from "@/lib/operating-data"
+import { ENTERPRISE_PIPELINE_STAGES, enterprisePipelineStage } from "@/lib/enterprise-pipeline-stage"
 
 type Row = Record<string, any>
 const n = (value: unknown) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0 }
@@ -20,16 +21,11 @@ const demandChannel = (row: Row) => {
   return "OTHER"
 }
 const stageBucket = (row: Row) => {
-  const state = `${value(row, "status")} ${value(row, "certainty")}`.toLowerCase()
-  if (/drop|lost|reject|cancel|closed/.test(state)) return "Dropped"
-  if (/contracted|onboarded|takeover pending|agreement signed|\bwon\b|live/.test(state)) return "Contracted"
-  if (/interest|proposal|quote/.test(state)) return "Interested"
-  if (/contracting|negotiat|contract review|proposal/.test(state)) return "Contracting"
-  return "Lead"
+  return enterprisePipelineStage(value(row, "stage") || value(row, "certainty"), value(row, "status"))
 }
 
 function groupedCounts(rows: Row[], owner: (row: Row) => string) {
-  const stages = ["Lead", "Interested", "Contracting", "Contracted", "Dropped"]
+  const stages = [...ENTERPRISE_PIPELINE_STAGES]
   const stageCounts = stages.map((stage) => ({ stage, count: rows.filter((row) => stageBucket(row) === stage).length, requirement: rows.filter((row) => stageBucket(row) === stage).reduce((sum, row) => sum + n(row["headcount required"]), 0) }))
   const byOwner = [...new Set(rows.map(owner).filter(Boolean))].map((name) => {
     const owned = rows.filter((row) => owner(row) === name)
@@ -62,10 +58,10 @@ function fonoReportPipeline(rows: Row[]) {
     const bucket = stageBucket(row)
     if (bucket === "Contracted") return "Contracted"
     if (bucket === "Contracting") return "Contracting"
-    if (bucket === "Dropped") return "Dropped"
-    return "Lead"
+    if (bucket === "Lead" || bucket === "Interested" || bucket === "Proposal Sent") return "Lead"
+    return null
   }
-  const active = rows.filter((row) => reportStage(row) !== "Dropped")
+  const active = rows.filter((row) => reportStage(row) !== null)
   const stages = ["Lead", "Contracting", "Contracted"] as const
   const totals = Object.fromEntries(stages.map((name) => [name, active.filter((row) => reportStage(row) === name).reduce((total, row) => total + n(row["headcount required"]), 0)])) as Record<(typeof stages)[number], number>
   const byTheatre = [...new Set(active.map(fonoTheatre))]
