@@ -13,7 +13,10 @@ const LEASE_KEY = "rafiqi-global-sync-lease"
 const LAST_CHANGED_SYNC_KEY = "rafiqi-global-last-changed-sync-at"
 const SYNC_TIMEOUT_MS = 180_000
 const SYNC_LEASE_MS = SYNC_TIMEOUT_MS + 30_000
-const CONVERGENCE_REFRESH_MS = [0, 4_000, 12_000] as const
+// The first refresh starts Next's stale-while-revalidate read; the second runs
+// only after that governed batch has had time to finish. Keeping these far
+// apart prevents overlapping 38-range dashboard reads.
+const CONVERGENCE_REFRESH_MS = [0, 20_000] as const
 
 type SyncState = "ready" | "syncing" | "failed"
 
@@ -70,7 +73,10 @@ export function GlobalLiveSync() {
       setState("syncing")
       // All operator-owned UI_* and TEAM_* tabs plus connected bot feeds are
       // ingested by one server-coordinated sync cycle.
-      const response = await fetch("/api/ops-data?input=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
+      // UI_* is the dashboard's operator-owned current-state lane. Heavier bot
+      // feeds are intentionally not multiplied by every open browser; their
+      // server-coordinated jobs remain isolated from this one-minute hot path.
+      const response = await fetch("/api/ops-data?fresh=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
       if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
       const report = await response.json() as { changedRows?: number }
       success = true
