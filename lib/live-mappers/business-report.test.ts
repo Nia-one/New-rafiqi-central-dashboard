@@ -41,20 +41,36 @@ test("Business Report keeps missing pipeline CM unavailable instead of inventing
   assert.equal(report.projectedRevenue, 5000)
 })
 
-test("Business Report combines automated Living CM with governed CM Actions actuals and pipeline", () => {
+test("Business Report uses governed CM Actions values without replacing its AUTO row", () => {
   const report = buildBusinessReportData({
     finance: [{ "theatre id": "RJT", "total billed inr": 8_779_050, "living cm2 inr": 1_433_400 }],
     actionLog: [
-      { "action id": "OPS-RPT-CM-COMP-LIVING", "operating objective": "Living", "expected metric": "CM Actual", "baseline value": 1_433_400, "target value": 8_779_050 },
+      { "action id": "OPS-RPT-CM-COMP-LIVING", "operating objective": "Living", "expected metric": "CM Actual", "baseline value": 1_384_050, "target value": 8_703_640 },
       { "action id": "OPS-RPT-CM-COMP-WORK", "operating objective": "Work", "expected metric": "CM Actual", "baseline value": 500_000, "target value": 500_000 },
       { "action id": "OPS-RPT-CM-COMP-B2B", "operating objective": "B2B", "expected metric": "CM Actual", "baseline value": 0, "target value": 0 },
       { "action id": "OPS-RPT-CM-COMP-ITC", "operating objective": "ITC", "expected metric": "CM Pipeline", "baseline value": 600_000, "target value": 2_000_000 },
     ],
   })
-  assert.equal(report.contribution.actual, 1_933_400)
+  assert.equal(report.contribution.actual, 1_884_050)
   assert.equal(report.contribution.pipeline, 600_000)
   assert.equal(report.contribution.pipelineRecorded, true)
-  assert.equal(report.projectedRevenue, 11_279_050)
+  assert.equal(report.projectedRevenue, 11_203_640)
+})
+
+test("Business Report totals the exact current CM Actions actual, pipeline and revenue rows", () => {
+  const report = buildBusinessReportData({ actionLog: [
+    { "action id": "OPS-RPT-CM-COMP-LIVING", "operating objective": "Living", "expected metric": "CM Actual", "baseline value": 1_384_050, "target value": 8_703_640 },
+    { "action id": "OPS-RPT-CM-COMP-WORK", "operating objective": "Work", "expected metric": "CM Actual", "baseline value": 500_000, "target value": 500_000 },
+    { "action id": "OPS-RPT-CM-COMP-FONO", "operating objective": "FONO", "expected metric": "CM Actual", "baseline value": 81_600, "target value": 435_200 },
+    { "action id": "OPS-RPT-CM-COMP-ESSENTIALS", "operating objective": "Essentials", "expected metric": "CM Actual", "baseline value": 10_000, "target value": 91_536 },
+    { "action id": "OPS-RPT-CM-COMP-ITC", "operating objective": "ITC", "expected metric": "CM Pipeline", "baseline value": 600_000, "target value": 2_000_000 },
+    { "action id": "OPS-RPT-CM-COMP-DLF", "operating objective": "DLF", "expected metric": "CM Pipeline", "baseline value": 800_000, "target value": 3_000_000 },
+    { "action id": "OPS-RPT-CM-COMP-EXPECTED-FONO", "operating objective": "Expected FONO", "expected metric": "CM Pipeline", "baseline value": 510_000, "target value": 2_720_000 },
+    { "action id": "OPS-RPT-CM-COMP-IZTRI", "operating objective": "Iztri", "expected metric": "CM Pipeline", "baseline value": 150_000, "target value": 700_000 },
+  ] })
+  assert.equal(report.contribution.actual, 1_975_650)
+  assert.equal(report.contribution.pipeline, 2_060_000)
+  assert.equal(report.projectedRevenue, 18_150_376)
 })
 
 test("Business Report counts a governed FONO demand ID once across case-variant live payloads", () => {

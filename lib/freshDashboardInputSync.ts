@@ -7,6 +7,7 @@ const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replac
 const num = (value: unknown) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
 const iso = (value: unknown) => { const parsed = new Date(String(value ?? "")); return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString(); };
 const month = (value: unknown) => iso(value).slice(0, 7);
+const stableId = (prefix: string, parts: unknown[]) => `${prefix}-${createHash("sha1").update(parts.map(String).join("|")).digest("hex").slice(0, 16)}`;
 type Table = { headers: string[]; rows: unknown[][] };
 const cell = (table: Table, row: unknown[], ...names: string[]) => { const wanted = new Set(names.map(norm)); const index = table.headers.findIndex((header) => wanted.has(norm(header))); return index < 0 ? "" : row[index] ?? ""; };
 const preferredCell = (table: Table, row: unknown[], ...names: string[]) => {
@@ -62,7 +63,7 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   return { row, updates, isLive: true };
 }
 
-type OwnedSpec = readonly [target: string, keyHeader: string, records: Record<string, unknown>[]];
+type OwnedSpec = readonly [target: string, keyHeader: string, records: readonly Record<string, unknown>[]];
 
 async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, specs: readonly OwnedSpec[]) {
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: specs.map(([target]) => `'${target}'!A:AZ`) });
@@ -108,6 +109,15 @@ async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spread
         }
       });
     }
+    if (target === "Action_Log") {
+      rows.slice(1).forEach((row, index) => {
+        const key = norm(row[keyIndex]);
+        if (key.startsWith("ops-rpt-cm-comp-") && !recordsByKey.has(key)) {
+          staleOwnedRanges.push(`'${target}'!A${index + 2}:AZ${index + 2}`);
+          changedByTarget[target] = (changedByTarget[target] ?? 0) + 1;
+        }
+      });
+    }
     written[target] = accepted;
   });
   // Canonical backend rows are data, not spreadsheet formulas. RAW preserves
@@ -125,7 +135,7 @@ export async function syncFreshDashboardInputs() {
   // Essentials demand and FONO demand/supply are automated sources. Keeping
   // them out of this manual connector prevents duplicate operator input.
   const tabs = ["UI_Occupancy", "UI_Shrampark_Supply", "UI_Enterprise_Demand", "UI_Enterprise_Supply", "UI_Finance", "UI_Collections", "UI_People", "UI_Actions", "UI_Approvals", "UI_Evidence", "UI_Targets"];
-  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_ID, ranges: tabs.map((tab) => `'${tab}'!A:AN`) });
+  const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_ID, ranges: [...tabs.map((tab) => `'${tab}'!A:AN`), "'CM Actions'!A:V"] });
   const sourceUpdates: { range: string; values: string[][] }[] = [];
   const tables = new Map(tabs.map((tab, index) => {
     const values = (response.data.valueRanges?.[index]?.values || []) as unknown[][];
@@ -209,10 +219,24 @@ export async function syncFreshDashboardInputs() {
     return { "actor id": cell(table, row, "Record_ID"), "display name": cell(table, row, "Person_Name"), team: cell(table, row, "Team"), lane: accountabilityArea, status: cell(table, row, "Status"), "attainment pct": target > 0 ? Math.round(actual / target * 100) : 0, "review due": cell(table, row, "Review_Due_Date"), "reporting status": "Reporting", target, actual, "accountability area": accountabilityArea, "accountability scope": cell(table, row, "Accountability_Scope"), "theatre id": cell(table, row, "Theatre_ID"), "studio id": cell(table, row, "Studio_ID"), role: cell(table, row, "Role"), "evidence ref": cell(table, row, "Evidence_Ref"), ...common(row, table) };
   });
   const actions = map("UI_Actions", (row, table) => ({ "action id": cell(table, row, "Record_ID"), "operating objective": cell(table, row, "Operating_Objective"), "expected metric": cell(table, row, "Expected_Metric"), "baseline value": cell(table, row, "Baseline_Value"), "target value": cell(table, row, "Target_Value"), "owner actor id": cell(table, row, "Action_Owner", "Business_Owner"), "due at": cell(table, row, "Due_At"), "required evidence": cell(table, row, "Required_Evidence"), "approval tier": cell(table, row, "Approval_Tier"), state: cell(table, row, "State", "Status"), "studio id": cell(table, row, "Studio_ID"), ...common(row, table) }));
+  const cmValues = (response.data.valueRanges?.[tabs.length]?.values || []) as unknown[][];
+  const cmHeaderIndex = cmValues.findIndex((row) => row.some((value) => norm(value) === "cm component"));
+  const cmTable: Table = { headers: (cmValues[cmHeaderIndex] || []).map(String), rows: cmHeaderIndex < 0 ? [] : cmValues.slice(cmHeaderIndex + 1) };
+  const cmActions = cmTable.rows.map((row) => {
+    const component = String(cell(cmTable, row, "CM Component")).trim();
+    const type = String(cell(cmTable, row, "CM Type") || "Actual").trim();
+    const cmInr = num(cell(cmTable, row, "CM INR"));
+    const revenueInr = num(cell(cmTable, row, "Revenue INR"));
+    const reportingMonth = String(cell(cmTable, row, "Reporting Month") || new Date().toISOString()).slice(0, 7);
+    const sourceMode = String(cell(cmTable, row, "Source Mode") || "MANUAL");
+    const notes = String(cell(cmTable, row, "Notes"));
+    const volume = num(cell(cmTable, row, "Volume / Nests"));
+    return { "action id": stableId("OPS-RPT-CM-COMP", [component, type, reportingMonth]), "operating objective": component, "expected metric": `CM ${type}`, "baseline value": cmInr, "target value": revenueInr, "expected financial impact inr": cmInr, confidence: sourceMode, "required evidence": "CM Actions governed component input", "approval tier": "Human", state: cell(cmTable, row, "Status") || "Open", "proposed at": `${reportingMonth}-01T00:00:00.000Z`, notes: `CM_INPUT|revenue=${revenueInr}|volume=${volume}|source=${sourceMode}|${notes}`, "reporting month": reportingMonth };
+  }).filter((row) => row["operating objective"] && (Number(row["baseline value"]) !== 0 || Number(row["target value"]) !== 0));
   const approvals = map("UI_Approvals", (row, table) => ({ "approval id": cell(table, row, "Record_ID"), "linked action id": cell(table, row, "Linked_Action_ID"), "decision type": cell(table, row, "Decision_Type"), "amount inr": num(cell(table, row, "Amount_INR")), "current terms": cell(table, row, "Current_Terms"), "proposed terms": cell(table, row, "Proposed_Terms"), "business reason": cell(table, row, "Business_Reason"), "expected result": cell(table, row, "Expected_Result"), "approver actor id": cell(table, row, "Approver"), decision: cell(table, row, "Decision"), "decision reason": cell(table, row, "Decision_Reason"), "decided at": cell(table, row, "Decided_At"), ...common(row, table) }));
   const evidence = map("UI_Evidence", (row, table) => ({ "evidence id": cell(table, row, "Record_ID"), "linked type": "Action", "linked id": cell(table, row, "Linked_Action_ID"), "evidence type": cell(table, row, "Evidence_Type"), "protected url": cell(table, row, "Source_Reference", "Evidence_Ref"), "uploaded by actor id": cell(table, row, "Uploaded_By"), "uploaded at": cell(table, row, "Captured_At"), "verification status": cell(table, row, "Verification_Status"), notes: cell(table, row, "Remarks"), ...common(row, table) }));
   const targets = map("UI_Targets", (row, table) => ({ "policy id": cell(table, row, "Record_ID"), "policy name": `${cell(table, row, "Mode")} · ${cell(table, row, "Page")} · ${cell(table, row, "KPI_Name")}`, "policy value": cell(table, row, "Target_Value"), unit: cell(table, row, "Unit"), "effective from": cell(table, row, "Effective_From"), "approved by": cell(table, row, "Approver"), status: cell(table, row, "Status"), "source note": cell(table, row, "Remarks"), ...common(row, table) }));
-  const specs = [["Living_Hourly", "living hourly id", [...occupancy, ...supply]], ["Enterprise_Demand", "demand id", [...governedDemand, ...memberAdds]], ["Finance_Daily", "finance daily id", [...finance, ...collections]], ["People_Roster", "actor id", people], ["People_Performance", "actor id", peoplePerformance], ["Action_Log", "action id", actions], ["Approval_Log", "approval id", approvals], ["Evidence_Log", "evidence id", evidence], ["Policy_Registry", "policy id", targets]] as const;
+  const specs = [["Living_Hourly", "living hourly id", [...occupancy, ...supply]], ["Enterprise_Demand", "demand id", [...governedDemand, ...memberAdds]], ["Finance_Daily", "finance daily id", [...finance, ...collections]], ["People_Roster", "actor id", people], ["People_Performance", "actor id", peoplePerformance], ["Action_Log", "action id", [...actions, ...cmActions]], ["Approval_Log", "approval id", approvals], ["Evidence_Log", "evidence id", evidence], ["Policy_Registry", "policy id", targets]] as const;
   const { written, changedRows, changedByTarget } = await upsertOwnedBatch(sheets, backendId, specs);
   return { sourceSpreadsheetId: SOURCE_ID, liveRows: [...tables.values()].reduce((sum, table) => sum + table.rows.length, 0), changedRows, changedByTarget, written };
 }
