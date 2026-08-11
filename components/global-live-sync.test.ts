@@ -13,10 +13,13 @@ test("global live sync runs one lightweight dashboard-input batch every minute",
   assert.match(source, /AbortSignal\.timeout\(SYNC_TIMEOUT_MS\)/)
   assert.match(source, /rafiqi:sync-complete/)
   assert.match(source, /handledByAnotherTab: true/)
-  assert.match(source, /\/api\/ops-data\?fresh=1/)
+  assert.match(source, /\/api\/ops-data\?input=1/)
   assert.doesNotMatch(source, /attempt < 3|\/api\/ops-data\?live=1/)
   assert.match(source, /report\.changedRows/)
-  assert.match(source, /router\.refresh\(\)/)
+  assert.match(source, /CONVERGENCE_REFRESH_MS = \[0, 4_000, 12_000\]/)
+  assert.match(source, /refreshUntilCurrent/)
+  assert.match(source, /visibilitychange/)
+  assert.match(source, /window\.addEventListener\("online"/)
   assert.doesNotMatch(source, /window\.location\.reload\(\)/)
 })
 
@@ -27,7 +30,7 @@ test("global live sync stays mounted across Control Tower and dashboard workspac
 
 test("manual and cross-tab refreshes preserve the active dashboard location", () => {
   assert.match(source, /LAST_CHANGED_SYNC_KEY/)
-  assert.match(source, /router\.refresh\(\)/)
+  assert.match(source, /refreshUntilCurrent\(\)/)
   assert.match(dashboard, /window\.dispatchEvent\(new Event\("rafiqi:sync-now"\)\)/)
   assert.doesNotMatch(dashboard, /window\.location\.reload\(\)/)
 })

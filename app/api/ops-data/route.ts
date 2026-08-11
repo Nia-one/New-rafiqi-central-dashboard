@@ -12,7 +12,7 @@ export const maxDuration = 300;
 const syncCachedUserInputs = unstable_cache(
   () => syncUserInputs(),
   ["governed-user-input-sync-v1"],
-  { revalidate: 300 },
+  { revalidate: 60 },
 );
 const syncCachedFreshInputs = unstable_cache(
   () => syncFreshInputs(),
