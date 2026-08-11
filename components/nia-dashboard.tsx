@@ -188,7 +188,7 @@ function PageContextHeader({ active }: { active: DashboardTab }) {
   </div></nav>
 }
 
-export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsResponses = [], enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview = null, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, initialActive = "Despatch", onControlTower }: { liveOpsData: any; memberFeedbackItems?: readonly MemberFeedbackItem[]; memberNpsResponses?: NpsResponse[]; enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview?: MemberEngagementPreview | null; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; initialActive?: DashboardTab; onControlTower?: () => void }) {
+export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsResponses = [], enterpriseDemandPreview = null, financeExpansionPreview = null, controlledAutonomyPreview = null, niaMarginsPreview, newAddsPreview, memberEngagementPreview = null, memberSavingsPreview, niaGrowthPreview, cashControlPreview = null, financeAllowed = false, initialActive = "Despatch", restoreStoredPage = true, onControlTower }: { liveOpsData: any; memberFeedbackItems?: readonly MemberFeedbackItem[]; memberNpsResponses?: NpsResponse[]; enterpriseDemandPreview?: EnterpriseDemandLoopPreview | null; financeExpansionPreview?: FinanceExpansionPreview | null; controlledAutonomyPreview?: ControlledAutonomyPreview | null; niaMarginsPreview: NiaMarginsPreview; newAddsPreview: NewAddsPreview; memberEngagementPreview?: MemberEngagementPreview | null; memberSavingsPreview: MemberSavingsPreview; niaGrowthPreview: NiaGrowthPreview; cashControlPreview?: CashControlPreview | null; financeAllowed?: boolean; initialActive?: DashboardTab; restoreStoredPage?: boolean; onControlTower?: () => void }) {
   const dashboardPeriod = liveOpsData?.meta?.month || (liveOpsData?.meta?.updatedAt ? new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric" }).format(new Date(liveOpsData.meta.updatedAt)) : "Current period")
   const dataAsOf = liveOpsData?.meta?.updatedAt ?? liveOpsData?.fetchedAt ?? "Not recorded"
   const registryValue = (row: Record<string, unknown>, key: string) => {
@@ -219,13 +219,16 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
   useEffect(() => {
     const storedActive = window.sessionStorage.getItem("rafiqi-dashboard-page") as DashboardTab | null
     const storedWorkspace = window.sessionStorage.getItem("rafiqi-dashboard-workspace") as DashboardWorkspace | null
-    const restoredActive = storedActive || initialActive
+    // A direct launch from Control Tower is an explicit navigation request and
+    // must not be overwritten by the page visited in an earlier dashboard
+    // session. Standalone dashboard reloads still restore their last page.
+    const restoredActive = restoreStoredPage ? storedActive || initialActive : initialActive
     const inferredWorkspace: DashboardWorkspace = (SELF_LEARN_TABS as readonly string[]).includes(restoredActive)
       ? "self-learn"
       : (FINANCE_TABS as readonly string[]).includes(restoredActive) ? "finance" : "self-drive"
     setActive(restoredActive)
     setWorkspace(storedWorkspace === inferredWorkspace ? storedWorkspace : inferredWorkspace)
-  }, [])
+  }, [initialActive, restoreStoredPage])
   useEffect(() => {
     window.sessionStorage.setItem("rafiqi-dashboard-page", active)
     window.sessionStorage.setItem("rafiqi-dashboard-workspace", workspace)

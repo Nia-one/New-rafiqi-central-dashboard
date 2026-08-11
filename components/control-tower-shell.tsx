@@ -55,7 +55,7 @@ export function ControlTowerShell(props: DashboardProps) {
           setActiveWorkspace(workspaceTabs[workspace] ?? "Despatch")
         }}
       />
-    : <NiaDashboard {...props} initialActive={activeWorkspace} onControlTower={() => setActiveWorkspace(null)} />
+    : <NiaDashboard {...props} initialActive={activeWorkspace} restoreStoredPage={false} onControlTower={() => setActiveWorkspace(null)} />
 
   return <><GlobalLiveSync />{workspace}</>
 }
