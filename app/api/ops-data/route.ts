@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
 import { syncAllSources, syncFreshInputs, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -57,8 +57,10 @@ export async function POST(request: Request) {
     // Do not synchronously expire the last successful dashboard snapshot here.
     // In production, a fresh input write can coincide with the Sheets API quota
     // window. Expiring the snapshot made that temporary 429 a full-page outage.
-    // The page cache revalidates every 60 seconds and replaces the snapshot only
-    // after a successful governed read (stale-while-refresh).
+    // Mark the snapshot stale with the `max` profile. The current response stays
+    // available while Next refreshes it in the background, so a temporary Sheets
+    // quota error cannot turn an input update into a full-page outage.
+    if (result) revalidateTag("governed-ops-data", "max");
     return NextResponse.json(
       { success: true, mode: fullSync ? "full-sync" : liveSync ? "live-sync" : inputSync ? "input-sync" : freshSync ? "fresh-input-sync" : "refresh", ...(result ?? {}) },
       { headers: { "Cache-Control": "no-store" } },

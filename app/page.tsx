@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic"
 // a full-page outage on a freshly deployed instance.
 const buildCachedOpsData = unstable_cache(
   () => buildOpsData(),
-  ["governed-dashboard-ops-data-v1"],
+  ["governed-dashboard-ops-data-v2"],
   { revalidate: 60, tags: ["governed-ops-data"] },
 )
 
