@@ -67,6 +67,7 @@ type OwnedSpec = readonly [target: string, keyHeader: string, records: Record<st
 async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, specs: readonly OwnedSpec[]) {
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: specs.map(([target]) => `'${target}'!A:AZ`) });
   const changes: { range: string; values: unknown[][] }[] = [];
+  const staleOwnedRanges: string[] = [];
   const written: Record<string, number> = {};
   const changedByTarget: Record<string, number> = {};
   specs.forEach(([target, keyHeader, records], specIndex) => {
@@ -92,13 +93,29 @@ async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spread
       changes.push({ range: `'${target}'!A${rowNumber}`, values: [output] });
       changedByTarget[target] = (changedByTarget[target] ?? 0) + 1;
     }
+    if (target === "Enterprise_Demand") {
+      const sourceIndex = headers.findIndex((header) => norm(header) === "source submission id");
+      if (sourceIndex < 0) throw new Error(`${target} is missing source submission id`);
+      rows.slice(1).forEach((row, index) => {
+        const key = norm(row[keyIndex]);
+        const sourceId = String(row[sourceIndex] ?? "").trim().toUpperCase();
+        // UI_Enterprise_Demand is a current-state source, not an append-only
+        // ledger. Remove only rows owned by this connector that disappeared
+        // from the live source; preserve bot and Member Adds demand lanes.
+        if (sourceId.startsWith("UI-ENTERPRISE-DEMAND-") && key && !recordsByKey.has(key)) {
+          staleOwnedRanges.push(`'${target}'!A${index + 2}:AZ${index + 2}`);
+          changedByTarget[target] = (changedByTarget[target] ?? 0) + 1;
+        }
+      });
+    }
     written[target] = accepted;
   });
   // Canonical backend rows are data, not spreadsheet formulas. RAW preserves
   // ISO timestamps and exact identifiers so an unchanged 45-second sync is a
   // true no-op instead of repeatedly rewriting Google-formatted date values.
   if (changes.length) await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption: "RAW", data: changes } });
-  return { written, changedRows: changes.length, changedByTarget };
+  if (staleOwnedRanges.length) await sheets.spreadsheets.values.batchClear({ spreadsheetId, requestBody: { ranges: staleOwnedRanges } });
+  return { written, changedRows: changes.length + staleOwnedRanges.length, changedByTarget, removedStaleRows: staleOwnedRanges.length };
 }
 
 export async function syncFreshDashboardInputs() {
