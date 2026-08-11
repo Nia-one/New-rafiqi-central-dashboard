@@ -208,24 +208,39 @@ export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaG
   if (!snapshot.enterpriseDemand.length && !snapshot.living.length) return null
   const projection = buildLiveNiaGrowthProjection(snapshot)
   const channelRows = (channel: "FONO" | "SP") => snapshot.enterpriseDemand.filter((row) => {
-    const identity = `${text(row, "demand id")} ${text(row, "source submission id")} ${text(row, "role required")}`.toLowerCase()
-    return channel === "SP" ? identity.includes("sp-bot") : identity.includes("fono") || identity.includes("living supply")
+    const identity = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()
+    if (text(row, "role required").toLowerCase() === "member adds") return false
+    return channel === "SP" ? identity.includes("sp-bot") : identity.includes("ops-rpt-fono") || identity.includes("fono-tracker-")
   })
   const lane = (channel: "FONO" | "SP") => {
     const rows = channelRows(channel)
     const planned = rows.reduce((sum, row) => sum + number(row, "headcount required"), 0)
     const ready = rows.reduce((sum, row) => sum + number(row, "headcount matched"), 0)
-    return { supplyModel: channel, capacityLabel: `${channel} capacity`, plannedNests: planned, activationReadyNests: ready, gapNests: Math.max(0, planned - ready), timeToReadyLabel: "From governed demand stages", coverageLabel: `${ready}/${planned || 0} matched`, coverageDetail: `${rows.length} governed demand records`, progressPct: planned ? Math.min(100, ready / planned * 100) : 0, stages: [] }
+    const gap = Math.max(0, planned - ready)
+    return { supplyModel: channel, capacityLabel: `${channel} capacity`, plannedNests: planned, activationReadyNests: ready, gapNests: gap, timeToReadyLabel: "From governed demand stages", coverageLabel: `${ready}/${planned || 0} matched`, coverageDetail: `${rows.length} governed demand records`, progressPct: planned ? Math.min(100, ready / planned * 100) : 0, stages: [
+      { label: "Required", value: String(planned), state: planned > 0 ? "Complete" as const : "Open" as const },
+      { label: "Matched / ready", value: String(ready), state: ready >= planned && planned > 0 ? "Complete" as const : "Open" as const },
+      { label: "Gap", value: String(gap), state: gap === 0 && planned > 0 ? "Complete" as const : "Blocked" as const },
+    ] }
   }
   const lanes = [lane("FONO"), lane("SP")] as const
   const claimed = lanes.reduce((sum, row) => sum + row.plannedNests, 0)
   const verified = lanes.reduce((sum, row) => sum + row.activationReadyNests, 0)
   const loopHealth = buildLoopHealth({ asOf: snapshot.asOf, feeds: [], clocks: [], verification: { claimed, verified: Math.min(claimed, verified), awaiting: Math.max(0, claimed - verified), reopened: 0, oldestAwaitingAt: claimed > verified ? snapshot.asOf : null } })
+  const growthActions = snapshot.actions.filter((row) => /nia[- ]growth/.test(`${text(row, "action id")} ${text(row, "operating objective")}`.toLowerCase()))
+  const growthApprovals = snapshot.approvals.filter((row) => growthActions.some((action) => text(action, "action id") === text(row, "linked action id")))
+  const liveActions = growthActions.map((row) => {
+    const actionId = text(row, "action id")
+    const identity = `${actionId} ${text(row, "operating objective")}`.toLowerCase()
+    const supplyModel = identity.includes("-sp-") || identity.includes(" sp ") ? "SP" as const : "FONO" as const
+    const approval = growthApprovals.find((item) => text(item, "linked action id") === actionId)
+    return Object.freeze({ id: actionId, supplyModel, objective: text(row, "operating objective") || `${supplyModel} readiness gap`, current: text(row, "baseline value") || "Not recorded", target: text(row, "target value") || "Not recorded", owner: text(row, "owner actor id") || "Unassigned", dueAt: text(row, "due at"), state: text(row, "state") || "Open", approval: text(approval ?? {}, "decision") || "Pending", evidenceRequired: text(row, "required evidence") || "Independent readiness evidence" })
+  })
   return Object.freeze({
     fixtureLabel: "Governed live data",
     mode: "Live read-only",
     question: "Where does verified demand justify the next capacity decision?",
-    source: { name: "Enterprise Demand · Living · Studios", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: loopHealth.state, synthetic: false },
+    source: { name: "Fono Funnel · TEAM_SHRAMPARK_DEMAND · TEAM_NIA_GROWTH", asOf: snapshot.asOf, lastRefreshAt: snapshot.asOf, freshness: loopHealth.state, synthetic: false },
     headline: `${projection.summary.gap} remains between required and matched demand capacity.`,
     summary: projection.summary,
     measures: projection.measures,
@@ -233,6 +248,8 @@ export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaG
     tasks: [],
     despatchEscalations: [],
     signOffs: [],
+    liveActions,
+    sourceLineage: ["Fono Funnel → Enterprise_Demand → FONO metrics", "TEAM_SHRAMPARK_DEMAND → Enterprise_Demand → SP metrics", "TEAM_NIA_GROWTH → governed action, approval, evidence and policy logs", "TEAM_OWNER_REGISTRY → growth owners"],
     learningInputs: [],
     quarantineCount: 0,
     policyRegistry: [],

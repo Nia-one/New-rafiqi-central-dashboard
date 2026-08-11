@@ -10,7 +10,9 @@ import { MeasureViz } from "@/components/measure-viz"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import styles from "./nia-growth-workspace.module.css"
 
-type Props = { preview: NiaGrowthPreview }
+type LiveGrowthAction = { id: string; supplyModel: "FONO" | "SP"; objective: string; current: string; target: string; owner: string; dueAt: string; state: string; approval: string; evidenceRequired: string }
+type LiveNiaGrowthPreview = NiaGrowthPreview & { liveActions?: readonly LiveGrowthAction[]; sourceLineage?: readonly string[] }
+type Props = { preview: LiveNiaGrowthPreview }
 type ShadowOutcome = "Unresolved" | "Evidence received" | "Failed evidence" | "Human sign-off required"
 
 const dateFormatter = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Kolkata" })
@@ -43,6 +45,7 @@ export function NiaGrowthWorkspace({ preview }: Props) {
   const [tasks, setTasks] = useState<readonly GrowthTaskPreview[]>(preview.tasks)
   const [selected, setSelected] = useState<Record<string, ShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, ShadowOutcome>)
   const [audit, setAudit] = useState<readonly { id: string; actionId: string; supplyModel: "FONO" | "SP"; outcome: ShadowOutcome; route: string; at: string }[]>([])
+  const liveActions = preview.liveActions ?? []
 
   function recordShadowOutcome(task: GrowthTaskPreview) {
     const outcome = selected[task.actionId] ?? "Unresolved"
@@ -67,10 +70,10 @@ export function NiaGrowthWorkspace({ preview }: Props) {
     { title: "Data freshness", summary: `Last refresh ${date(preview.source.lastRefreshAt)} · ${preview.quarantineCount} quarantined` },
     { title: "Growth command", summary: `${preview.summary.gap} capacity gap · owner ${preview.summary.owner}` },
     { title: "Growth vs plan", summary: `${preview.summary.current} current · ${preview.summary.target} target` },
-    { title: "Headline measures", summary: `${preview.measures.length} readiness controls at a glance`, lens: "decide" },
-    { title: "Capacity implication", summary: "Close readiness and coverage gaps before new capital.", lens: "decide" },
+    { title: "Headline measures", summary: `${preview.measures.length} live readiness controls at a glance` },
+    { title: "Capacity implication", summary: "Close readiness and coverage gaps before new capital." },
     { title: "Growth by channel", summary: "FONO and Śram Park remain separately governed.", lens: "decide" },
-    { title: "Open opportunities", summary: `${tasks.length} opportunities need verified action`, lens: "operate" },
+    { title: "Growth actions", summary: `${liveActions.length} governed actions from Action Log`, lens: "operate" },
     { title: "Human decisions", summary: `${preview.signOffs.length} growth decisions waiting`, lens: "decide" },
     { title: "Background record", summary: `${audit.length} local shadow events · governed controls retained`, lens: "operate" },
     { title: "Closure rule", summary: "Only independently verified ready capacity closes." },
@@ -112,8 +115,10 @@ export function NiaGrowthWorkspace({ preview }: Props) {
       <p className={styles.soWhat}>So what: FONO and Śram Park have different readiness and coverage gates, so each channel needs its own decision; SP additionally cannot proceed without signed contract coverage.</p>
     </section>
 
-    <section className={styles.workPanel} aria-label="Opportunities needing action">
-      <header><div><span>Opportunities needing action</span><strong>{tasks.length} opportunities need action</strong></div><p>Preview only</p></header>
+    <section className={styles.workPanel} aria-label="Governed growth actions">
+      <header><div><span>Governed growth actions</span><strong>{liveActions.length} actions from Action Log</strong></div><p>Live read-only</p></header>
+      <div className={styles.liveActionGrid}>{liveActions.map((action) => <article key={action.id}><header><b>{action.supplyModel}</b><span>{action.state}</span></header><h3>{action.objective}</h3><dl><div><dt>Current</dt><dd>{action.current}</dd></div><div><dt>Target</dt><dd>{action.target}</dd></div><div><dt>Owner</dt><dd>{action.owner}</dd></div><div><dt>Approval</dt><dd>{action.approval}</dd></div></dl><small>{action.evidenceRequired}</small></article>)}</div>
+      {liveActions.length === 0 ? <p className={styles.emptyData}>No governed Nia Growth action is recorded in Action Log.</p> : null}
       <OperationalCardStack label="Nia Growth channel-correct work">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.issue} domain={`${task.supplyModel} · ${task.location} · ${task.actionId}`} status={task.state} progress={actionStageFromStatus(task.state)} fields={[{ label: "Owner", value: task.owner }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Progress", value: task.progress }, { label: "Expected verified result", value: task.expectedVerifiedResult }, { label: "Verified result", value: task.verifiedResult }]}><div className={styles.shadowControl}><TokenSelect ariaLabel={`Shadow outcome for ${task.supplyModel} ${task.location}`} value={selected[task.actionId] ?? "Unresolved"} options={["Unresolved", "Evidence received", "Failed evidence", "Human sign-off required"] as const} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task)}>Record locally</button><small>No property, contract, capital or external action</small></div></OperationalCard>)}</OperationalCardStack>
       <p className={styles.soWhat}>So what: each opportunity closes only on independently verified readiness evidence, so recorded activity without proof does not add capacity.</p>
     </section>

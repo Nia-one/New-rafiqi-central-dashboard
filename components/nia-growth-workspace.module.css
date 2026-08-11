@@ -13,6 +13,17 @@
 
 .workspace * { box-sizing: border-box; }
 .workspace > * { min-width: 0; }
+.liveActionGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; padding: 16px; }
+.liveActionGrid article { border: 1px solid var(--border); background: var(--surface); padding: 16px; }
+.liveActionGrid article > header { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.liveActionGrid h3 { margin: 12px 0; font-size: 15px; }
+.liveActionGrid dl { display: grid; grid-template-columns: repeat(2, 1fr); margin: 0; border: 1px solid var(--border); }
+.liveActionGrid dl div { padding: 10px; }
+.liveActionGrid dl div:nth-child(even) { border-left: 1px solid var(--border); }
+.liveActionGrid dl div:nth-child(n+3) { border-top: 1px solid var(--border); }
+.liveActionGrid dt { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.liveActionGrid dd { margin: 4px 0 0; font-size: 13px; font-weight: 600; }
+.liveActionGrid article > small, .emptyData { display: block; margin-top: 12px; color: var(--muted); font-size: 11px; }
 
 .freshness { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-strong); color: var(--muted); font-size: 12px; }
 .freshness svg { width: 16px; }
