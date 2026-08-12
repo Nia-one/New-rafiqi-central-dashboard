@@ -58,10 +58,10 @@ test("FONO and Śram Park demand pipelines remain independent", () => {
   })
 
   assert.deepEqual(result.fonoPipeline.stageCounts.map(({ stage, count, requirement }) => [stage, count, requirement]), [
-    ["Lead", 1, 100], ["Interested", 0, 0], ["Proposal Sent", 0, 0], ["Contracting", 1, 80], ["Contracted", 1, 60],
+    ["Compaign", 0, 0], ["Lead", 1, 100], ["Interested", 0, 0], ["Proposal Sent", 0, 0], ["Contracting", 1, 80], ["Contracted", 1, 60],
   ])
   assert.deepEqual(result.spPipeline.stageCounts.map(({ stage, count }) => [stage, count]), [
-    ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 1], ["Contracted", 0],
+    ["Compaign", 0], ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 1], ["Contracted", 0],
   ])
   assert.equal(result.demandRows.length, 2)
   assert.equal(result.demandRequired, 1100)
@@ -79,7 +79,7 @@ test("FONO Stage After uses Nests Potential and treats takeover-pending as contr
     ],
   })
 
-  assert.deepEqual(result.fonoRequirementStages.map(({ label, mtd }) => [label, mtd]), [["Lead", 4474], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 264], ["Contracted", 887]])
+  assert.deepEqual(result.fonoRequirementStages.map(({ label, mtd }) => [label, mtd]), [["Compaign", 0], ["Lead", 4474], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 264], ["Contracted", 887]])
   assert.equal(result.fonoSupply[0].mtd, 887)
   assert.equal(result.fonoStudioCount, 1)
   assert.equal(result.occupancyRows[0][0], "Studio One")
@@ -113,7 +113,7 @@ test("closed Shram Park demand is excluded from the approved stage funnel", () =
   })
 
   assert.deepEqual(result.demandStages.map((item) => [item.label, item.today]), [
-    ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 0], ["Contracted", 0],
+    ["Compaign", 0], ["Lead", 1], ["Interested", 0], ["Proposal Sent", 0], ["Contracting", 0], ["Contracted", 0],
   ])
 })
 
@@ -125,7 +125,7 @@ test("Shram Park treats the Bot's Send Proposal / Quote action as Proposal Sent 
   })
 
   assert.deepEqual(result.demandStages.map((item) => [item.label, item.today]), [
-    ["Lead", 0], ["Interested", 0], ["Proposal Sent", 1], ["Contracting", 0], ["Contracted", 0],
+    ["Compaign", 0], ["Lead", 0], ["Interested", 0], ["Proposal Sent", 1], ["Contracting", 0], ["Contracted", 0],
   ])
 })
 

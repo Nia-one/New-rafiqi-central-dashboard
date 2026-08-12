@@ -19,7 +19,7 @@ test("Business Report projects the governed Shram Park lane as Enterprise Demand
     essentials: [{ "theatre id": "TH-RJT", "eligible members": 10, "buying members": 4, "essentials billed inr": 1000, "studio revenue inr": 20000, "nia margin inr": 100, "member savings inr": 50, "curry unique members": 2, "curry buying value inr": 300, "internet equipment unique members": 1, "internet equipment buying value inr": 200 }],
   })
   assert.equal(report.occupancy.percent, 90)
-  assert.deepEqual(report.enterprise.stages, { Lead: 1, Interested: 1, "Proposal Sent": 0, Contracting: 0, Contracted: 0 })
+  assert.deepEqual(report.enterprise.stages, { Compaign: 0, Lead: 1, Interested: 1, "Proposal Sent": 0, Contracting: 0, Contracted: 0 })
   assert.equal(report.enterprise.records, 2)
   assert.equal(report.enterprise.sourceRecords, 3)
   assert.equal(report.enterprise.excludedRecords, 1)
@@ -111,7 +111,7 @@ test("Business Report uses raw Proposal / Quote as Proposal Sent over a stale no
       { "demand id": "SP-BOT-PROPOSAL", status: "Contracting", certainty: "Send Proposal / Quote", "headcount required": 1 },
     ],
   })
-  assert.deepEqual(report.enterprise.stages, { Lead: 0, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0 })
+  assert.deepEqual(report.enterprise.stages, { Compaign: 0, Lead: 0, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0 })
 })
 
 test("Business Report breaks Enterprise Demand stages down by Theatre", () => {
@@ -124,8 +124,8 @@ test("Business Report breaks Enterprise Demand stages down by Theatre", () => {
   })
 
   assert.deepEqual(report.enterprise.byTheatre, [
-    { theatre: "Deccan", Lead: 1, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0, records: 2 },
-    { theatre: "Wellington", Lead: 0, Interested: 0, "Proposal Sent": 0, Contracting: 0, Contracted: 1, records: 1 },
+    { theatre: "Deccan", Compaign: 0, Lead: 1, Interested: 0, "Proposal Sent": 1, Contracting: 0, Contracted: 0, records: 2 },
+    { theatre: "Wellington", Compaign: 0, Lead: 0, Interested: 0, "Proposal Sent": 0, Contracting: 0, Contracted: 1, records: 1 },
   ])
 })
 
@@ -142,5 +142,5 @@ test("Business Report maps Enterprise Supply in the approved stage order and exc
   })
 
   assert.equal(report.enterprise.supplyRecords, 5)
-  assert.deepEqual(report.enterprise.supplyStages, { Lead: 1, Interested: 1, "Proposal Sent": 1, Contracting: 1, Contracted: 1 })
+  assert.deepEqual(report.enterprise.supplyStages, { Compaign: 0, Lead: 1, Interested: 1, "Proposal Sent": 1, Contracting: 1, Contracted: 1 })
 })

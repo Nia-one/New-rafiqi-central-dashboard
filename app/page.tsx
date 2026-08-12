@@ -73,7 +73,7 @@ export default async function Page() {
   const compatibilityEnterpriseRows = liveSnapshot.enterpriseDemand.filter((row) => {
     const role = String(row["role required"] ?? "").trim().toLowerCase()
     const stage = String(row.certainty ?? row.status ?? "").trim().toLowerCase()
-    return role !== "member adds" && /lead|interest|proposal|propsal|propsaal|contract|drop/.test(stage)
+    return role !== "member adds" && /compaign|campaign|lead|interest|proposal|propsal|propsaal|contract|drop/.test(stage)
   })
   const uiEnterpriseDemandRows = freshlySyncedEnterpriseRows.length ? [...freshlySyncedEnterpriseRows] : lineageEnterpriseRows.length ? lineageEnterpriseRows : compatibilityEnterpriseRows
   const enterpriseWorkspaceRows = uiEnterpriseDemandRows.length ? uiEnterpriseDemandRows : liveSnapshot.enterpriseDemand.filter((row) => {

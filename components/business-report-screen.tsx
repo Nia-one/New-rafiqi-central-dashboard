@@ -1,6 +1,7 @@
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
 import { DataTable } from "@/components/data-table"
 import { buildBusinessReportData } from "@/lib/live-mappers/business-report"
+import { ENTERPRISE_PIPELINE_STAGES } from "@/lib/enterprise-pipeline-stage"
 
 const inr = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
 const compactInr = (value: number) => value ? `₹${(value / 100_000).toLocaleString("en-IN", { maximumFractionDigits: 2 })}L` : "Not recorded"
@@ -18,7 +19,7 @@ function Funnel({ title, values }: { title: string; values: readonly [string, nu
 }
 
 function EnterpriseTheatrePerformance({ rows }: { rows: ReturnType<typeof buildBusinessReportData>["enterprise"]["byTheatre"] }) {
-  const stages = ["Lead", "Interested", "Proposal Sent", "Contracting", "Contracted"] as const
+  const stages = ENTERPRISE_PIPELINE_STAGES
   const maxima = Object.fromEntries(stages.map((stage) => [stage, Math.max(1, ...rows.map((row) => row[stage]))])) as Record<(typeof stages)[number], number>
   return <div className="table-wrap enterprise-theatre-performance"><table>
     <caption className="sr-only">Enterprise demand stage performance by Theatre</caption>

@@ -16,7 +16,7 @@ const emptyCounts = () => Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((sta
 
 export function EnterpriseLeadWorkspace({ rows, asOf }: { rows: readonly Row[]; asOf: string }) {
   const staged = rows.map((row) => { const sourceStage = value(row, "stage", "certainty"); return { row, sourceStage, stage: enterprisePipelineStage(sourceStage, rowValue(row, "status")) } })
-  const active = staged.filter((entry): entry is { row: Row; stage: Stage } => entry.stage !== null)
+  const active = staged.filter((entry): entry is { row: Row; sourceStage: string; stage: Stage } => entry.stage !== null)
   const excluded = staged.filter((entry) => entry.stage === null)
   const dropped = excluded.filter((entry) => /drop|dropped|lost|reject|cancel|closed/i.test(entry.sourceStage))
   const invalid = excluded.filter((entry) => !dropped.includes(entry))

@@ -58,7 +58,7 @@ function fonoReportPipeline(rows: Row[]) {
     const bucket = stageBucket(row)
     if (bucket === "Contracted") return "Contracted"
     if (bucket === "Contracting") return "Contracting"
-    if (bucket === "Lead" || bucket === "Interested" || bucket === "Proposal Sent") return "Lead"
+    if (bucket === "Compaign" || bucket === "Lead" || bucket === "Interested" || bucket === "Proposal Sent") return "Lead"
     return null
   }
   const active = rows.filter((row) => reportStage(row) !== null)
