@@ -306,6 +306,17 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
   const rows = (current.data.values || []) as unknown[][];
   const currentHeaders = (rows[0] || headers).map(String);
 
+  const preservedCosts = new Map(rows.slice(1).map((row) => [norm(cell(row, currentHeaders, "order_item_id")), {
+    direct: num(cell(row, currentHeaders, "direct_fulfilment_cost")), packaging: num(cell(row, currentHeaders, "packaging_cost")), delivery: num(cell(row, currentHeaders, "delivery_cost")),
+  }]));
+  const rebuiltRows = items.rows.map((item) => {
+    const costs = preservedCosts.get(norm(cell(item, items.headers, "id", "order_item_id"))) || { direct: 0.5, packaging: 0.5, delivery: 0.5 };
+    const fulfilment = costs.direct + costs.packaging + costs.delivery;
+    return [cell(item, items.headers, "id", "order_item_id"), cell(item, items.headers, "order_number"), cell(item, items.headers, "product_code"), cell(item, items.headers, "product_name"), costs.direct, costs.packaging, costs.delivery, fulfilment, num(cell(item, items.headers, "gross_profit")) - fulfilment, cell(item, items.headers, "updated_at"), "", "", ""];
+  });
+  await sheets.spreadsheets.values.clear({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A2:M1000` });
+  if (rebuiltRows.length) await sheets.spreadsheets.values.update({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A2:M${rebuiltRows.length + 1}`, valueInputOption: "RAW", requestBody: { values: rebuiltRows } });
+
   const formulas = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SOURCE_SHEET_ID,
     ranges: [`${COST_INPUT_TAB}!A2`, `${COST_INPUT_TAB}!B2`, `${COST_INPUT_TAB}!C2`, `${COST_INPUT_TAB}!D2`, `${COST_INPUT_TAB}!H2`, `${COST_INPUT_TAB}!I2`, `${COST_INPUT_TAB}!J2`, `${COST_INPUT_TAB}!K2`, `${COST_INPUT_TAB}!L2`, `${COST_INPUT_TAB}!M2`],
@@ -333,21 +344,15 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
   if (!formulas.data.valueRanges?.[6].values?.[0]?.[0]) {
     formulaData.push({ range: `${COST_INPUT_TAB}!J2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:J,10,FALSE),\"\")))"]] });
   }
-  if (!formulas.data.valueRanges?.[7].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!K2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!E:E),\"UNRESOLVED\"))))"]] });
-  }
-  if (!formulas.data.valueRanges?.[8].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!L2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!B:B),\"\"))))"]] });
-  }
-  if (!formulas.data.valueRanges?.[9].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!M2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!C:C),\"\"))))"]] });
-  }
+  formulaData.push({ range: `${COST_INPUT_TAB}!K2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!E:E),\"UNRESOLVED\"))))"]] });
+  formulaData.push({ range: `${COST_INPUT_TAB}!L2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!B:B),\"\"))))"]] });
+  formulaData.push({ range: `${COST_INPUT_TAB}!M2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!C:C),\"\"))))"]] });
   if (formulaData.length) {
     await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
   }
 
   const byItemId = new Map<string, { direct: number; packaging: number; delivery: number }>();
-  rows.slice(1).forEach((row) => {
+  rebuiltRows.forEach((row) => {
     const id = norm(cell(row, currentHeaders, "order_item_id"));
     if (!id) return;
     byItemId.set(id, {
@@ -405,6 +410,29 @@ export async function syncEssentialsBotData() {
   if (recoveryWrites.length) {
     const writer = await client(true);
     await writer.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: recoveryWrites } });
+  }
+  // The Bot creates Orders before their delivery workflow row. Materialise a
+  // Pending delivery record immediately so every tab can join the same order
+  // set and a new order is never dropped by a missing Delivery_Status row.
+  const orderHeaders = (rawTables[0]?.[0] || []).map(String);
+  const deliveryHeaders = (rawTables[2]?.[0] || []).map(String);
+  const deliveryOrderIds = new Set((rawTables[2] || []).slice(1).map((row) => norm(cell(row, deliveryHeaders, "order_id"))).filter(Boolean));
+  const missingDeliveryRows = (rawTables[0] || []).slice(1).filter((row) => {
+    const orderId = norm(cell(row, orderHeaders, "id", "order_id"));
+    return orderId && !deliveryOrderIds.has(orderId);
+  }).map((order) => {
+    const record: Record<string, unknown> = {
+      order_id: cell(order, orderHeaders, "id", "order_id"),
+      delivery_status: "Pending",
+      delivery_owner: "Essentials Bot",
+      updated_at: cell(order, orderHeaders, "updated_at", "created_at", "order_date") || new Date().toISOString(),
+    };
+    return deliveryHeaders.map((header) => record[norm(header).replaceAll(" ", "_")] ?? "");
+  });
+  if (deliveryHeaders.length && missingDeliveryRows.length) {
+    const writer = await client(true);
+    await writer.spreadsheets.values.append({ spreadsheetId: SOURCE_SHEET_ID, range: "Delivery_Status!A:F", valueInputOption: "RAW", insertDataOption: "INSERT_ROWS", requestBody: { values: missingDeliveryRows } });
+    rawTables[2].push(...missingDeliveryRows);
   }
   const mirrors = await mirrorBotTables(rawTables);
   const [orders, items, deliveries, customers, guests, inventory, studioMaster, products] = rawTables.map((values) => table(values));
