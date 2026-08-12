@@ -73,10 +73,11 @@ export function GlobalLiveSync() {
       setState("syncing")
       // All operator-owned UI_* and TEAM_* tabs plus connected bot feeds are
       // ingested by one server-coordinated sync cycle.
-      // UI_* is the dashboard's operator-owned current-state lane. Heavier bot
-      // feeds are intentionally not multiplied by every open browser; their
-      // server-coordinated jobs remain isolated from this one-minute hot path.
-      const response = await fetch("/api/ops-data?fresh=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
+      // The shared server throttle deduplicates this across open browsers. Use
+      // the real live-source lane here: `fresh=1` only ingests UI_* inputs and
+      // leaves Essentials/FONO/Shram Park bot snapshots stale while the badge
+      // incorrectly claims that every bot was synced.
+      const response = await fetch("/api/ops-data?live=1", { method: "POST", cache: "no-store", signal: AbortSignal.timeout(SYNC_TIMEOUT_MS) })
       if (!response.ok) throw new Error(`Live sync failed (${response.status})`)
       const report = await response.json() as { changedRows?: number }
       success = true

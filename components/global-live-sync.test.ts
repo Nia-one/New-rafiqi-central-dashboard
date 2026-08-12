@@ -7,14 +7,15 @@ const shell = readFileSync(new URL("./control-tower-shell.tsx", import.meta.url)
 const dashboard = readFileSync(new URL("./nia-dashboard.tsx", import.meta.url), "utf8")
 const sourceSync = readFileSync(new URL("../lib/sourceSync.ts", import.meta.url), "utf8")
 
-test("global live sync runs one lightweight dashboard-input batch every minute", () => {
+test("global live sync runs one throttled live bot batch every minute", () => {
   assert.match(source, /const SYNC_SECONDS = 60/)
   assert.match(source, /LEASE_KEY/)
   assert.match(source, /AbortSignal\.timeout\(SYNC_TIMEOUT_MS\)/)
   assert.match(source, /rafiqi:sync-complete/)
   assert.match(source, /handledByAnotherTab: true/)
-  assert.match(source, /\/api\/ops-data\?fresh=1/)
-  assert.doesNotMatch(source, /attempt < 3|\/api\/ops-data\?live=1/)
+  assert.doesNotMatch(source, /\/api\/ops-data\?fresh=1/)
+  assert.doesNotMatch(source, /attempt < 3/)
+  assert.match(source, /\/api\/ops-data\?live=1/)
   assert.match(source, /report\.changedRows/)
   assert.match(source, /CONVERGENCE_REFRESH_MS = \[0, 20_000\]/)
   assert.match(source, /refreshUntilCurrent/)
