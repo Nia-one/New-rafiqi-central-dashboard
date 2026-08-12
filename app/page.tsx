@@ -18,19 +18,35 @@ import { cookies } from "next/headers"
 import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessionSecretFromEnvironment } from "@/lib/auth"
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { getLatestFreshEnterpriseDemandRows } from "@/lib/freshDashboardInputSync"
-import { unstable_cache } from "next/cache"
 
 export const dynamic = "force-dynamic"
 
-// Share the last successful governed snapshot across serverless invocations.
-// The Sheets client already retries transient failures; retrying the complete
-// 38-range dashboard read here multiplied quota usage and could turn a 429 into
-// a full-page outage on a freshly deployed instance.
-const buildCachedOpsData = unstable_cache(
-  () => buildOpsData(),
-  ["governed-dashboard-ops-data-v2"],
-  { revalidate: 60, tags: ["governed-ops-data"] },
-)
+// The governed payload is larger than Next's 2 MB Data Cache item limit.
+// Cache it in-process instead, deduplicate concurrent renders, and retain the
+// last successful value when Google briefly throttles a refresh. Every warm
+// instance refreshes within 45 seconds; cold instances fetch immediately.
+let lastOpsData: Awaited<ReturnType<typeof buildOpsData>> | undefined
+let lastOpsDataAt = 0
+let activeOpsDataBuild: Promise<Awaited<ReturnType<typeof buildOpsData>>> | undefined
+async function buildCachedOpsData() {
+  if (lastOpsData && Date.now() - lastOpsDataAt < 45_000) return lastOpsData
+  if (activeOpsDataBuild) return activeOpsDataBuild
+  activeOpsDataBuild = buildOpsData()
+    .then((data) => {
+      lastOpsData = data
+      lastOpsDataAt = Date.now()
+      return data
+    })
+    .catch((error) => {
+      if (lastOpsData) {
+        console.warn("Governed refresh failed; serving the last successful in-process snapshot.", error)
+        return lastOpsData
+      }
+      throw error
+    })
+    .finally(() => { activeOpsDataBuild = undefined })
+  return activeOpsDataBuild
+}
 
 export default async function Page() {
   if (!selfDrivePlatformEnabled()) return <LegacyNiaDashboard />

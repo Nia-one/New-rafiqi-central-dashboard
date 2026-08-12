@@ -77,6 +77,21 @@ export function syncLiveSources() {
   return activeLiveSync;
 }
 
+// Shared server-side throttle: every dashboard browser may request a refresh,
+// but only one live-source sync runs inside a 45-second window. This keeps the
+// UI fresh without multiplying Google Sheets quota usage by open tab count.
+let lastLiveSync: LiveSourceSyncReport | null = null;
+let lastLiveSyncAt = 0;
+export function syncLiveSourcesThrottled(maxAgeMs = 45_000) {
+  if (activeLiveSync) return activeLiveSync;
+  if (lastLiveSync && Date.now() - lastLiveSyncAt < maxAgeMs) return Promise.resolve(lastLiveSync);
+  return syncLiveSources().then((report) => {
+    lastLiveSync = report;
+    lastLiveSyncAt = Date.now();
+    return report;
+  });
+}
+
 export function syncFreshInputs() {
   if (activeFreshInputSync) return activeFreshInputSync;
   activeFreshInputSync = syncFreshDashboardInputs()

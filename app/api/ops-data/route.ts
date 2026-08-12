@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildOpsData } from "@/lib/opsDataMapper";
-import { syncAllSources, syncFreshInputs, syncLiveSources, syncUserInputs } from "@/lib/sourceSync";
+import { syncAllSources, syncFreshInputs, syncLiveSources, syncLiveSourcesThrottled, syncUserInputs } from "@/lib/sourceSync";
 import { revalidateTag, unstable_cache } from "next/cache";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const liveSync = url.searchParams.get("live") === "1";
     const inputSync = url.searchParams.get("input") === "1";
     const freshSync = url.searchParams.get("fresh") === "1";
-    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSources() : inputSync ? await syncCachedUserInputs() : freshSync ? await syncCachedFreshInputs() : null;
+    const result = fullSync ? await syncAllSources({ force: true }) : liveSync ? await syncLiveSourcesThrottled() : inputSync ? await syncCachedUserInputs() : freshSync ? await syncCachedFreshInputs() : null;
     // Do not synchronously expire the last successful dashboard snapshot here.
     // In production, a fresh input write can coincide with the Sheets API quota
     // window. Expiring the snapshot made that temporary 429 a full-page outage.

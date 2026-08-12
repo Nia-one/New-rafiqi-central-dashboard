@@ -3,6 +3,11 @@ import { google } from "googleapis";
 import { googleServiceAccountCredentials } from "./googleCredentials";
 import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth";
 
+// Nia Essentials Operations. Keep the canonical source here as a safe
+// production fallback; the previous fallback contained an I/l typo and could
+// silently make a cold deployment read a different/non-existent workbook.
+// Canonical Essentials Bot workbook. The character before `UC0oY` is an
+// uppercase I (not a lowercase l); Google returns 404 for the look-alike ID.
 const SOURCE_SHEET_ID = process.env.ESSENTIALS_BOT_SHEET_ID || "1C8y3uVxp5toMwLBPGVWbltOoNX_hVuKtvyfiqIUC0oY";
 const COST_INPUT_TAB = "Rafiqi_Order_Item_Costs";
 const BOT_MIRRORS = [
@@ -372,11 +377,24 @@ async function readEssentialSummaryInputs() {
 
 export async function syncEssentialsBotData() {
   const source = await client();
-  const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ", "Studio_Master!A:Q"];
+  const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ", "Studio_Master!A:Q", "Product_Master!A:AZ"];
   const result = await source.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges });
   const rawTables = (result.data.valueRanges || []).map((v) => (v.values || []) as unknown[][]);
   const mirrors = await mirrorBotTables(rawTables);
-  const [orders, items, deliveries, customers, guests, inventory, studioMaster] = rawTables.map((values) => table(values));
+  const [orders, items, deliveries, customers, guests, inventory, studioMaster, products] = rawTables.map((values) => table(values));
+  // Never reconcile the governed backend from a partial/blank Bot response.
+  // A temporary Sheets read/schema problem must preserve the last successful
+  // dashboard snapshot instead of making yesterday's orders disappear.
+  if (!orders.headers.length || !items.headers.length || !inventory.headers.length || !products.headers.length) {
+    throw new Error("Essentials Bot returned an incomplete Products/Inventory/Orders/Order_Items snapshot; previous governed data was preserved.");
+  }
+  const productByCode = new Map<string, unknown[]>();
+  for (const row of products.rows) {
+    for (const ref of [cell(row, products.headers, "product_code", "sku"), cell(row, products.headers, "id", "product_id")]) {
+      const key = norm(ref);
+      if (key) productByCode.set(key, row);
+    }
+  }
   const inventoryByProduct = new Map<string, unknown[]>();
   for (const row of inventory.rows) {
     for (const productRef of [cell(row, inventory.headers, "product_code"), cell(row, inventory.headers, "product_id"), cell(row, inventory.headers, "id")]) {
@@ -557,8 +575,15 @@ export async function syncEssentialsBotData() {
     "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
   }); });
   const quarantined: Record<string, unknown>[] = [];
-  const inventoryRows = inventory.rows.map((r) => ({
-    "sku": cell(r, inventory.headers, "product_code", "product_id", "id"), "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
+  const inventoryRows = inventory.rows.map((r) => {
+    const sku = cell(r, inventory.headers, "product_code", "product_id", "id");
+    const product = productByCode.get(norm(sku));
+    return ({
+    "sku": sku,
+    "product name": (product && cell(product, products.headers, "product_name", "name", "title")) || cell(r, inventory.headers, "product_name", "name"),
+    "category": (product && cell(product, products.headers, "category", "category_name")) || cell(r, inventory.headers, "category", "category_name"),
+    "brand": (product && cell(product, products.headers, "brand", "brand_name")) || cell(r, inventory.headers, "brand", "brand_name"),
+    "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
     "supply model": "Existing bot", "stockout": num(cell(r, inventory.headers, "available_stock")) <= 0 ? "Yes" : "No",
     "mrp": cell(r, inventory.headers, "mrp"), "selling": cell(r, inventory.headers, "selling_price"),
     "savings": cell(r, inventory.headers, "member_savings"),
@@ -567,7 +592,7 @@ export async function syncEssentialsBotData() {
     "days cover": cell(r, inventory.headers, "days_cover"), "zero sale": cell(r, inventory.headers, "zero_sale"),
     "owned inventory value": cell(r, inventory.headers, "owned_inventory_value"),
     "owner": cell(r, inventory.headers, "warehouse_location") || "Essentials",
-  }));
+  }); });
   const retention = (members: CohortMember[], days: number) => {
     const windowMs = days * 86_400_000;
     const retained = members.filter((member) => {
@@ -619,7 +644,7 @@ export async function syncEssentialsBotData() {
     metricRow("essentials_headline_savings", `₹${totalSavings.toLocaleString("en-IN")}`),
   ];
   await ensureBackendColumns("Essentials_Hourly", ["studio revenue inr", "curry unique members", "curry buying value inr", "internet equipment unique members", "internet equipment buying value inr"]);
-  await ensureBackendColumns("Essentials_Inventory", ["owned inventory value"]);
+  await ensureBackendColumns("Essentials_Inventory", ["product name", "category", "brand", "owned inventory value"]);
   await ensureBackendColumns("Essentials_Cohorts", ["cohort id", "member group", "theatre", "eligible", "buyers", "attach", "gmv", "aov", "frequency", "d30", "d60", "d90", "churn", "products / member", "captured at", REPORTING_MONTH_HEADER]);
   await ensureBackendColumns("Essentials_Dashboard", ["key", "value text", "updated at"]);
   const essentialsHourly = await upsert("Essentials_Hourly", "essentials hourly id", [...hourly, ...quarantined]);
@@ -645,7 +670,7 @@ export async function syncEssentialsBotData() {
   const removedStaleCohorts = await reconcileBotOwnedRows("Essentials_Cohorts", "cohort id", new Set(cohortRows.map((row) => norm(row["cohort id"]))), (row, headers) => norm(cell(row, headers, "cohort id")).startsWith("bot-ess-group-"));
   return {
     mirrors,
-    sourceRows: { orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length, studios: studioMaster.rows.length },
+    sourceRows: { products: products.rows.length, orders: orders.rows.length, items: items.rows.length, deliveries: deliveries.rows.length, inventory: inventory.rows.length, studios: studioMaster.rows.length },
     costInputs: { inserted: costInputs.inserted, preserved: costInputs.preserved },
     unresolvedStudioOrders,
     essentialsHourly: { ...essentialsHourly, removedStale: removedStaleHourly },
