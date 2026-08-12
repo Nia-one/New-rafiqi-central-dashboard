@@ -390,7 +390,7 @@ export async function syncEssentialsBotData() {
   }
   const productByCode = new Map<string, unknown[]>();
   for (const row of products.rows) {
-    for (const ref of [cell(row, products.headers, "product_code", "sku"), cell(row, products.headers, "id", "product_id")]) {
+    for (const ref of [cell(row, products.headers, "product_code"), cell(row, products.headers, "sku"), cell(row, products.headers, "id", "product_id")]) {
       const key = norm(ref);
       if (key) productByCode.set(key, row);
     }
@@ -402,15 +402,16 @@ export async function syncEssentialsBotData() {
       if (key) inventoryByProduct.set(key, row);
     }
   }
-  const studioDirectory = new Map<string, { id: string; name: string; theatre: string; active: boolean }>();
+  const studioDirectory = new Map<string, { id: string; code: string; name: string; theatre: string; active: boolean }>();
   for (const row of studioMaster.rows) {
     const entry = {
       id: String(cell(row, studioMaster.headers, "id", "studio_id") || "").trim(),
+      code: String(cell(row, studioMaster.headers, "studio_code") || "").trim(),
       name: String(cell(row, studioMaster.headers, "studio_name") || "").trim(),
       theatre: String(cell(row, studioMaster.headers, "theatre_name", "theatre_code") || "UNRESOLVED").trim(),
       active: ["true", "yes", "1", "active"].includes(norm(cell(row, studioMaster.headers, "is_active"))),
     };
-    for (const alias of [entry.id, cell(row, studioMaster.headers, "studio_code"), entry.name]) if (String(alias || "").trim()) studioDirectory.set(norm(alias), entry);
+    for (const alias of [entry.id, entry.code, entry.name]) if (String(alias || "").trim()) studioDirectory.set(norm(alias), entry);
   }
   const costInputs = await syncCostInputRows(items);
   const summaryInputs = await readEssentialSummaryInputs();
@@ -576,14 +577,20 @@ export async function syncEssentialsBotData() {
   }); });
   const quarantined: Record<string, unknown>[] = [];
   const inventoryRows = inventory.rows.map((r) => {
-    const sku = cell(r, inventory.headers, "product_code", "product_id", "id");
-    const product = productByCode.get(norm(sku));
+    const productCode = cell(r, inventory.headers, "product_code");
+    const productId = cell(r, inventory.headers, "product_id");
+    const inventoryId = cell(r, inventory.headers, "id");
+    const product = productByCode.get(norm(productCode)) || productByCode.get(norm(productId));
+    const rawStudio = cell(r, inventory.headers, "studio_id", "studio_code");
+    const studio = studioDirectory.get(norm(rawStudio));
     return ({
-    "sku": sku,
+    // Human-readable source SKU is the governed display key; retain UUIDs only
+    // for internal joins, never as the operator-facing label.
+    "sku": (product && cell(product, products.headers, "sku")) || productCode || productId || inventoryId,
     "product name": (product && cell(product, products.headers, "product_name", "name", "title")) || cell(r, inventory.headers, "product_name", "name"),
     "category": (product && cell(product, products.headers, "category", "category_name")) || cell(r, inventory.headers, "category", "category_name"),
     "brand": (product && cell(product, products.headers, "brand", "brand_name")) || cell(r, inventory.headers, "brand", "brand_name"),
-    "studio": cell(r, inventory.headers, "studio_id") || "Warehouse",
+    "studio": studio?.name || studio?.code || (rawStudio ? `Unmapped studio (${rawStudio})` : "Warehouse"),
     "supply model": "Existing bot", "stockout": num(cell(r, inventory.headers, "available_stock")) <= 0 ? "Yes" : "No",
     "mrp": cell(r, inventory.headers, "mrp"), "selling": cell(r, inventory.headers, "selling_price"),
     "savings": cell(r, inventory.headers, "member_savings"),
