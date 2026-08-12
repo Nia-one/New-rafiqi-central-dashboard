@@ -322,13 +322,13 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
     formulaData.push({ range: `${COST_INPUT_TAB}!J2`, values: [["=ARRAYFORMULA(IF(A2:A=\"\",\"\",IFNA(VLOOKUP(A2:A,Order_Items!A:J,10,FALSE),\"\")))"]] });
   }
   if (!formulas.data.valueRanges?.[7].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!K2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(order_no,Orders!B:B,Orders!T:T),\"UNRESOLVED\"))))"]] });
+    formulaData.push({ range: `${COST_INPUT_TAB}!K2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!E:E),\"UNRESOLVED\"))))"]] });
   }
   if (!formulas.data.valueRanges?.[8].values?.[0]?.[0]) {
     formulaData.push({ range: `${COST_INPUT_TAB}!L2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!B:B),\"\"))))"]] });
   }
   if (!formulas.data.valueRanges?.[9].values?.[0]?.[0]) {
-    formulaData.push({ range: `${COST_INPUT_TAB}!M2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(order_no,Orders!B:B,Orders!S:S),\"\"))))"]] });
+    formulaData.push({ range: `${COST_INPUT_TAB}!M2`, values: [["=MAP(B2:B,LAMBDA(order_no,IF(order_no=\"\",\"\",IFNA(XLOOKUP(XLOOKUP(order_no,Orders!B:B,Orders!E:E),Studio_Master!A:A,Studio_Master!C:C),\"\"))))"]] });
   }
   if (formulaData.length) {
     await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "USER_ENTERED", data: formulaData } });
