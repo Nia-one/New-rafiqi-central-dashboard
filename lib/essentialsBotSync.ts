@@ -312,10 +312,10 @@ async function syncCostInputRows(items: ReturnType<typeof table>) {
   const rebuiltRows = items.rows.map((item) => {
     const costs = preservedCosts.get(norm(cell(item, items.headers, "id", "order_item_id"))) || { direct: 0.5, packaging: 0.5, delivery: 0.5 };
     const fulfilment = costs.direct + costs.packaging + costs.delivery;
-    return [cell(item, items.headers, "id", "order_item_id"), cell(item, items.headers, "order_number"), cell(item, items.headers, "product_code"), cell(item, items.headers, "product_name"), costs.direct, costs.packaging, costs.delivery, fulfilment, num(cell(item, items.headers, "gross_profit")) - fulfilment, cell(item, items.headers, "updated_at"), "", "", ""];
+    return [cell(item, items.headers, "id", "order_item_id"), cell(item, items.headers, "order_number"), cell(item, items.headers, "product_code"), cell(item, items.headers, "product_name"), costs.direct, costs.packaging, costs.delivery, fulfilment, num(cell(item, items.headers, "gross_profit")) - fulfilment, cell(item, items.headers, "updated_at")];
   });
   await sheets.spreadsheets.values.clear({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A2:M1000` });
-  if (rebuiltRows.length) await sheets.spreadsheets.values.update({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A2:M${rebuiltRows.length + 1}`, valueInputOption: "RAW", requestBody: { values: rebuiltRows } });
+  if (rebuiltRows.length) await sheets.spreadsheets.values.update({ spreadsheetId: SOURCE_SHEET_ID, range: `${COST_INPUT_TAB}!A2:J${rebuiltRows.length + 1}`, valueInputOption: "RAW", requestBody: { values: rebuiltRows } });
 
   const formulas = await sheets.spreadsheets.values.batchGet({
     spreadsheetId: SOURCE_SHEET_ID,
