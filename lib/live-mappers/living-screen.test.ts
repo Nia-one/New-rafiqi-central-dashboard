@@ -49,6 +49,14 @@ test("Living converts Google Sheets serial dates instead of displaying them as y
   assert.equal(result.existingOccupancyRows[0][7], "10 Aug 2026")
 })
 
+test("Living recovers any parsed impossible year produced by an old serial-date sync", () => {
+  const result = buildLivingScreenData({
+    living: [{ "studio id": "ST-OLD", "studio name": "Old Serial Studio", "theatre id": "North", "supply model": "EXISTING", "contracted nests": 10, "occupied nests": 9, "updated at": "January 1, 46244" }],
+  })
+
+  assert.equal(result.existingOccupancyRows[0][7], "10 Aug 2026")
+})
+
 test("Living keeps SP demand separate from supply when hourly has no governed SP capacity", () => {
   const result = buildLivingScreenData({
     living: [{ "studio id": "Existing A", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 80 }],

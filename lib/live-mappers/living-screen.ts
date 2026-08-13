@@ -18,7 +18,12 @@ const parsedDate = (input: string) => {
     const recoveredSerial = Number(expandedYear[1])
     if (recoveredSerial >= 1 && recoveredSerial < 100_000) return new Date(Math.round((recoveredSerial - 25_569) * 86_400_000))
   }
-  return new Date(input)
+  const parsed = new Date(input)
+  const parsedYear = parsed.getFullYear()
+  if (Number.isFinite(parsedYear) && parsedYear > 2_100 && parsedYear < 100_000) {
+    return new Date(Math.round((parsedYear - 25_569) * 86_400_000))
+  }
+  return parsed
 }
 const dateTime = (input: string) => parsedDate(input).getTime()
 const displayDate = (input: string) => {
