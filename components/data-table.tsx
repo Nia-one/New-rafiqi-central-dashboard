@@ -44,7 +44,7 @@ export function isNumericColumn(label: string) {
 }
 
 export function DataTable({ columns, rows, className = "", caption }: { columns: string[]; rows: string[][]; className?: string; caption?: string }) {
-  return <div className={`table-wrap ${className}`.trim()}><table>
+  return <div className={`table-wrap dashboard-table-frame ${className}`.trim()}><table className="dashboard-data-table">
     {caption && <caption className="sr-only">{caption}</caption>}
     <thead><tr>{columns.map((column) => <th className={isNumericColumn(column) ? "numeric" : undefined} scope="col" key={column}>{column}</th>)}</tr></thead>
     <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => {

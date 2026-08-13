@@ -4555,3 +4555,141 @@
   :where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr { animation: none; }
   :where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr > :is(td, th) { transition: none; }
 }
+
+/* Dashboard-wide table presentation -----------------------------------------
+   A deliberately visible, shared visual system for every operational table.
+   Domain colours still communicate status; table chrome stays consistently
+   navy, mist-blue and white across Living, Work, Essentials and all reports. */
+:root {
+  --table-navy: #173f61;
+  --table-navy-deep: #102f49;
+  --table-blue-wash: #f3f8fc;
+  --table-blue-hover: #e8f2f9;
+  --table-rule: #d5e2ec;
+}
+
+:where(.table-wrap, [class*="tableWrap"], [class*="table-wrap"], .enterprise-audit-table, .enterprise-theatre-performance, .feedback-aggregate-table) {
+  position: relative;
+  overflow: auto;
+  border: 1px solid var(--table-rule) !important;
+  border-radius: 14px !important;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgba(16, 47, 73, .08), 0 1px 3px rgba(16, 47, 73, .05) !important;
+  scrollbar-color: #9bb6ca transparent;
+  scrollbar-width: thin;
+}
+
+:where(.table-wrap, [class*="tableWrap"], [class*="table-wrap"], .enterprise-audit-table, .enterprise-theatre-performance)::before {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 3px;
+  margin-bottom: -3px;
+  background: linear-gradient(90deg, var(--table-navy-deep), #2b6b98 58%, #72a8ca);
+  content: "";
+  pointer-events: none;
+}
+
+body :where(table:not(.daily-action-grid)) {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #32495c;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+body :where(table:not(.daily-action-grid)) thead {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+}
+
+body :where(table:not(.daily-action-grid)) thead > tr > th {
+  height: 42px;
+  padding: 10px 14px;
+  border: 0;
+  border-right: 1px solid rgba(255, 255, 255, .11);
+  border-bottom: 1px solid var(--table-navy-deep);
+  background: linear-gradient(180deg, #1c4a6f 0%, var(--table-navy) 100%);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .075em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  white-space: normal;
+  box-shadow: none;
+}
+
+body :where(table:not(.daily-action-grid)) thead > tr > th:first-child { padding-left: 18px; }
+body :where(table:not(.daily-action-grid)) thead > tr > th:last-child { border-right: 0; }
+
+body :where(table:not(.daily-action-grid)) tbody > tr > :is(td, th) {
+  height: 46px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--table-rule);
+  background: #fff;
+  color: #32495c;
+  line-height: 1.4;
+  vertical-align: middle;
+  transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr:nth-child(even) > :is(td, th) {
+  background: var(--table-blue-wash);
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr:hover > :is(td, th) {
+  background: var(--table-blue-hover);
+  color: #112f47;
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr:hover > :first-child {
+  box-shadow: inset 4px 0 0 #2b78ad;
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr:last-child > :is(td, th) { border-bottom: 0; }
+body :where(table:not(.daily-action-grid)) tbody > tr > :first-child {
+  padding-left: 18px;
+  color: #132f46;
+  font-weight: 650;
+}
+
+body :where(table:not(.daily-action-grid)) :is(td.numeric, th.numeric, td.number, th.number) {
+  text-align: right;
+  white-space: nowrap;
+}
+
+body :where(table:not(.daily-action-grid)) .no-data {
+  color: #718392;
+  font-style: italic;
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr {
+  animation: dashboard-table-polish-in .3s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+body :where(table:not(.daily-action-grid)) tbody > tr:nth-child(2) { animation-delay: 24ms; }
+body :where(table:not(.daily-action-grid)) tbody > tr:nth-child(3) { animation-delay: 48ms; }
+body :where(table:not(.daily-action-grid)) tbody > tr:nth-child(n+4) { animation-delay: 72ms; }
+
+@keyframes dashboard-table-polish-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 720px) {
+  body :where(table:not(.daily-action-grid)) { font-size: 11px; }
+  body :where(table:not(.daily-action-grid)) thead > tr > th { height: 40px; padding: 9px 11px; }
+  body :where(table:not(.daily-action-grid)) tbody > tr > :is(td, th) { height: 43px; padding: 9px 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body :where(table:not(.daily-action-grid)) tbody > tr { animation: none; }
+  body :where(table:not(.daily-action-grid)) tbody > tr > :is(td, th) { transition: none; }
+}
