@@ -66,6 +66,7 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
 type OwnedSpec = readonly [target: string, keyHeader: string, records: readonly Record<string, unknown>[]];
 
 async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spreadsheetId: string, specs: readonly OwnedSpec[]) {
+  const syncTimestamp = new Date().toISOString();
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId, ranges: specs.map(([target]) => `'${target}'!A:AZ`) });
   const changes: { range: string; values: unknown[][] }[] = [];
   const staleOwnedRanges: string[] = [];
@@ -88,6 +89,29 @@ async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spread
       accepted += 1;
       const output = headers.map((header) => record[norm(header)] ?? record[header] ?? "");
       const existing = byKey.get(key);
+      const updatedIndex = headers.findIndex((header) => norm(header) === "updated at");
+      const sourceIndex = headers.findIndex((header) => norm(header) === "source submission id");
+      const sourceId = String(sourceIndex >= 0 ? output[sourceIndex] : "").trim().toUpperCase();
+      const isFreshUiRecord = sourceId.startsWith("UI-") || String(output[keyIndex] ?? "").trim().toUpperCase().startsWith("UI-");
+      if (isFreshUiRecord && updatedIndex >= 0) {
+        const businessDateIndex = headers.findIndex((header) => norm(header) === "business date");
+        const unchangedContent = existing && output.every((value, index) => index === updatedIndex
+          || String(value ?? "").trim() === String(existing.row[index] ?? "").trim());
+        const existingUpdated = String(existing?.row[updatedIndex] ?? "").trim();
+        const existingBusinessDate = String(businessDateIndex >= 0 ? existing?.row[businessDateIndex] ?? "" : "").trim();
+        const legacyReportingTimestamp = Boolean(existingUpdated && (
+          (existingBusinessDate && existingUpdated.slice(0, 10) === existingBusinessDate.slice(0, 10))
+          || /T00:00:00(?:\.000)?Z$/.test(existingUpdated)
+        ));
+
+        // Google Sheets does not expose a row's edit time. Preserve the last
+        // detected timestamp while values are unchanged, and stamp only rows
+        // whose governed values changed. Legacy rows whose timestamp was just
+        // Reporting_Date receive a one-time baseline stamp on rollout.
+        output[updatedIndex] = unchangedContent && !legacyReportingTimestamp
+          ? existingUpdated
+          : syncTimestamp;
+      }
       const unchanged = existing && output.every((value, index) => String(value ?? "").trim() === String(existing.row[index] ?? "").trim());
       if (unchanged) continue;
       const rowNumber = existing?.rowNumber ?? nextRowNumber++;
