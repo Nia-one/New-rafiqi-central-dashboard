@@ -13,6 +13,7 @@ const displayDate = (input: string) => {
 function stage(label: string, today: number, mtd: number, previous: number | null = null): FunnelStage {
   return { label, today, mtd, todayConversion: previous && previous > 0 ? percent(today, previous) : null, mtdConversion: previous && previous > 0 ? percent(mtd, previous) : null, delta: "Live Sheet" }
 }
+const signedInr = (amount: number) => amount === 0 ? "₹0" : `${amount > 0 ? "+" : "−"}₹${Math.abs(amount).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 
 const demandChannel = (row: Row) => {
   const identity = `${value(row, "demand id")} ${value(row, "source submission id")} ${value(row, "enterprise id")}`.toUpperCase()
@@ -96,6 +97,15 @@ export function buildLivingScreenData(ops: any) {
     if (!previous || rowTime >= previousTime) latestExistingByStudio.set(studioId, row)
   }
   const existingCurrent = [...latestExistingByStudio.values()]
+  const latestFinanceByStudio = new Map<string, Row>()
+  for (const row of finance) {
+    const studioId = value(row, "studio id")
+    if (!studioId) continue
+    const previous = latestFinanceByStudio.get(studioId)
+    const rowTime = Date.parse(value(row, "updated at") || value(row, "reported at") || value(row, "business date") || "1970-01-01")
+    const previousTime = Date.parse(value(previous, "updated at") || value(previous, "reported at") || value(previous, "business date") || "1970-01-01")
+    if (!previous || rowTime >= previousTime) latestFinanceByStudio.set(studioId, row)
+  }
   // UI_Occupancy/EXISTING is its own governed ledger. It must remain separate
   // from FONO and SP acquisition rows even when a Studio ID happens to match.
   const governedFono = fono
@@ -188,7 +198,11 @@ export function buildLivingScreenData(ops: any) {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
     const studioName = value(row, "studio name") || studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
-    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, displayDate(value(row, "updated at"))]
+    const financeRow = latestFinanceByStudio.get(studioId)
+    const livingCm = financeRow?.["living cm2 inr"]
+    const fallbackCm = financeRow?.["cm2 inr"]
+    const cm = livingCm !== undefined && String(livingCm).trim() !== "" ? n(livingCm) : fallbackCm !== undefined && String(fallbackCm).trim() !== "" ? n(fallbackCm) : null
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, cm === null ? "No data" : signedInr(cm), displayDate(value(row, "updated at"))]
   })
   const existingByTheatre = [...new Set(existingCurrent.map((row) => value(row, "theatre id")).filter(Boolean))].map((theatreId) => {
     const rows = existingCurrent.filter((row) => value(row, "theatre id") === theatreId)

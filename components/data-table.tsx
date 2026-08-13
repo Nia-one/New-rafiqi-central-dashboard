@@ -7,6 +7,7 @@ const numericColumns = new Set([
   "AVAILABLE",
   "BUYERS",
   "CHURN",
+  "CM",
   "CM1",
   "CM2",
   "D30",
@@ -45,7 +46,7 @@ export function DataTable({ columns, rows, className = "", caption }: { columns:
     {caption && <caption className="sr-only">{caption}</caption>}
     <thead><tr>{columns.map((column) => <th className={isNumericColumn(column) ? "numeric" : undefined} scope="col" key={column}>{column}</th>)}</tr></thead>
     <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => {
-      const classes = [cellIndex === 0 ? "first" : "", isNumericColumn(columns[cellIndex] ?? "") ? "numeric" : "", cell.includes("No data") ? "no-data" : ""].filter(Boolean).join(" ")
+      const classes = [cellIndex === 0 ? "first" : "", isNumericColumn(columns[cellIndex] ?? "") ? "numeric" : "", cell.includes("No data") ? "no-data" : "", cell.startsWith("+₹") ? "signed-positive" : "", cell.startsWith("−₹") || cell.startsWith("-₹") ? "signed-negative" : ""].filter(Boolean).join(" ")
       return <td className={classes || undefined} key={cellIndex}>{cell}</td>
     })}</tr>)}</tbody>
   </table></div>
