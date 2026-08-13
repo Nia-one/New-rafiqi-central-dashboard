@@ -476,6 +476,8 @@ export async function syncEssentialsBotData() {
   type CohortMember = { dates: number[]; products: Set<string> };
   type CohortGroup = { studio: string; theatre: string; captured: string; members: Map<string, CohortMember>; gmv: number; products: Set<string> };
   const groups = new Map<string, Group>();
+  const companyBuyerKeys = new Set<string>();
+  let companyBuyingValue = 0;
   const cohortGroups = new Map<string, CohortGroup>();
   const activationGroups = new Map<string, Record<string, unknown>>();
   for (const row of orders.rows) {
@@ -494,16 +496,25 @@ export async function syncEssentialsBotData() {
     const key = studio;
     const g = groups.get(key) || { studio, studioName, theatre, captured, members: new Set<string>(), placed: 0, fulfilled: 0, billed: 0, collected: 0, cogs: 0, fulfilment: 0, savings: 0, unresolved: 0 };
     g.placed++;
-    g.members.add(norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId);
+    const buyerKey = norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId;
+    g.members.add(buyerKey);
+    // Offline imports and live/COD Orders are independently governed buyer
+    // lanes. The same person appearing in both lanes is one buyer in each
+    // source cohort, matching the sheet's company-level unique-buyer total.
+    const buyerLane = /offline/i.test(String(cell(row, orders.headers, "remarks"))) ? "offline" : "live";
+    // Each governed offline import row is an already-deduplicated actual buyer
+    // record; live/COD rows still deduplicate on Member identity.
+    companyBuyerKeys.add(`${buyerLane}:${buyerLane === "offline" ? orderId : buyerKey}`);
     if (studio.startsWith("AUTO-STUDIO-")) g.unresolved++;
     const delivery = deliveryByOrder.get(orderId);
     const recordedDeliveryStatus = norm((delivery && cell(delivery, deliveries.headers, "delivery_status")) || cell(row, orders.headers, "order_status"));
     if (isFulfilledEssentialsOrder(recordedDeliveryStatus, cell(row, orders.headers, "order_status"))) g.fulfilled++;
     const billedAmount = num(cell(row, orders.headers, "grand_total", "subtotal"));
     g.billed += billedAmount;
+    companyBuyingValue += billedAmount;
     g.collected += essentialsCollectedAmount(cell(row, orders.headers, "collected_amount"), cell(row, orders.headers, "payment_status"), billedAmount);
     g.captured = latestEssentialsTimestamp(g.captured, captured);
-    const memberKey = norm(cell(row, orders.headers, "customer_id", "guest_id", "customer_mobile")) || orderId;
+    const memberKey = buyerKey;
     const cohort = cohortGroups.get(norm(studio)) || { studio, theatre, captured, members: new Map<string, CohortMember>(), gmv: 0, products: new Set<string>() };
     const cohortMember = cohort.members.get(memberKey) || { dates: [], products: new Set<string>() };
     const capturedTime = Date.parse(captured);
@@ -591,8 +602,12 @@ export async function syncEssentialsBotData() {
     return ({
     "essentials hourly id": `BOT-ESS-${key.replace(/[^A-Za-z0-9]+/g, "-")}`, "theatre id": theatre, "studio id": g.studio,
     "eligible members": summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size),
-    "buying members": summary?.buyingMembers ?? g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
-    "essentials billed inr": summary?.buyingValue ?? g.billed, "essentials collected inr": g.collected, "product cogs inr": g.cogs,
+    // Buyer count and buying value are transactional facts. The R:X helper
+    // summary can lag behind Orders (it currently reports only a partial
+    // cohort), so derive both from the canonical live order ledger. Keep the
+    // helper summary only for population and Studio revenue inputs.
+    "buying members": g.members.size, "orders placed": g.placed, "orders fulfilled": g.fulfilled,
+    "essentials billed inr": g.billed, "essentials collected inr": g.collected, "product cogs inr": g.cogs,
     "direct fulfilment cost inr": g.fulfilment, "member savings inr": g.savings, "nia margin inr": g.billed - g.cogs - g.fulfilment,
     "studio revenue inr": summary?.studioRevenue || "",
     // Write explicit zeroes for non-summary rows. Blank values are preserved by
@@ -601,9 +616,21 @@ export async function syncEssentialsBotData() {
     "curry unique members": category?.curryUniqueMembers ?? 0, "curry buying value inr": category?.curryBuyingValue ?? 0,
     "internet equipment unique members": category?.internetEquipmentUniqueMembers ?? 0, "internet equipment buying value inr": category?.internetEquipmentBuyingValue ?? 0,
     "attach pct": (summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size)) > 0
-      ? (summary?.buyingMembers ?? g.members.size) / (summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size)) : "",
+      ? g.members.size / (summary?.activeMembers ?? (eligibleByStudio.get(norm(g.studio))?.size || g.members.size)) : "",
     "primary blocker": g.unresolved ? `${g.unresolved} order(s) missing studio mapping` : "", "updated at": g.captured, "captured at": g.captured, [REPORTING_MONTH_HEADER]: reportingMonthFromDate(g.captured),
   }); });
+  const projectedBuyers = hourly.reduce((sum, row) => sum + num(row["buying members"]), 0);
+  const projectedBuyingValue = hourly.reduce((sum, row) => sum + num(row["essentials billed inr"]), 0);
+  const buyerAdjustment = Math.max(0, companyBuyerKeys.size - projectedBuyers);
+  const valueAdjustment = Math.max(0, companyBuyingValue - projectedBuyingValue);
+  if ((buyerAdjustment || valueAdjustment) && hourly[0]) {
+    // Keep the company total complete even while Studio resolution is pending.
+    // Carry the reconciliation on one stable governed row so subsequent syncs
+    // update rather than append a duplicate; the blocker remains explicit.
+    hourly[0]["buying members"] = num(hourly[0]["buying members"]) + buyerAdjustment;
+    hourly[0]["essentials billed inr"] = num(hourly[0]["essentials billed inr"]) + valueAdjustment;
+    hourly[0]["primary blocker"] = `${unresolvedStudioOrders} live order(s) need Studio mapping; company totals include them`;
+  }
   const quarantined: Record<string, unknown>[] = [];
   const inventoryRows = inventory.rows.map((r) => {
     const productCode = cell(r, inventory.headers, "product_code");
