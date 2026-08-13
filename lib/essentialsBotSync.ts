@@ -11,17 +11,6 @@ import { reportingMonthFromDate, REPORTING_MONTH_HEADER } from "./reportingMonth
 const SOURCE_SHEET_ID = process.env.ESSENTIALS_BOT_SHEET_ID || "1C8y3uVxp5toMwLBPGVWbltOoNX_hVuKtvyfiqIUC0oY";
 const COST_INPUT_TAB = "Rafiqi_Order_Item_Costs";
 
-const HISTORICAL_ORDER_RECOVERY = [
-  { id: "da4ae525-8963-45ef-8112-423697cdaa0b", order_number: "NIA-OFF-20260811-015", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", order_date: "2026-08-11T12:00:00+05:30", order_status: "Confirmed", payment_mode: "Offline", payment_status: "Paid", subtotal: 57, delivery_charge: 0, discount_amount: 0, grand_total: 57, remarks: "Recovered from Drive revision", created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", studio_name: "Nia Nest Umapahti", theatre_name: "Wellington", theatre_code: "WLG" },
-  { id: "5a7e5702-926d-4722-8054-fdd496515d77", order_number: "NIA-OFF-20260811-016", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", order_date: "2026-08-11T12:00:00+05:30", order_status: "Confirmed", payment_mode: "Offline", payment_status: "Paid", subtotal: 36, delivery_charge: 0, discount_amount: 0, grand_total: 36, remarks: "Recovered from Drive revision", created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", studio_name: "Nia Nest Umapahti", theatre_name: "Wellington", theatre_code: "WLG" },
-  { id: "ac25fac0-50f8-493b-9a2a-e03c77b82f70", order_number: "NIA-OFF-20260811-017", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", order_date: "2026-08-11T12:00:00+05:30", order_status: "Confirmed", payment_mode: "Offline", payment_status: "Paid", subtotal: 76, delivery_charge: 0, discount_amount: 0, grand_total: 76, remarks: "Recovered from Drive revision", created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", studio_name: "Nia Nest Umapahti", theatre_name: "Wellington", theatre_code: "WLG" },
-] as const;
-
-const HISTORICAL_ITEM_RECOVERY = [
-  { id: "bf11799b-2b14-4ea4-b042-5ce29bdf0eb9", order_id: "da4ae525-8963-45ef-8112-423697cdaa0b", product_id: "d7adbd2e-abd3-4c05-92fa-48699d128f31", product_code: "PRD0041", product_name: "Britannia Good Day Butter Cookies", quantity: 6, unit_price: 9.5, total_price: 57, created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", purchase_rate: 9, selling_price: 9.5, revenue: 57, cost: 54, gross_profit: 3, order_number: "NIA-OFF-20260811-015", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", product_mrp: 10, nia_savings: 0.5 },
-  { id: "20180275-5163-4223-b457-29f6e855307f", order_id: "5a7e5702-926d-4722-8054-fdd496515d77", product_id: "7f1504f7-ca3b-40f1-be7d-b75eb240a73a", product_code: "PRD0042", product_name: "Parle-G Glucose Biscuit", quantity: 4, unit_price: 9, total_price: 36, created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", purchase_rate: 9, selling_price: 9, revenue: 36, cost: 36, gross_profit: 0, order_number: "NIA-OFF-20260811-016", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", product_mrp: 10, nia_savings: 1 },
-  { id: "d535c829-2885-4bbf-a83e-424967745a0a", order_id: "ac25fac0-50f8-493b-9a2a-e03c77b82f70", product_id: "28a5288c-0699-4812-b3c3-777b64704321", product_code: "PRD0040", product_name: "Banana Chips", quantity: 8, unit_price: 9.5, total_price: 76, created_at: "2026-08-11T12:00:00+05:30", updated_at: "2026-08-11T15:30:00+05:30", purchase_rate: 9, selling_price: 9.5, revenue: 76, cost: 72, gross_profit: 4, order_number: "NIA-OFF-20260811-017", studio_id: "9621b0a7-cfe3-4d1b-8014-d7fc1298b453", product_mrp: 10, nia_savings: 0.5 },
-] as const;
 const BOT_MIRRORS = [
   ["Orders", "BOT_ESS_ORDERS"],
   ["Order_Items", "TEAM_ESSENTIALS_BOT"],
@@ -397,20 +386,6 @@ export async function syncEssentialsBotData() {
   const ranges = ["Orders!A:AZ", "Order_Items!A:AZ", "Delivery_Status!A:AZ", "Customer_Master!A:AZ", "Guest_Master!A:AZ", "Inventory_Master!A:AZ", "Studio_Master!A:Q", "Product_Master!A:AZ"];
   const result = await source.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_SHEET_ID, ranges });
   const rawTables = (result.data.valueRanges || []).map((v) => (v.values || []) as unknown[][]);
-  const recoveryWrites: { range: string; values: unknown[][] }[] = [];
-  for (const [index, tabName, records] of [[0, "Orders", HISTORICAL_ORDER_RECOVERY], [1, "Order_Items", HISTORICAL_ITEM_RECOVERY]] as const) {
-    const headers = (rawTables[index]?.[0] || []).map(String);
-    const existingIds = new Set((rawTables[index] || []).slice(1).map((row) => norm(row[0])).filter(Boolean));
-    const missing = records.filter((record) => !existingIds.has(norm(record.id)));
-    if (!headers.length || !missing.length) continue;
-    const values = missing.map((record) => headers.map((header) => (record as Record<string, unknown>)[header] ?? ""));
-    recoveryWrites.push({ range: `${tabName}!A${rawTables[index].length + 1}`, values });
-    rawTables[index].push(...values);
-  }
-  if (recoveryWrites.length) {
-    const writer = await client(true);
-    await writer.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_SHEET_ID, requestBody: { valueInputOption: "RAW", data: recoveryWrites } });
-  }
   // The Bot creates Orders before their delivery workflow row. Materialise a
   // Pending delivery record immediately so every tab can join the same order
   // set and a new order is never dropped by a missing Delivery_Status row.

@@ -30,12 +30,11 @@ test("Essentials cost sync preserves user inputs and mirrors order items with fo
   assert.doesNotMatch(source, /range: `\$\{COST_INPUT_TAB\}!E\$\{startRow\}:G/);
 });
 
-test("Essentials sync restores the verified 11-Aug historical rows when the bot rebuild drops them", () => {
-  assert.match(source, /HISTORICAL_ORDER_RECOVERY/);
-  assert.match(source, /HISTORICAL_ITEM_RECOVERY/);
-  assert.match(source, /NIA-OFF-20260811-015/);
-  assert.match(source, /NIA-OFF-20260811-017/);
-  assert.match(source, /recoveryWrites\.length/);
+test("Essentials sync does not restore permanently deleted historical orders", () => {
+  assert.doesNotMatch(source, /HISTORICAL_ORDER_RECOVERY/);
+  assert.doesNotMatch(source, /HISTORICAL_ITEM_RECOVERY/);
+  assert.doesNotMatch(source, /NIA-OFF-20260811-01[567]/);
+  assert.doesNotMatch(source, /recoveryWrites\.length/);
 });
 
 test("Essentials report uses the UI Occupancy contract without duplicate input columns", () => {
