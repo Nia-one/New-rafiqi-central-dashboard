@@ -5,8 +5,15 @@ type Row = Record<string, any>
 const n = (value: unknown) => { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0 }
 const value = (row: Row | undefined, key: string) => String(row?.[key] ?? "").trim()
 const percent = (numerator: number, denominator: number) => denominator > 0 ? Math.round(numerator / denominator * 100) : 0
+const parsedDate = (input: string) => {
+  const serial = Number(input)
+  return input !== "" && Number.isFinite(serial) && serial >= 1 && serial < 100_000
+    ? new Date(Math.round((serial - 25_569) * 86_400_000))
+    : new Date(input)
+}
+const dateTime = (input: string) => parsedDate(input).getTime()
 const displayDate = (input: string) => {
-  const date = new Date(input)
+  const date = parsedDate(input)
   return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" }).format(date) : (input || "No data")
 }
 
@@ -92,8 +99,8 @@ export function buildLivingScreenData(ops: any) {
     const studioId = value(row, "studio id")
     if (!studioId) continue
     const previous = latestExistingByStudio.get(studioId)
-    const rowTime = Date.parse(value(row, "updated at") || "1970-01-01")
-    const previousTime = Date.parse(value(previous, "updated at") || "1970-01-01")
+    const rowTime = dateTime(value(row, "updated at") || "1970-01-01")
+    const previousTime = dateTime(value(previous, "updated at") || "1970-01-01")
     if (!previous || rowTime >= previousTime) latestExistingByStudio.set(studioId, row)
   }
   const existingCurrent = [...latestExistingByStudio.values()]
@@ -102,8 +109,8 @@ export function buildLivingScreenData(ops: any) {
     const studioId = value(row, "studio id").toUpperCase()
     if (!studioId) continue
     const previous = latestFinanceByStudio.get(studioId)
-    const rowTime = Date.parse(value(row, "updated at") || value(row, "reported at") || value(row, "business date") || "1970-01-01")
-    const previousTime = Date.parse(value(previous, "updated at") || value(previous, "reported at") || value(previous, "business date") || "1970-01-01")
+    const rowTime = dateTime(value(row, "updated at") || value(row, "reported at") || value(row, "business date") || "1970-01-01")
+    const previousTime = dateTime(value(previous, "updated at") || value(previous, "reported at") || value(previous, "business date") || "1970-01-01")
     if (!previous || rowTime >= previousTime) latestFinanceByStudio.set(studioId, row)
   }
   // UI_Occupancy/EXISTING is its own governed ledger. It must remain separate
@@ -203,8 +210,8 @@ export function buildLivingScreenData(ops: any) {
     const cm = livingCm !== undefined && String(livingCm).trim() !== "" ? n(livingCm) : null
     const occupancyUpdatedAt = value(row, "updated at")
     const financeUpdatedAt = value(financeRow, "updated at") || value(financeRow, "business date")
-    const occupancyTime = Date.parse(occupancyUpdatedAt)
-    const financeTime = Date.parse(financeUpdatedAt)
+    const occupancyTime = dateTime(occupancyUpdatedAt)
+    const financeTime = dateTime(financeUpdatedAt)
     const dataAsOf = Number.isFinite(financeTime) && (!Number.isFinite(occupancyTime) || financeTime > occupancyTime) ? financeUpdatedAt : occupancyUpdatedAt
     return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, cm === null ? "No data" : signedInr(cm), displayDate(dataAsOf)]
   })

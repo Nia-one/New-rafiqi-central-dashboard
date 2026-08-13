@@ -40,6 +40,15 @@ test("Living shows latest studio CM with explicit positive and negative signs", 
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Positive Studio")?.[7], "02 Aug 2026")
 })
 
+test("Living converts Google Sheets serial dates instead of displaying them as years", () => {
+  const result = buildLivingScreenData({
+    living: [{ "studio id": "ST-SERIAL", "studio name": "Serial Studio", "theatre id": "North", "supply model": "EXISTING", "contracted nests": 10, "occupied nests": 9, "updated at": "46244" }],
+    finance: [{ "finance daily id": "UI-FIN-SERIAL", "studio id": "ST-SERIAL", "living cm2 inr": 100, "updated at": "46244" }],
+  })
+
+  assert.equal(result.existingOccupancyRows[0][7], "10 Aug 2026")
+})
+
 test("Living keeps SP demand separate from supply when hourly has no governed SP capacity", () => {
   const result = buildLivingScreenData({
     living: [{ "studio id": "Existing A", "supply model": "EXISTING", "contracted nests": 100, "occupied nests": 80 }],

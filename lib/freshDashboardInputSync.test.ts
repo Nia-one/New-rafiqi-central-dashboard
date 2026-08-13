@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { prepareFreshInputRow } from "./freshDashboardInputSync";
+import { prepareFreshInputRow, sourceDateIso } from "./freshDashboardInputSync";
+
+test("sourceDateIso converts Google Sheets serial dates", () => {
+  assert.equal(sourceDateIso(46244), "2026-08-10T00:00:00.000Z");
+});
 
 const headers = ["Record_ID", "Sample_Live", "Reporting_Date", "Reporting_Time", "Person_Name", "Last_Updated"];
 const now = new Date("2026-08-07T06:30:45.000Z");

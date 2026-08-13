@@ -5,7 +5,15 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 const SOURCE_ID = process.env.GOOGLE_TEAM_INPUT_SHEET_ID || "1e54fm3oUeseNzsTFG8O4XweRnWVU2n8OvBc7MLOu6nE";
 const norm = (value: unknown) => String(value ?? "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ");
 const num = (value: unknown) => Number(String(value ?? "").replace(/[^0-9.-]/g, "")) || 0;
-const iso = (value: unknown) => { const parsed = new Date(String(value ?? "")); return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString(); };
+export const sourceDateIso = (value: unknown) => {
+  const raw = String(value ?? "").trim();
+  const serial = Number(raw);
+  const parsed = raw !== "" && Number.isFinite(serial) && serial >= 1 && serial < 100_000
+    ? new Date(Math.round((serial - 25_569) * 86_400_000))
+    : new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+};
+const iso = sourceDateIso;
 const month = (value: unknown) => iso(value).slice(0, 7);
 const stableId = (prefix: string, parts: unknown[]) => `${prefix}-${createHash("sha1").update(parts.map(String).join("|")).digest("hex").slice(0, 16)}`;
 type Table = { headers: string[]; rows: unknown[][] };
@@ -99,9 +107,13 @@ async function upsertOwnedBatch(sheets: ReturnType<typeof google.sheets>, spread
           || String(value ?? "").trim() === String(existing.row[index] ?? "").trim());
         const existingUpdated = String(existing?.row[updatedIndex] ?? "").trim();
         const existingBusinessDate = String(businessDateIndex >= 0 ? existing?.row[businessDateIndex] ?? "" : "").trim();
+        const existingUpdatedYear = new Date(existingUpdated).getUTCFullYear();
         const legacyReportingTimestamp = Boolean(existingUpdated && (
           (existingBusinessDate && existingUpdated.slice(0, 10) === existingBusinessDate.slice(0, 10))
           || /T00:00:00(?:\.000)?Z$/.test(existingUpdated)
+          || !Number.isFinite(existingUpdatedYear)
+          || existingUpdatedYear < 2_000
+          || existingUpdatedYear > 2_100
         ));
 
         // Google Sheets does not expose a row's edit time. Preserve the last
