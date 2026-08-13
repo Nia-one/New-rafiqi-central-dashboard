@@ -4464,3 +4464,94 @@
   .existing-network-table tbody tr { animation: none; }
   .existing-network-table td, .existing-network-table td:first-child::before { transition: none; }
 }
+
+/* Unified dashboard table system ------------------------------------------------
+   One calm blue/neutral visual language across operational, report and audit
+   tables. Semantic status colours remain reserved for meaning. */
+:where(.content, .pillar-screen) :where(
+  .table-wrap,
+  [class*="table-wrap"],
+  [class*="Table"],
+  .essentials-summary-table,
+  .feedback-aggregate-table
+) {
+  scrollbar-color: color-mix(in srgb, var(--interactive-blue) 28%, var(--border)) transparent;
+  scrollbar-width: thin;
+}
+:where(.content, .pillar-screen) :where(
+  .table-wrap,
+  [class*="table-wrap"],
+  [class*="Table"]
+):not(.sr-only) {
+  border-color: color-mix(in srgb, var(--interactive-blue) 18%, var(--border));
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: 0 8px 26px rgba(28, 63, 92, .065);
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) {
+  border-collapse: separate;
+  border-spacing: 0;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) thead th {
+  height: 44px;
+  padding-block: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--interactive-blue) 18%, var(--border));
+  background: color-mix(in srgb, var(--surface-blue) 88%, white);
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  box-shadow: inset 0 -1px color-mix(in srgb, var(--interactive-blue) 8%, transparent);
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr > :is(td, th) {
+  padding-block: 11px;
+  border-bottom-color: color-mix(in srgb, var(--interactive-blue) 10%, var(--border));
+  background: var(--surface);
+  transition: background-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:nth-child(even) > :is(td, th) {
+  background: color-mix(in srgb, var(--surface-blue) 34%, var(--surface));
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:hover > :is(td, th) {
+  background: color-mix(in srgb, var(--interactive-blue-soft) 22%, var(--surface));
+  color: var(--ink);
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr {
+  animation: dashboard-table-row-in .32s cubic-bezier(.2, .8, .2, 1) both;
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:nth-child(2) { animation-delay: 24ms; }
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:nth-child(3) { animation-delay: 48ms; }
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:nth-child(4) { animation-delay: 72ms; }
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:nth-child(n+5) { animation-delay: 96ms; }
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr:last-child > :is(td, th) { border-bottom: 0; }
+:where(.content, .pillar-screen) table:not(.daily-action-grid) :is(td.numeric, th.numeric, td.number, th.number) {
+  text-align: right;
+  white-space: nowrap;
+}
+:where(.content, .pillar-screen) table:not(.daily-action-grid) tbody :is(td:first-child, th:first-child) {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@keyframes dashboard-table-row-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 720px) {
+  :where(.content, .pillar-screen) table:not(.daily-action-grid) thead th { height: 40px; padding: 9px 11px; }
+  :where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr > :is(td, th) { padding: 10px 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr { animation: none; }
+  :where(.content, .pillar-screen) table:not(.daily-action-grid) tbody > tr > :is(td, th) { transition: none; }
+}
