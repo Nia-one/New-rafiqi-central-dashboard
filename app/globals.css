@@ -4613,9 +4613,10 @@ body table:not(.daily-action-grid) thead > tr > th {
   padding: 10px 14px;
   border: 0;
   border-right: 1px solid rgba(255, 255, 255, .11);
-  border-bottom: 1px solid var(--table-navy-deep);
-  background: linear-gradient(180deg, #1c4a6f 0%, var(--table-navy) 100%);
-  color: #fff;
+  border-bottom: 1px solid var(--table-navy-deep) !important;
+  background-color: var(--table-navy) !important;
+  background-image: linear-gradient(180deg, #1c4a6f 0%, var(--table-navy) 100%) !important;
+  color: #fff !important;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: .075em;
