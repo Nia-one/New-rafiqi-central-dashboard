@@ -27,15 +27,16 @@ test("Living shows latest studio CM with explicit positive and negative signs", 
       { "studio id": "ST-MISSING", "studio name": "Missing Studio", "theatre id": "North", "supply model": "EXISTING", "contracted nests": 10, "occupied nests": 7 },
     ],
     finance: [
-      { "studio id": "ST-POS", "cm2 inr": 100, "updated at": "2026-08-01" },
-      { "studio id": "ST-POS", "living cm2 inr": 1250, "updated at": "2026-08-02" },
-      { "studio id": "ST-NEG", "living cm2 inr": -450.5, "updated at": "2026-08-02" },
+      { "finance daily id": "LEGACY-1", "studio id": "ST-POS", "living cm2 inr": 9999, "updated at": "2026-08-03" },
+      { "finance daily id": "UI-FINANCE-POS", "studio id": "st-pos", "living cm2 inr": 1250, "updated at": "2026-08-02" },
+      { "finance daily id": "UI-FINANCE-NEG", "studio id": "ST-NEG", "living cm2 inr": -450.5, "updated at": "2026-08-02" },
     ],
   })
 
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Positive Studio")?.[6], "+₹1,250")
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Negative Studio")?.[6], "−₹450.5")
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Missing Studio")?.[6], "No data")
+  assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Positive Studio")?.[7], "02 Aug 2026")
 })
 
 test("Living keeps SP demand separate from supply when hourly has no governed SP capacity", () => {

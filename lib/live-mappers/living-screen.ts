@@ -98,8 +98,8 @@ export function buildLivingScreenData(ops: any) {
   }
   const existingCurrent = [...latestExistingByStudio.values()]
   const latestFinanceByStudio = new Map<string, Row>()
-  for (const row of finance) {
-    const studioId = value(row, "studio id")
+  for (const row of finance.filter((candidate) => `${value(candidate, "finance daily id")} ${value(candidate, "source submission id")}`.toUpperCase().includes("UI-FINANCE-"))) {
+    const studioId = value(row, "studio id").toUpperCase()
     if (!studioId) continue
     const previous = latestFinanceByStudio.get(studioId)
     const rowTime = Date.parse(value(row, "updated at") || value(row, "reported at") || value(row, "business date") || "1970-01-01")
@@ -198,11 +198,15 @@ export function buildLivingScreenData(ops: any) {
     const contracted = n(row["contracted nests"]); const occupied = n(row["occupied nests"])
     const studioId = value(row, "studio id")
     const studioName = value(row, "studio name") || studios.find((studio) => value(studio, "studio id") === studioId)?.["studio name"] || studioId
-    const financeRow = latestFinanceByStudio.get(studioId)
+    const financeRow = latestFinanceByStudio.get(studioId.toUpperCase())
     const livingCm = financeRow?.["living cm2 inr"]
-    const fallbackCm = financeRow?.["cm2 inr"]
-    const cm = livingCm !== undefined && String(livingCm).trim() !== "" ? n(livingCm) : fallbackCm !== undefined && String(fallbackCm).trim() !== "" ? n(fallbackCm) : null
-    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, cm === null ? "No data" : signedInr(cm), displayDate(value(row, "updated at"))]
+    const cm = livingCm !== undefined && String(livingCm).trim() !== "" ? n(livingCm) : null
+    const occupancyUpdatedAt = value(row, "updated at")
+    const financeUpdatedAt = value(financeRow, "updated at") || value(financeRow, "business date")
+    const occupancyTime = Date.parse(occupancyUpdatedAt)
+    const financeTime = Date.parse(financeUpdatedAt)
+    const dataAsOf = Number.isFinite(financeTime) && (!Number.isFinite(occupancyTime) || financeTime > occupancyTime) ? financeUpdatedAt : occupancyUpdatedAt
+    return [studioName, value(row, "theatre id"), String(contracted), String(occupied), String(Math.max(0, contracted - occupied)), `${percent(occupied, contracted)}%`, cm === null ? "No data" : signedInr(cm), displayDate(dataAsOf)]
   })
   const existingByTheatre = [...new Set(existingCurrent.map((row) => value(row, "theatre id")).filter(Boolean))].map((theatreId) => {
     const rows = existingCurrent.filter((row) => value(row, "theatre id") === theatreId)
