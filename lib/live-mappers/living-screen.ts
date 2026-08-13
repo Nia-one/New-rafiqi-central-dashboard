@@ -7,9 +7,18 @@ const value = (row: Row | undefined, key: string) => String(row?.[key] ?? "").tr
 const percent = (numerator: number, denominator: number) => denominator > 0 ? Math.round(numerator / denominator * 100) : 0
 const parsedDate = (input: string) => {
   const serial = Number(input)
-  return input !== "" && Number.isFinite(serial) && serial >= 1 && serial < 100_000
-    ? new Date(Math.round((serial - 25_569) * 86_400_000))
-    : new Date(input)
+  if (input !== "" && Number.isFinite(serial) && serial >= 1 && serial < 100_000) {
+    return new Date(Math.round((serial - 25_569) * 86_400_000))
+  }
+  // Earlier syncs passed a Sheets serial through the Date constructor, which
+  // persisted values such as +046244-01-01T00:00:00.000Z. Recover the serial
+  // from that impossible calendar year until the corrected sync rewrites it.
+  const expandedYear = input.match(/^\+?0*(\d{5})-01-01T/)
+  if (expandedYear) {
+    const recoveredSerial = Number(expandedYear[1])
+    if (recoveredSerial >= 1 && recoveredSerial < 100_000) return new Date(Math.round((recoveredSerial - 25_569) * 86_400_000))
+  }
+  return new Date(input)
 }
 const dateTime = (input: string) => parsedDate(input).getTime()
 const displayDate = (input: string) => {

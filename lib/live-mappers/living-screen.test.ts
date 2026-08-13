@@ -43,7 +43,7 @@ test("Living shows latest studio CM with explicit positive and negative signs", 
 test("Living converts Google Sheets serial dates instead of displaying them as years", () => {
   const result = buildLivingScreenData({
     living: [{ "studio id": "ST-SERIAL", "studio name": "Serial Studio", "theatre id": "North", "supply model": "EXISTING", "contracted nests": 10, "occupied nests": 9, "updated at": "46244" }],
-    finance: [{ "finance daily id": "UI-FIN-SERIAL", "studio id": "ST-SERIAL", "living cm2 inr": 100, "updated at": "46244" }],
+    finance: [{ "finance daily id": "UI-FIN-SERIAL", "studio id": "ST-SERIAL", "living cm2 inr": 100, "updated at": "+046244-01-01T00:00:00.000Z" }],
   })
 
   assert.equal(result.existingOccupancyRows[0][7], "10 Aug 2026")
