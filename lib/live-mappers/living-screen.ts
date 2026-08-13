@@ -98,7 +98,7 @@ export function buildLivingScreenData(ops: any) {
   }
   const existingCurrent = [...latestExistingByStudio.values()]
   const latestFinanceByStudio = new Map<string, Row>()
-  for (const row of finance.filter((candidate) => `${value(candidate, "finance daily id")} ${value(candidate, "source submission id")}`.toUpperCase().includes("UI-FINANCE-"))) {
+  for (const row of finance.filter((candidate) => /(?:^|\s)UI-FIN(?:ANCE)?-/i.test(`${value(candidate, "finance daily id")} ${value(candidate, "source submission id")}`))) {
     const studioId = value(row, "studio id").toUpperCase()
     if (!studioId) continue
     const previous = latestFinanceByStudio.get(studioId)

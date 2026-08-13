@@ -30,12 +30,13 @@ test("Living shows latest studio CM with explicit positive and negative signs", 
       { "finance daily id": "LEGACY-1", "studio id": "ST-POS", "living cm2 inr": 9999, "updated at": "2026-08-03" },
       { "finance daily id": "UI-FINANCE-POS", "studio id": "st-pos", "living cm2 inr": 1250, "updated at": "2026-08-02" },
       { "finance daily id": "UI-FINANCE-NEG", "studio id": "ST-NEG", "living cm2 inr": -450.5, "updated at": "2026-08-02" },
+      { "finance daily id": "UI-FIN-NEW", "studio id": "ST-MISSING", "living cm2 inr": 14970, "updated at": "2026-08-04" },
     ],
   })
 
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Positive Studio")?.[6], "+₹1,250")
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Negative Studio")?.[6], "−₹450.5")
-  assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Missing Studio")?.[6], "No data")
+  assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Missing Studio")?.[6], "+₹14,970")
   assert.equal(result.existingOccupancyRows.find((row) => row[0] === "Positive Studio")?.[7], "02 Aug 2026")
 })
 
