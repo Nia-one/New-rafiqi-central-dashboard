@@ -15,6 +15,7 @@ const numericColumns = new Set([
   "D90",
   "DAYS COVER",
   "DAYS LIVE",
+  "CONTRACTED",
   "ELIGIBLE",
   "FILL",
   "FREQUENCY",
@@ -34,6 +35,7 @@ const numericColumns = new Set([
   "TARGET",
   "UNITS",
   "VALUE",
+  "VACANT",
   "ZERO SALE",
 ])
 
@@ -47,7 +49,10 @@ export function DataTable({ columns, rows, className = "", caption }: { columns:
     <thead><tr>{columns.map((column) => <th className={isNumericColumn(column) ? "numeric" : undefined} scope="col" key={column}>{column}</th>)}</tr></thead>
     <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => {
       const classes = [cellIndex === 0 ? "first" : "", isNumericColumn(columns[cellIndex] ?? "") ? "numeric" : "", cell.includes("No data") ? "no-data" : "", cell.startsWith("+₹") ? "signed-positive" : "", cell.startsWith("−₹") || cell.startsWith("-₹") ? "signed-negative" : ""].filter(Boolean).join(" ")
-      return <td className={classes || undefined} key={cellIndex}>{cell}</td>
+      const content = (columns[cellIndex] ?? "").trim().toUpperCase() === "CM"
+        ? <span className="metric-value-pill">{cell}</span>
+        : cell
+      return <td className={classes || undefined} key={cellIndex}>{content}</td>
     })}</tr>)}</tbody>
   </table></div>
 }
