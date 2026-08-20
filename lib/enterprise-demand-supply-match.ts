@@ -252,6 +252,15 @@ export async function syncEnterpriseSupplyMatchColumns() {
     const body = { range: `'${source.supplyTab}'!S1:X${Math.max(2, values.length + 1)}`, majorDimension: "ROWS", values: [["Theatre", "Nearest Demand Client", "Bike Route Distance (KM)", "Bike Travel Time (Min)", "Match Status", "Matching Rule"], ...values] }
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(body.range)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" })
     if (!response.ok) throw new Error(`Unable to update ${source.supplyTab} match columns: ${response.status} ${await response.text()}`)
+    const duplicateRange = `'${source.supplyTab}'!Y1:Y1000`
+    const duplicateResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(duplicateRange)}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+    if (duplicateResponse.ok) {
+      const duplicateJson = await duplicateResponse.json() as { values?: string[][] }
+      if (normalize(duplicateJson.values?.[0]?.[0]) === "matching rule") {
+        const clearResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(duplicateRange)}:clear`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: "{}", cache: "no-store" })
+        if (!clearResponse.ok) throw new Error(`Unable to clear duplicate ${source.supplyTab} match column: ${clearResponse.status} ${await clearResponse.text()}`)
+      }
+    }
     changedRows += values.length
   }
   const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
