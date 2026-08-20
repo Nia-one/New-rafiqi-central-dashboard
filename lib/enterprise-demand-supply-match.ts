@@ -2,6 +2,7 @@ import { GoogleAuth } from "google-auth-library"
 import { googleServiceAccountCredentials } from "./googleCredentials"
 
 const SOURCE_ID = "1sD05271Z-MNEvS-1cRneavjF0XLmxdUhHczxZ1HlAVs"
+const MATCH_RESULTS_TAB = "Enterprise-Match-Results"
 export type DemandSupplyMatch = {
   theatre: string
   company: string
@@ -73,6 +74,15 @@ async function readRanges(ranges: string[]) {
   return (json.valueRanges ?? []).map((range) => range.values ?? [])
 }
 
+async function readStoredMatches(): Promise<DemandSupplyMatch[]> {
+  try {
+    const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:M5000`])
+    return rows.map((row) => ({ theatre: value(row, 0), company: value(row, 1), demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12) })).filter((row) => row.theatre && row.company && row.property)
+  } catch {
+    return []
+  }
+}
+
 function value(row: string[], index: number) { return String(row[index] ?? "").trim() }
 function columnIndex(headers: string[], names: string[], fallback = -1) {
   const normalized = headers.map(normalize)
@@ -123,7 +133,17 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     const demands = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), coordinate: parseCoordinate(row[columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 6)]) })).filter((row) => row.company && row.coordinate)
     const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "EB"], 15)) })).filter((row) => row.property && row.coordinate)
 
-    const matrix = await bikeRouteMatrix(demands.map((row) => row.coordinate!), supplies.map((row) => row.coordinate!))
+    let matrix: RouteMatrixElement[]
+    try {
+      matrix = await bikeRouteMatrix(demands.map((row) => row.coordinate!), supplies.map((row) => row.coordinate!))
+    } catch (error) {
+      const stored = await readStoredMatches()
+      if (stored.length) {
+        console.warn("Live motor-scooter router unavailable; serving the last verified persisted match matrix.", error)
+        return stored
+      }
+      throw error
+    }
     for (const [demandIndex, demand] of demands.entries()) {
       const candidates = supplies.map((supply, supplyIndex) => {
         const route = matrix.find((element) => element.originIndex === demandIndex && element.destinationIndex === supplyIndex)
@@ -169,5 +189,16 @@ export async function syncEnterpriseSupplyMatchColumns() {
     if (!response.ok) throw new Error(`Unable to update ${source.supplyTab} match columns: ${response.status} ${await response.text()}`)
     changedRows += values.length
   }
+  const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(title)`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+  if (!metadataResponse.ok) throw new Error(`Unable to inspect persisted match tab: ${metadataResponse.status} ${await metadataResponse.text()}`)
+  const metadata = await metadataResponse.json() as { sheets?: { properties?: { title?: string } }[] }
+  if (!(metadata.sheets ?? []).some((sheet) => sheet.properties?.title === MATCH_RESULTS_TAB)) {
+    const createResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: MATCH_RESULTS_TAB, gridProperties: { rowCount: 5000, columnCount: 13, frozenRowCount: 1 } } } }] }), cache: "no-store" })
+    if (!createResponse.ok) throw new Error(`Unable to create persisted match tab: ${createResponse.status} ${await createResponse.text()}`)
+  }
+  const storedValues = matches.map((row) => [row.theatre, row.company, row.demandStatus, row.demandLocation, row.property, row.propertyOwner, row.hunter, row.distanceKm, row.bikeDistanceKm, row.bikeMinutes, row.eligible, row.rank ?? "", row.rule])
+  const storedRange = `'${MATCH_RESULTS_TAB}'!A1:M${Math.max(2, storedValues.length + 1)}`
+  const storedResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(storedRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: storedRange, majorDimension: "ROWS", values: [["Theatre", "Enterprise Name", "Demand Status", "Demand Location", "Property", "Property Owner", "Hunted By", "Distance KM", "Bike Route Distance KM", "Bike Travel Time Min", "Eligible", "Match Rank", "Matching Rule"], ...storedValues] }), cache: "no-store" })
+  if (!storedResponse.ok) throw new Error(`Unable to persist match matrix: ${storedResponse.status} ${await storedResponse.text()}`)
   return { changedRows, source: SOURCE_ID, syncedAt: new Date().toISOString() }
 }
