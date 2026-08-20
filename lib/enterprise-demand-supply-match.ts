@@ -12,6 +12,7 @@ export type DemandSupplyMatch = {
   property: string
   propertyOwner: string
   hunter: string
+  salesPerson: string
   distanceKm: number
   bikeDistanceKm: number
   bikeMinutes: number
@@ -86,11 +87,11 @@ async function readRanges(ranges: string[]) {
 
 async function readStoredMatches(): Promise<DemandSupplyMatch[]> {
   try {
-    const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:V5000`])
+    const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:W5000`])
     return rows.map((row) => {
       const theatre = value(row, 0)
       const company = value(row, 1)
-      return { theatre, company, demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12), demandLat: Number(row[13]) || undefined, demandLng: Number(row[14]) || undefined, propertyLat: Number(row[15]) || undefined, propertyLng: Number(row[16]) || undefined, verifiedProperty: value(row, 17), verifiedDistanceKm: row[18] === "" || row[18] === undefined ? undefined : Number(row[18]), verifiedBikeMinutes: row[19] === "" || row[19] === undefined ? undefined : Number(row[19]), verifiedBy: value(row, 20), verificationStatus: value(row, 21), dataIssue: company === "Data not available" ? `${theatre}-Properties supply tab not available · Enterprise coordinates not available` : undefined }
+      return { theatre, company, demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), salesPerson: value(row, 22), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12), demandLat: Number(row[13]) || undefined, demandLng: Number(row[14]) || undefined, propertyLat: Number(row[15]) || undefined, propertyLng: Number(row[16]) || undefined, verifiedProperty: value(row, 17), verifiedDistanceKm: row[18] === "" || row[18] === undefined ? undefined : Number(row[18]), verifiedBikeMinutes: row[19] === "" || row[19] === undefined ? undefined : Number(row[19]), verifiedBy: value(row, 20), verificationStatus: value(row, 21), dataIssue: company === "Data not available" ? `${theatre}-Properties supply tab not available · Enterprise coordinates not available` : undefined }
     }).filter((row) => row.theatre && row.company && row.property)
   } catch {
     return []
@@ -146,16 +147,16 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
     const demandHeaders = demandTable[0] ?? []
     const supplyHeaders = supplyTable[0] ?? []
     const demandCoordinateIndex = columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], -1)
-    const demandRecords = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null })).filter((row) => row.company)
+    const demandRecords = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), salesPerson: value(row, columnIndex(demandHeaders, ["Sales Person", "Sales Persona", "Sales Owner", "Lead Owner", "JCO"], -1)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null })).filter((row) => row.company)
     if (!source.supplyTab || !demandRecords.some((row) => row.coordinate)) {
       const issues = [!source.supplyTab ? `${source.theatre}-Properties supply tab not available` : "", !demandRecords.some((row) => row.coordinate) ? "Enterprise coordinates not available" : ""].filter(Boolean)
-      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates not available", property: "Data not available", propertyOwner: "", hunter: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · ") })
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates not available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · ") })
       continue
     }
     const demands = demandRecords.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
-    const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "EB"], 15)) })).filter((row) => row.property && row.coordinate)
+    const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)) })).filter((row) => row.property && row.coordinate)
     if (!supplies.length) {
-      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available" })
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available" })
       continue
     }
 
@@ -184,7 +185,7 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
         if (candidate.eligible) eligibleRank += 1
         output.push({
           theatre: source.theatre, company: demand.company, demandStatus: demand.status || "Not updated", demandLocation: demand.location,
-          property: candidate.supply.property, propertyOwner: candidate.supply.owner, hunter: candidate.supply.hunter || "Unassigned",
+          property: candidate.supply.property, propertyOwner: candidate.supply.owner, hunter: candidate.supply.hunter, salesPerson: demand.salesPerson,
           distanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeDistanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeMinutes: Number(candidate.bikeMinutes.toFixed(1)),
           eligible: candidate.eligible, rank: candidate.eligible ? eligibleRank : null,
           rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`,
@@ -266,7 +267,7 @@ export async function syncEnterpriseSupplyMatchColumns() {
   }
   const storedValues = matches.map((row) => [row.theatre, row.company, row.demandStatus, row.demandLocation, row.property, row.propertyOwner, row.hunter, row.distanceKm, row.bikeDistanceKm, row.bikeMinutes, row.eligible, row.rank ?? "", row.rule, row.demandLat ?? "", row.demandLng ?? "", row.propertyLat ?? "", row.propertyLng ?? ""])
   const storedRange = `'${MATCH_RESULTS_TAB}'!A1:Q${Math.max(2, storedValues.length + 1)}`
-  const storedResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(storedRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: storedRange, majorDimension: "ROWS", values: [["Theatre", "Enterprise Name", "Demand Status", "Demand Location", "Property", "Property Owner", "Hunted By", "Distance KM", "Bike Route Distance KM", "Bike Travel Time Min", "Eligible", "Match Rank", "Matching Rule", "Demand Latitude", "Demand Longitude", "Property Latitude", "Property Longitude"], ...storedValues] }), cache: "no-store" })
+  const storedResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(storedRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: storedRange, majorDimension: "ROWS", values: [["Theatre", "Enterprise Name", "Demand Status", "Demand Location", "Property", "Property Owner", "Property Hunter", "Distance KM", "Bike Route Distance KM", "Bike Travel Time Min", "Eligible", "Match Rank", "Matching Rule", "Demand Latitude", "Demand Longitude", "Property Latitude", "Property Longitude"], ...storedValues] }), cache: "no-store" })
   if (!storedResponse.ok) throw new Error(`Unable to persist match matrix: ${storedResponse.status} ${await storedResponse.text()}`)
   const verificationHeaderRange = `'${MATCH_RESULTS_TAB}'!R1:V1`
   const verificationHeaderResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(verificationHeaderRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: verificationHeaderRange, majorDimension: "ROWS", values: [["Google Maps Verified Property", "Google Maps Distance KM", "Google Maps Bike Time Min", "Verified By", "Verification Status"]] }), cache: "no-store" })
