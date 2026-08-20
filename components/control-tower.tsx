@@ -209,7 +209,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   }
   const livingLoop = buildControlTowerLivingLoop(liveOpsData)
   const enterpriseRows = (liveOpsData?.enterpriseWorkspaceDemand ?? []) as Record<string, unknown>[]
-  const enterpriseMatchRows = (liveOpsData?.enterpriseDemandSupplyMatches ?? []) as { theatre?: string; company?: string; rank?: number | null }[]
+  const enterpriseMatchRows = ((liveOpsData?.enterpriseDemandSupplyMatches ?? []) as { theatre?: string; company?: string; rank?: number | null; dataIssue?: string }[]).filter((row) => !row.dataIssue)
   const enterpriseMatchedProperties = enterpriseMatchRows.filter((row) => row.rank === 1).length
   const enterpriseMatchCompanies = new Set(enterpriseMatchRows.map((row) => `${row.theatre ?? ""}:${row.company ?? ""}`))
   const enterpriseNoOption = [...enterpriseMatchCompanies].filter((key) => !enterpriseMatchRows.some((row) => `${row.theatre ?? ""}:${row.company ?? ""}` === key && row.rank === 1)).length

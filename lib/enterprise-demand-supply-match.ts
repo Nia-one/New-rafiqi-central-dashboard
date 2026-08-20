@@ -17,9 +17,10 @@ export type DemandSupplyMatch = {
   eligible: boolean
   rank: number | null
   rule: string
+  dataIssue?: string
 }
 
-type SourceConfig = { theatre: string; demandTab: string; supplyTab: string; maxKm: number; maxMinutes?: number }
+type SourceConfig = { theatre: string; demandTab: string; supplyTab?: string; maxKm: number; maxMinutes?: number }
 const THEATRE_RULES: Record<string, { maxKm: number; maxMinutes?: number }> = {
   coromandel: { maxKm: 15, maxMinutes: 30 },
   deccan: { maxKm: 10 },
@@ -39,7 +40,6 @@ async function discoverSources(): Promise<SourceConfig[]> {
     if (!demandSuffix.test(demandTab)) return []
     const theatre = demandTab.replace(demandSuffix, "").trim()
     const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
-    if (!supplyTab) return []
     return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
   })
 }
@@ -121,17 +121,29 @@ async function bikeRouteMatrix(origins: { lat: number; lng: number }[], destinat
 
 export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
   const SOURCES = await discoverSources()
-  const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, `'${source.supplyTab}'!A1:R1000`])
+  const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, ...(source.supplyTab ? [`'${source.supplyTab}'!A1:R1000`] : [])])
   const tables = await readRanges(ranges)
   const output: DemandSupplyMatch[] = []
+  let tableIndex = 0
 
-  for (const [sourceIndex, source] of SOURCES.entries()) {
-    const demandTable = tables[sourceIndex * 2] ?? []
-    const supplyTable = tables[sourceIndex * 2 + 1] ?? []
+  for (const source of SOURCES) {
+    const demandTable = tables[tableIndex++] ?? []
+    const supplyTable = source.supplyTab ? tables[tableIndex++] ?? [] : []
     const demandHeaders = demandTable[0] ?? []
     const supplyHeaders = supplyTable[0] ?? []
-    const demands = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), coordinate: parseCoordinate(row[columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 6)]) })).filter((row) => row.company && row.coordinate)
+    const demandCoordinateIndex = columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], -1)
+    const demandRecords = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null })).filter((row) => row.company)
+    if (!source.supplyTab || !demandRecords.some((row) => row.coordinate)) {
+      const issues = [!source.supplyTab ? `${source.theatre}-Properties supply tab not available` : "", !demandRecords.some((row) => row.coordinate) ? "Enterprise coordinates not available" : ""].filter(Boolean)
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates not available", property: "Data not available", propertyOwner: "", hunter: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · ") })
+      continue
+    }
+    const demands = demandRecords.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
     const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "EB"], 15)) })).filter((row) => row.property && row.coordinate)
+    if (!supplies.length) {
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available" })
+      continue
+    }
 
     let matrix: RouteMatrixElement[]
     try {
@@ -175,6 +187,7 @@ export async function syncEnterpriseSupplyMatchColumns() {
   const token = await accessToken("https://www.googleapis.com/auth/spreadsheets")
   let changedRows = 0
   for (const source of SOURCES) {
+    if (!source.supplyTab) continue
     const sourceMatches = matches.filter((row) => row.theatre === source.theatre)
     const properties = Array.from(new Set(sourceMatches.map((row) => row.property)))
     const values = properties.map((property) => {

@@ -32,9 +32,10 @@ export function EnterpriseLeadWorkspace({ rows, asOf, matches = [] }: { rows: re
     ...ENTERPRISE_PIPELINE_STAGES.map((stage) => ({ stage, companies: active.filter((entry) => entry.stage === stage).map(({ row }) => companyOf(row)).sort((a, b) => a.localeCompare(b)) })),
     { stage: "Drop", companies: dropped.map(({ row }) => companyOf(row)).sort((a, b) => a.localeCompare(b)) },
   ]
-  const matchedCompanies = new Set(matches.filter((match) => match.rank === 1).map((match) => `${match.theatre}:${match.company}`)).size
-  const matchCompanies = new Set(matches.map((match) => `${match.theatre}:${match.company}`))
-  const noOptionCompanies = [...matchCompanies].filter((key) => !matches.some((match) => `${match.theatre}:${match.company}` === key && match.rank === 1)).length
+  const readyMatches = matches.filter((match) => !match.dataIssue)
+  const matchedCompanies = new Set(readyMatches.filter((match) => match.rank === 1).map((match) => `${match.theatre}:${match.company}`)).size
+  const matchCompanies = new Set(readyMatches.map((match) => `${match.theatre}:${match.company}`))
+  const noOptionCompanies = [...matchCompanies].filter((key) => !readyMatches.some((match) => `${match.theatre}:${match.company}` === key && match.rank === 1)).length
   const sections = [{ title: "Do this now", summary: `${active.length} active leads · stage-wise` }, { title: "Today's work", summary: `${jcos.length} JCOs · live performance` }, { title: "Demand vs Supply", summary: `${matchedCompanies} matched · ${noOptionCompanies} no option` }, { title: "Exceptions", summary: `${dropped.length} Drop record${dropped.length === 1 ? "" : "s"}${invalid.length ? ` · ${invalid.length} invalid` : ""}` }, { title: "Supporting detail", summary: `${theatreJcos.length} Theatre × JCO groups` }, { title: "Proof & health", summary: `${companies.length} company records` }]
   const stageCells = (stageCounts: Record<Stage, number>, total: number) => ENTERPRISE_PIPELINE_STAGES.map((stage) => <td key={stage}><span style={{ "--cell-width": `${total ? stageCounts[stage] / total * 100 : 0}%` } as React.CSSProperties}>{stageCounts[stage]}</span></td>)
   return <section className="pillar-screen enterprise-stage-workspace enterprise-lead-workspace" aria-label="Enterprise Demand stage-wise lead records">
