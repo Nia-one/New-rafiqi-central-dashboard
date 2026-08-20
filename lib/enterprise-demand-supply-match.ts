@@ -20,6 +20,7 @@ export type DemandSupplyMatch = {
   rank: number | null
   rule: string
   dataIssue?: string
+  dataIssueKind?: "demand" | "supply" | "theatre"
   demandLat?: number
   demandLng?: number
   propertyLat?: number
@@ -150,15 +151,18 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
     const demandRecords = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), salesPerson: value(row, columnIndex(demandHeaders, ["Sales Person", "Sales Persona", "Sales Owner", "Lead Owner", "JCO"], -1)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null })).filter((row) => row.company)
     if (!source.supplyTab || !demandRecords.some((row) => row.coordinate)) {
       const issues = [!source.supplyTab ? `${source.theatre}-Properties supply tab not available` : "", !demandRecords.some((row) => row.coordinate) ? "Enterprise coordinates not available" : ""].filter(Boolean)
-      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates not available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · ") })
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates not available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · "), dataIssueKind: "theatre" })
       continue
     }
     const demands = demandRecords.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
-    const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)) })).filter((row) => row.property && row.coordinate)
+    const allSupplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)) })).filter((row) => row.property)
+    const supplies = allSupplies.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
     if (!supplies.length) {
-      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available" })
+      output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available", dataIssueKind: "theatre" })
       continue
     }
+    demandRecords.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Demand coordinates not available for ${row.company}`, dataIssueKind: "demand" }))
+    allSupplies.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: "Supply data pending", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Property coordinates not available for ${row.property}`, dataIssueKind: "supply" }))
 
     let matrix: RouteMatrixElement[]
     try {
