@@ -27,6 +27,11 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
   })).filter(Boolean)
   const firstMatches = filtered.filter((row) => row.eligible && row.rank === 1)
   const verifiedMatches = filtered.filter(isVerifiedMatch)
+  const hunterPerformance = Array.from(firstMatches.reduce((summary, row) => {
+    const hunter = row.hunter.trim()
+    if (hunter) summary.set(hunter, (summary.get(hunter) ?? 0) + 1)
+    return summary
+  }, new Map<string, number>())).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
 
   return <div className="enterprise-match-screen">
     {!embedded && <section className="decision-bar"><div><span>ENTERPRISE DEMAND VS SUPPLY</span><strong>{firstMatches.length} provisional matches · {verifiedMatches.length} verified matches</strong></div><p>Source updates are reflected automatically on dashboard refresh.</p></section>}
@@ -40,6 +45,7 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
       </div>
       {issues.length ? <div className="enterprise-data-issues" role="status">{issues.map((issue) => <article key={issue.theatre}><strong>{issue.theatre}: Data not available</strong><span>{issue.dataIssue}</span><small>Matching cannot be calculated until the required sheet data is available.</small></article>)}</div> : null}
       <div className="business-kpi-strip"><article><span>DEMANDS</span><strong>{new Set(filtered.map((row) => `${row.theatre}:${row.company}`)).size}</strong><small>with valid coordinates</small></article><article><span>SUPPLY OPTIONS</span><strong>{new Set(scoped.map((row) => `${row.theatre}:${row.property}`)).size}</strong><small>with valid coordinates</small></article><article><span>PROVISIONAL MATCHES</span><strong>{firstMatches.length}</strong><small>free-router shortlist</small></article><article><span>VERIFIED MATCHES</span><strong>{verifiedMatches.length}</strong><small>verified route results</small></article><article><span>NO OPTION</span><strong>{filtered.filter((row) => !row.eligible).length}</strong><small>outside theatre criteria</small></article></div>
+      <div className="hunter-performance-summary"><strong>PROPERTY HUNTER PERFORMANCE</strong><span>{hunterPerformance.length ? hunterPerformance.map(([hunter, matches]) => `${hunter}: ${matches} matched ${matches === 1 ? "property" : "properties"}`).join(" · ") : "Property Hunter names Y column mein pending hain"}</span></div>
       <div className="table-wrap"><table><thead><tr><th>THEATRE</th><th>ENTERPRISE / LOCATION</th><th>DEMAND STATUS</th><th>SALES PERSON</th><th>MATCH RANK</th><th>MATCHED PROPERTY</th><th>NEAREST CHECKED PROPERTY / LOCATION</th><th>PROPERTY HUNTER</th><th>AUTO ROUTE</th><th>GOOGLE MAPS CHECK</th><th>APPROVAL STATUS</th><th>CRITERIA</th></tr></thead><tbody>{filtered.map((row) => {
         const routeUrl = googleMapsUrl(row)
         const verified = isVerifiedMatch(row)

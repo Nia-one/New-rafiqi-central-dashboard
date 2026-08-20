@@ -136,7 +136,7 @@ async function bikeRouteMatrix(origins: { lat: number; lng: number }[], destinat
 
 async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
   const SOURCES = await discoverSources()
-  const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, ...(source.supplyTab ? [`'${source.supplyTab}'!A1:R1000`] : [])])
+  const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, ...(source.supplyTab ? [`'${source.supplyTab}'!A1:Y1000`] : [])])
   const tables = await readRanges(ranges)
   const output: DemandSupplyMatch[] = []
   let tableIndex = 0
@@ -261,6 +261,9 @@ export async function syncEnterpriseSupplyMatchColumns() {
         if (!clearResponse.ok) throw new Error(`Unable to clear duplicate ${source.supplyTab} match column: ${clearResponse.status} ${await clearResponse.text()}`)
       }
     }
+    const hunterHeaderRange = `'${source.supplyTab}'!Y1`
+    const hunterHeaderResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(hunterHeaderRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: hunterHeaderRange, majorDimension: "ROWS", values: [["Property Hunter"]] }), cache: "no-store" })
+    if (!hunterHeaderResponse.ok) throw new Error(`Unable to prepare ${source.supplyTab} property hunter column: ${hunterHeaderResponse.status} ${await hunterHeaderResponse.text()}`)
     changedRows += values.length
   }
   const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
