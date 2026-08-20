@@ -19,6 +19,7 @@ import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessi
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { getLatestFreshEnterpriseDemandRows } from "@/lib/freshDashboardInputSync"
 import { loadEnterpriseDemandSupplyMatches } from "@/lib/enterprise-demand-supply-match"
+import { unstable_cache } from "next/cache"
 
 export const dynamic = "force-dynamic"
 
@@ -29,10 +30,20 @@ export const dynamic = "force-dynamic"
 let lastOpsData: Awaited<ReturnType<typeof buildOpsData>> | undefined
 let lastOpsDataAt = 0
 let activeOpsDataBuild: Promise<Awaited<ReturnType<typeof buildOpsData>>> | undefined
+const buildSharedOpsData = unstable_cache(
+  () => buildOpsData(),
+  ["governed-ops-data-v2"],
+  { revalidate: 60, tags: ["governed-ops-data"] },
+)
+const loadSharedEnterpriseMatches = unstable_cache(
+  () => loadEnterpriseDemandSupplyMatches(),
+  ["enterprise-demand-supply-matches-v2"],
+  { revalidate: 60 },
+)
 async function buildCachedOpsData() {
   if (lastOpsData && Date.now() - lastOpsDataAt < 45_000) return lastOpsData
   if (activeOpsDataBuild) return activeOpsDataBuild
-  activeOpsDataBuild = buildOpsData()
+  activeOpsDataBuild = buildSharedOpsData()
     .then((data) => {
       lastOpsData = data
       lastOpsDataAt = Date.now()
@@ -63,7 +74,7 @@ export default async function Page() {
   const liveOpsData = await buildCachedOpsData()
   let enterpriseDemandSupplyMatches: Awaited<ReturnType<typeof loadEnterpriseDemandSupplyMatches>> = []
   try {
-    enterpriseDemandSupplyMatches = await loadEnterpriseDemandSupplyMatches()
+    enterpriseDemandSupplyMatches = await loadSharedEnterpriseMatches()
   } catch (error) {
     console.warn("Enterprise demand/supply matching source unavailable; showing the governed dashboard without match rows.", error)
   }
