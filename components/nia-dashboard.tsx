@@ -85,7 +85,7 @@ const PAGE_CONTEXT_ITEMS: Record<DashboardTab, readonly string[]> = {
   Living: ["FONO", "Demand", "Supply", "Reconciliation"],
   Work: ["Data requirement"],
   Essentials: ["Main point", "Buying journey", "Demand", "Supply", "Savings", "Working capital"],
-  "Business Report": ["Board summary", "Occupancy", "Contribution margin", "FONO pipeline", "Enterprise Demand", "Essentials", "Sources"],
+  "Business Report": ["Board summary", "Occupancy", "Contribution margin", "FONO pipeline", "Enterprise Demand", "Demand vs Supply", "Essentials", "Sources"],
   Economics: ["Main point", "Headline measures", "Contribution bridge", "Studio economics", "Source"],
   People: ["Main point", "People summary", "Follow-through", "Demand teams", "Supply teams"],
   "Member Feedback": ["Connection status", "Closure loop", "Summary", "Member signals", "Privacy"],

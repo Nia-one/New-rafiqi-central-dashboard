@@ -19,9 +19,29 @@ export type DemandSupplyMatch = {
 }
 
 type SourceConfig = { theatre: string; demandTab: string; supplyTab: string; maxKm: number; maxMinutes?: number }
-const SOURCES: readonly SourceConfig[] = [
-  { theatre: "Coromandel", demandTab: "Coromandel-Req", supplyTab: "Coromandel-Properties", maxKm: 15, maxMinutes: 30 },
-]
+const THEATRE_RULES: Record<string, { maxKm: number; maxMinutes?: number }> = {
+  coromandel: { maxKm: 15, maxMinutes: 30 },
+  deccan: { maxKm: 10 },
+}
+
+function normalize(value: unknown) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() }
+
+async function discoverSources(): Promise<SourceConfig[]> {
+  const token = await accessToken()
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(title)`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+  if (!response.ok) throw new Error(`Unable to inspect Enterprise demand/supply tabs: ${response.status} ${await response.text()}`)
+  const json = await response.json() as { sheets?: { properties?: { title?: string } }[] }
+  const titles = (json.sheets ?? []).map((sheet) => String(sheet.properties?.title ?? "").trim()).filter(Boolean)
+  const demandSuffix = /(?:\s|-)+(req|requirement|requirements|demand)$/i
+  const supplySuffixes = ["properties", "property", "supply"]
+  return titles.flatMap((demandTab) => {
+    if (!demandSuffix.test(demandTab)) return []
+    const theatre = demandTab.replace(demandSuffix, "").trim()
+    const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
+    if (!supplyTab) return []
+    return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
+  })
+}
 
 function parseCoordinate(value: unknown) {
   const text = String(value ?? "").trim().toUpperCase()
@@ -54,6 +74,14 @@ async function readRanges(ranges: string[]) {
 }
 
 function value(row: string[], index: number) { return String(row[index] ?? "").trim() }
+function columnIndex(headers: string[], names: string[], fallback = -1) {
+  const normalized = headers.map(normalize)
+  for (const name of names) {
+    const exact = normalized.indexOf(normalize(name))
+    if (exact >= 0) return exact
+  }
+  return fallback
+}
 
 type RouteMatrixElement = { originIndex?: number; destinationIndex?: number; distanceMeters?: number; duration?: string; condition?: string; status?: { code?: number; message?: string } }
 
@@ -63,44 +91,37 @@ const routeCache = new Map<string, { expiresAt: number; rows: RouteMatrixElement
 
 async function bikeRouteMatrix(origins: { lat: number; lng: number }[], destinations: { lat: number; lng: number }[]) {
   if (!origins.length || !destinations.length) throw new Error(`Routing requires coordinates; received ${origins.length} demand origins and ${destinations.length} supply destinations.`)
-  if (origins.length * destinations.length > 100) throw new Error("A motor-scooter Route Matrix request cannot exceed 100 origin/destination pairs.")
   const cacheKey = JSON.stringify({ origins, destinations, costing: "motor_scooter" })
   const cached = routeCache.get(cacheKey)
   if (cached && cached.expiresAt > Date.now()) return cached.rows
-  const response = await fetch(VALHALLA_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "User-Agent": "RafiQi-Central/1.0 (enterprise-demand-supply-matching)" },
-    body: JSON.stringify({
-      sources: origins.map((coordinate) => ({ lat: coordinate.lat, lon: coordinate.lng })),
-      targets: destinations.map((coordinate) => ({ lat: coordinate.lat, lon: coordinate.lng })),
-      costing: "motor_scooter",
-      units: "kilometers",
-    }),
-    cache: "no-store",
-  })
-  if (!response.ok) throw new Error(`Valhalla motor-scooter routing failed: ${response.status} ${await response.text()}`)
-  const json = await response.json() as { sources_to_targets?: { from_index: number; to_index: number; distance?: number; time?: number }[][] }
-  const rows = (json.sources_to_targets ?? []).flat().filter((row) => Number.isFinite(row.distance) && Number.isFinite(row.time)).map((row) => ({
-    originIndex: row.from_index,
-    destinationIndex: row.to_index,
-    distanceMeters: Number(row.distance) * 1000,
-    duration: `${Number(row.time)}s`,
-    condition: "ROUTE_EXISTS",
-  }))
+  const rows: RouteMatrixElement[] = []
+  for (let originStart = 0; originStart < origins.length; originStart += 10) {
+    for (let destinationStart = 0; destinationStart < destinations.length; destinationStart += 10) {
+      const originChunk = origins.slice(originStart, originStart + 10)
+      const destinationChunk = destinations.slice(destinationStart, destinationStart + 10)
+      const response = await fetch(VALHALLA_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json", "User-Agent": "RafiQi-Central/1.0 (enterprise-demand-supply-matching)" }, body: JSON.stringify({ sources: originChunk.map(({ lat, lng }) => ({ lat, lon: lng })), targets: destinationChunk.map(({ lat, lng }) => ({ lat, lon: lng })), costing: "motor_scooter", units: "kilometers" }), cache: "no-store" })
+      if (!response.ok) throw new Error(`Valhalla motor-scooter routing failed: ${response.status} ${await response.text()}`)
+      const json = await response.json() as { sources_to_targets?: { from_index: number; to_index: number; distance?: number; time?: number }[][] }
+      rows.push(...(json.sources_to_targets ?? []).flat().filter((row) => Number.isFinite(row.distance) && Number.isFinite(row.time)).map((row) => ({ originIndex: originStart + row.from_index, destinationIndex: destinationStart + row.to_index, distanceMeters: Number(row.distance) * 1000, duration: `${Number(row.time)}s`, condition: "ROUTE_EXISTS" })))
+    }
+  }
   routeCache.set(cacheKey, { expiresAt: Date.now() + ROUTE_CACHE_TTL_MS, rows })
   return rows
 }
 
 export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
+  const SOURCES = await discoverSources()
   const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, `'${source.supplyTab}'!A1:R1000`])
   const tables = await readRanges(ranges)
   const output: DemandSupplyMatch[] = []
 
   for (const [sourceIndex, source] of SOURCES.entries()) {
-    const demandRows = (tables[sourceIndex * 2] ?? []).slice(1)
-    const supplyRows = (tables[sourceIndex * 2 + 1] ?? []).slice(1)
-    const demands = demandRows.map((row) => ({ company: value(row, 0), status: value(row, 17), location: value(row, 4), coordinate: parseCoordinate(row[6]) || parseCoordinate(row[19]) })).filter((row) => row.company && row.coordinate)
-    const supplies = supplyRows.map((row) => ({ property: value(row, 1), coordinate: parseCoordinate(row[2]), owner: value(row, 3), hunter: value(row, 15) })).filter((row) => row.property && row.coordinate)
+    const demandTable = tables[sourceIndex * 2] ?? []
+    const supplyTable = tables[sourceIndex * 2 + 1] ?? []
+    const demandHeaders = demandTable[0] ?? []
+    const supplyHeaders = supplyTable[0] ?? []
+    const demands = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), coordinate: parseCoordinate(row[columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 6)]) })).filter((row) => row.company && row.coordinate)
+    const supplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "EB"], 15)) })).filter((row) => row.property && row.coordinate)
 
     const matrix = await bikeRouteMatrix(demands.map((row) => row.coordinate!), supplies.map((row) => row.coordinate!))
     for (const [demandIndex, demand] of demands.entries()) {
@@ -129,6 +150,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
 }
 
 export async function syncEnterpriseSupplyMatchColumns() {
+  const SOURCES = await discoverSources()
   const matches = await loadEnterpriseDemandSupplyMatches()
   const token = await accessToken("https://www.googleapis.com/auth/spreadsheets")
   let changedRows = 0
