@@ -3,6 +3,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials"
 
 const SOURCE_ID = "1sD05271Z-MNEvS-1cRneavjF0XLmxdUhHczxZ1HlAVs"
 const MATCH_RESULTS_TAB = "Enterprise-Match-Results"
+let lastVerifiedMatches: DemandSupplyMatch[] = []
 export type DemandSupplyMatch = {
   theatre: string
   company: string
@@ -77,7 +78,11 @@ async function readRanges(ranges: string[]) {
 async function readStoredMatches(): Promise<DemandSupplyMatch[]> {
   try {
     const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:M5000`])
-    return rows.map((row) => ({ theatre: value(row, 0), company: value(row, 1), demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12) })).filter((row) => row.theatre && row.company && row.property)
+    return rows.map((row) => {
+      const theatre = value(row, 0)
+      const company = value(row, 1)
+      return { theatre, company, demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12), dataIssue: company === "Data not available" ? `${theatre}-Properties supply tab not available · Enterprise coordinates not available` : undefined }
+    }).filter((row) => row.theatre && row.company && row.property)
   } catch {
     return []
   }
@@ -119,7 +124,7 @@ async function bikeRouteMatrix(origins: { lat: number; lng: number }[], destinat
   return rows
 }
 
-export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
+async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
   const SOURCES = await discoverSources()
   const ranges = SOURCES.flatMap((source) => [`'${source.demandTab}'!A1:U1000`, ...(source.supplyTab ? [`'${source.supplyTab}'!A1:R1000`] : [])])
   const tables = await readRanges(ranges)
@@ -179,6 +184,34 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     }
   }
   return output
+}
+
+export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
+  try {
+    const calculated = await calculateEnterpriseDemandSupplyMatches()
+    if (calculated.length) {
+      lastVerifiedMatches = calculated
+      return calculated
+    }
+    const stored = await readStoredMatches()
+    if (stored.length) {
+      lastVerifiedMatches = stored
+      return stored
+    }
+    return lastVerifiedMatches
+  } catch (error) {
+    const stored = await readStoredMatches()
+    if (stored.length) {
+      console.warn("Live Enterprise matching inputs unavailable; serving the last verified persisted match matrix.", error)
+      lastVerifiedMatches = stored
+      return stored
+    }
+    if (lastVerifiedMatches.length) {
+      console.warn("Live and persisted Enterprise matching inputs unavailable; serving the last successful in-process match matrix.", error)
+      return lastVerifiedMatches
+    }
+    throw error
+  }
 }
 
 export async function syncEnterpriseSupplyMatchColumns() {
