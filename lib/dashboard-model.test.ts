@@ -46,14 +46,14 @@ test("release-off navigation preserves the exact legacy tabs and landing route",
 })
 
 test("Self Drive exposes the complete command-to-sign-off operating arc", () => {
-  assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "Enterprise Demand vs Supply", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
+  assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
   assert.equal(OPERATIONS_TABS[0], "Cash & Control")
   assert.equal(OPERATIONS_TABS.at(-1), "Your Sign-Off")
 })
 
 test("Self Drive preserves internal routes while presenting Member Adds", () => {
-  assert.equal(OPERATIONS_TABS[3], "New Adds")
-  assert.deepEqual(OPERATIONS_TABS.map(dashboardDisplayLabel), ["Cash & Control", "Enterprise Demand", "Enterprise Demand vs Supply", "Member Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
+  assert.equal(OPERATIONS_TABS[2], "New Adds")
+  assert.deepEqual(OPERATIONS_TABS.map(dashboardDisplayLabel), ["Cash & Control", "Enterprise Demand", "Member Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
   assert.equal(workspaceLandingTab("self-drive"), "Cash & Control")
   assert.equal(workspaceLandingTab("self-learn"), "Overview")
   assert.equal(workspaceLandingTab("finance"), "Finance control")

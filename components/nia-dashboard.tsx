@@ -23,7 +23,6 @@ import { WorkScreen } from "@/components/work-screen"
 import { BusinessReportScreen } from "@/components/business-report-screen"
 import { LiveOverviewWorkspace, LiveSheetWorkspace } from "@/components/live-sheet-workspace"
 import { EnterpriseLeadWorkspace } from "@/components/enterprise-lead-workspace"
-import { EnterpriseDemandSupplyScreen } from "@/components/enterprise-demand-supply-screen"
 import { NewAddsWorkspace } from "@/components/new-adds-workspace"
 import { MemberEngagementWorkspace } from "@/components/member-engagement-workspace"
 import { MemberSavingsWorkspace } from "@/components/member-savings-workspace"
@@ -50,7 +49,6 @@ import { aggregateLoopHealth, buildDespatchQueue } from "@/lib/operating-loop/ru
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Governed live data" },
   "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Governed live data" },
-  "Enterprise Demand vs Supply": { title: "Enterprise Demand vs Supply", subtitle: "Rank the closest eligible properties for every enterprise requirement.", view: "Live source · OSM motor-scooter route" },
   "New Adds": { title: "Fill every FONO vacancy with verified billing-live Members.", subtitle: "Detect vacancies, choose the lowest-cost eligible channel, assign the fill and verify billing.", view: "Governed live data" },
   "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Governed live data" },
   "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Governed live data" },
@@ -73,7 +71,6 @@ const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: 
 const PAGE_CONTEXT_ITEMS: Record<DashboardTab, readonly string[]> = {
   "Cash & Control": ["Recommendation", "Monthly path", "Financial controls", "Channel mix", "Open work", "Approvals"],
   "Enterprise Demand": ["Summary", "Arrival stages", "Nearby supply", "FONO", "Śram Park", "Actions & exceptions"],
-  "Enterprise Demand vs Supply": ["Theatre filter", "Demand matches", "Supply options", "Distance and time rule", "Source note"],
   "New Adds": ["Decision", "Fill status", "Theatre progress", "Spots to fill", "Sign-off", "Proof"],
   "Member Engagement": ["Decision", "Retention status", "Cohort curve", "Recovery work", "Proof"],
   "Member Savings": ["Decision", "Dual gate", "Service economics", "Recovery work", "Proof"],
@@ -99,7 +96,6 @@ const PAGE_CONTEXT_ITEMS: Record<DashboardTab, readonly string[]> = {
 const OUTLINE_MANAGED_TABS = new Set<DashboardTab>([
   "Overview",
   "Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement",
-  "Enterprise Demand vs Supply",
   "Member Savings", "Nia Margins", "Nia Growth", "Your Sign-Off",
   "Finance control", "Living", "Work", "Essentials", "Economics", "People",
   "Member Feedback", "Definitions", "Despatch",
@@ -224,8 +220,10 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     // must not be overwritten by the page visited in an earlier dashboard
     // session. Standalone dashboard reloads still restore their last page.
     const requestedActive = restoreStoredPage ? storedActive || initialActive : initialActive
-    const removedFinanceTabs: readonly DashboardTab[] = ["Cash & Control", "Finance control", "Nia Margins", "Economics"]
-    const restoredActive = removedFinanceTabs.includes(requestedActive) ? "Despatch" : requestedActive
+    const removedFinanceTabs: readonly string[] = ["Cash & Control", "Finance control", "Nia Margins", "Economics"]
+    const restoredActive: DashboardTab = requestedActive === ("Enterprise Demand vs Supply" as DashboardTab)
+      ? "Enterprise Demand"
+      : removedFinanceTabs.includes(requestedActive) ? "Despatch" : requestedActive
     const inferredWorkspace: DashboardWorkspace = (SELF_LEARN_TABS as readonly string[]).includes(restoredActive)
       ? "self-learn"
       : (FINANCE_TABS as readonly string[]).includes(restoredActive) ? "finance" : "self-drive"
@@ -413,7 +411,6 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       /> : <LensProvider lens={lens}>
       {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} onModeChange={setOverviewMode} onNavigate={navigate} />}
       {active === "Enterprise Demand" && <EnterpriseLeadWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} matches={liveOpsData?.enterpriseDemandSupplyMatches ?? []} asOf={dataAsOf} />}
-      {active === "Enterprise Demand vs Supply" && <EnterpriseDemandSupplyScreen rows={liveOpsData?.enterpriseDemandSupplyMatches ?? []} />}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
       {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsDisplay} />}
