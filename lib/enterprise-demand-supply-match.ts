@@ -57,19 +57,38 @@ function value(row: string[], index: number) { return String(row[index] ?? "").t
 
 type RouteMatrixElement = { originIndex?: number; destinationIndex?: number; distanceMeters?: number; duration?: string; condition?: string; status?: { code?: number; message?: string } }
 
+const VALHALLA_ENDPOINT = "https://valhalla1.openstreetmap.de/sources_to_targets"
+const ROUTE_CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const routeCache = new Map<string, { expiresAt: number; rows: RouteMatrixElement[] }>()
+
 async function bikeRouteMatrix(origins: { lat: number; lng: number }[], destinations: { lat: number; lng: number }[]) {
-  const apiKey = String(process.env.GOOGLE_MAPS_API_KEY ?? "").trim()
-  if (!apiKey) throw new Error("GOOGLE_MAPS_API_KEY is required for exact two-wheeler distance and travel time.")
-  if (origins.length * destinations.length > 100) throw new Error("A two-wheeler Route Matrix request cannot exceed 100 origin/destination pairs.")
-  const waypoint = (coordinate: { lat: number; lng: number }) => ({ waypoint: { location: { latLng: { latitude: coordinate.lat, longitude: coordinate.lng } } } })
-  const response = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
+  if (!origins.length || !destinations.length) throw new Error(`Routing requires coordinates; received ${origins.length} demand origins and ${destinations.length} supply destinations.`)
+  if (origins.length * destinations.length > 100) throw new Error("A motor-scooter Route Matrix request cannot exceed 100 origin/destination pairs.")
+  const cacheKey = JSON.stringify({ origins, destinations, costing: "motor_scooter" })
+  const cached = routeCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.rows
+  const response = await fetch(VALHALLA_ENDPOINT, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": "originIndex,destinationIndex,distanceMeters,duration,condition,status" },
-    body: JSON.stringify({ origins: origins.map(waypoint), destinations: destinations.map(waypoint), travelMode: "TWO_WHEELER", routingPreference: "TRAFFIC_AWARE" }),
+    headers: { "Content-Type": "application/json", "User-Agent": "RafiQi-Central/1.0 (enterprise-demand-supply-matching)" },
+    body: JSON.stringify({
+      sources: origins.map((coordinate) => ({ lat: coordinate.lat, lon: coordinate.lng })),
+      targets: destinations.map((coordinate) => ({ lat: coordinate.lat, lon: coordinate.lng })),
+      costing: "motor_scooter",
+      units: "kilometers",
+    }),
     cache: "no-store",
   })
-  if (!response.ok) throw new Error(`Google Maps two-wheeler routing failed: ${response.status} ${await response.text()}`)
-  return await response.json() as RouteMatrixElement[]
+  if (!response.ok) throw new Error(`Valhalla motor-scooter routing failed: ${response.status} ${await response.text()}`)
+  const json = await response.json() as { sources_to_targets?: { from_index: number; to_index: number; distance?: number; time?: number }[][] }
+  const rows = (json.sources_to_targets ?? []).flat().filter((row) => Number.isFinite(row.distance) && Number.isFinite(row.time)).map((row) => ({
+    originIndex: row.from_index,
+    destinationIndex: row.to_index,
+    distanceMeters: Number(row.distance) * 1000,
+    duration: `${Number(row.time)}s`,
+    condition: "ROUTE_EXISTS",
+  }))
+  routeCache.set(cacheKey, { expiresAt: Date.now() + ROUTE_CACHE_TTL_MS, rows })
+  return rows
 }
 
 export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
@@ -80,7 +99,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
   for (const [sourceIndex, source] of SOURCES.entries()) {
     const demandRows = (tables[sourceIndex * 2] ?? []).slice(1)
     const supplyRows = (tables[sourceIndex * 2 + 1] ?? []).slice(1)
-    const demands = demandRows.map((row) => ({ company: value(row, 0), status: value(row, 16), location: value(row, 17), coordinate: parseCoordinate(row[18]) })).filter((row) => row.company && row.coordinate)
+    const demands = demandRows.map((row) => ({ company: value(row, 0), status: value(row, 17), location: value(row, 4), coordinate: parseCoordinate(row[6]) || parseCoordinate(row[19]) })).filter((row) => row.company && row.coordinate)
     const supplies = supplyRows.map((row) => ({ property: value(row, 1), coordinate: parseCoordinate(row[2]), owner: value(row, 3), hunter: value(row, 15) })).filter((row) => row.property && row.coordinate)
 
     const matrix = await bikeRouteMatrix(demands.map((row) => row.coordinate!), supplies.map((row) => row.coordinate!))
@@ -101,7 +120,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
           property: candidate.supply.property, propertyOwner: candidate.supply.owner, hunter: candidate.supply.hunter || "Unassigned",
           distanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeDistanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeMinutes: Number(candidate.bikeMinutes.toFixed(1)),
           eligible: candidate.eligible, rank: candidate.eligible ? eligibleRank : null,
-          rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} estimated minutes`,
+          rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`,
         })
       }
     }
@@ -121,7 +140,7 @@ export async function syncEnterpriseSupplyMatchColumns() {
       const nearest = candidates[0]
       return nearest
         ? [source.theatre, nearest.company, nearest.bikeDistanceKm, nearest.bikeMinutes, "Eligible", nearest.rule]
-        : [source.theatre, "No eligible demand", "", "", "Outside rule", source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} estimated minutes`]
+        : [source.theatre, "No eligible demand", "", "", "Outside rule", source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`]
     })
     const body = { range: `'${source.supplyTab}'!S1:X${Math.max(2, values.length + 1)}`, majorDimension: "ROWS", values: [["Theatre", "Nearest Demand Client", "Bike Route Distance (KM)", "Bike Travel Time (Min)", "Match Status", "Matching Rule"], ...values] }
     const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(body.range)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" })

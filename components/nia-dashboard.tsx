@@ -50,7 +50,7 @@ import { aggregateLoopHealth, buildDespatchQueue } from "@/lib/operating-loop/ru
 const screenMeta: Record<DashboardTab, { title: string; subtitle: string; view: string }> = {
   "Cash & Control": { title: "Set the destination. Let Nia run the month.", subtitle: "Approve the goal once; Nia allocates, recovers and verifies the work while protecting cash.", view: "Governed live data" },
   "Enterprise Demand": { title: "Enterprise Demand", subtitle: "Turn every signed arrival into a verified 2 km, then 5 km capacity loop.", view: "Governed live data" },
-  "Enterprise Demand vs Supply": { title: "Enterprise Demand vs Supply", subtitle: "Rank the closest eligible properties for every enterprise requirement.", view: "Live source · coordinate matched" },
+  "Enterprise Demand vs Supply": { title: "Enterprise Demand vs Supply", subtitle: "Rank the closest eligible properties for every enterprise requirement.", view: "Live source · OSM motor-scooter route" },
   "New Adds": { title: "Fill every FONO vacancy with verified billing-live Members.", subtitle: "Detect vacancies, choose the lowest-cost eligible channel, assign the fill and verify billing.", view: "Governed live data" },
   "Member Engagement": { title: "Keep Members by removing the friction that makes them leave.", subtitle: "Detect risk early, repair the cause and count only verified recovery.", view: "Governed live data" },
   "Member Savings": { title: "Every service must save the Member and pay Nia.", subtitle: "Protect the dual gate, repair attach and repeat gaps, and keep savings claims verified.", view: "Governed live data" },
