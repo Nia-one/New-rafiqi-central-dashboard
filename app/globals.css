@@ -4696,3 +4696,39 @@ body table:not(.daily-action-grid) tbody > tr:nth-child(n+4) { animation-delay: 
   body table:not(.daily-action-grid) tbody > tr { animation: none; }
   body table:not(.daily-action-grid) tbody > tr > :is(td, th) { transition: none; }
 }
+.google-maps-route-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 118px;
+  padding: 8px 10px;
+  border: 1px solid #0b5cab;
+  border-radius: 7px;
+  background: #eaf4ff;
+  color: #0b4f8a;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.google-maps-route-link:hover {
+  background: #d7ebff;
+}
+
+.google-maps-route-link:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.enterprise-match-screen .google-maps-route-note {
+  display: block;
+  max-width: 145px;
+  margin-top: 7px;
+  line-height: 1.45;
+}
+
+.enterprise-match-screen .table-wrap table {
+  min-width: 1500px;
+}
