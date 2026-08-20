@@ -18,6 +18,7 @@ import { cookies } from "next/headers"
 import { AUTH_COOKIE, loginConfigurationFromEnvironment, readSessionEmail, sessionSecretFromEnvironment } from "@/lib/auth"
 import { financeAccessAllowed, roleAssignments } from "@/lib/access-control"
 import { getLatestFreshEnterpriseDemandRows } from "@/lib/freshDashboardInputSync"
+import { loadEnterpriseDemandSupplyMatches } from "@/lib/enterprise-demand-supply-match"
 
 export const dynamic = "force-dynamic"
 
@@ -60,6 +61,12 @@ export default async function Page() {
   const hasFinanceRole = financeAccessAllowed(role)
   const financeAllowed = hasFinanceRole && financeExpansionControlEnabled()
   const liveOpsData = await buildCachedOpsData()
+  let enterpriseDemandSupplyMatches: Awaited<ReturnType<typeof loadEnterpriseDemandSupplyMatches>> = []
+  try {
+    enterpriseDemandSupplyMatches = await loadEnterpriseDemandSupplyMatches()
+  } catch (error) {
+    console.warn("Enterprise demand/supply matching source unavailable; showing the governed dashboard without match rows.", error)
+  }
   const liveSnapshot = buildLiveSelfDriveSnapshot(liveOpsData)
   // Enterprise Demand is governed by the explicit UI_Enterprise_Demand input
   // lane. Retain SP-BOT only as a backwards-compatible fallback while an older
@@ -83,7 +90,7 @@ export default async function Page() {
   const enterpriseDemandPreview = buildLiveEnterpriseDemandLoopPreview(enterpriseWorkspaceRows, liveSnapshot.asOf)
   // Keep the complete governed demand ledger available to Living/Growth while
   // Enterprise receives its explicit operator-owned UI lane.
-  const dashboardOpsData = { ...liveOpsData, enterpriseWorkspaceDemand: enterpriseWorkspaceRows }
+  const dashboardOpsData = { ...liveOpsData, enterpriseWorkspaceDemand: enterpriseWorkspaceRows, enterpriseDemandSupplyMatches }
   const newAddsPreview = buildLiveNewAddsPreview(liveSnapshot)
   const memberEngagementPreview = buildLiveMemberEngagementPreview(liveSnapshot)
   const memberSavingsPreview = buildLiveMemberSavingsPreview(liveSnapshot)

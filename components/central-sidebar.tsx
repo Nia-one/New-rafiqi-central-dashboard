@@ -35,6 +35,7 @@ type NavigationItem = {
 
 const OPERATING_LOOPS: readonly NavigationItem[] = [
   { label: "Enterprise Demand", tab: "Enterprise Demand", icon: Building2 },
+  { label: "Demand vs Supply", tab: "Enterprise Demand vs Supply", icon: ChartNoAxesCombined },
   { label: "Member Adds", tab: "New Adds", icon: UserPlus },
   { label: "Member Engagement", tab: "Member Engagement", icon: HeartHandshake },
   { label: "Member Savings", tab: "Member Savings", icon: BadgeIndianRupee },

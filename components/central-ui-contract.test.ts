@@ -13,7 +13,7 @@ const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
 const railCss = readFileSync(new URL("./central-sidebar.css", import.meta.url), "utf8")
 
 test("the route inventory remains complete and unchanged by the presentation redesign", () => {
-  assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
+  assert.deepEqual(OPERATIONS_TABS, ["Cash & Control", "Enterprise Demand", "Enterprise Demand vs Supply", "New Adds", "Member Engagement", "Member Savings", "Nia Margins", "Nia Growth", "Despatch", "Your Sign-Off"])
   assert.deepEqual(SELF_LEARN_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "Member Feedback", "People", "Definitions"])
   assert.deepEqual(FINANCE_TABS, ["Finance control"])
   assert.deepEqual(DASHBOARD_TABS, ["Overview", "Living", "Work", "Essentials", "Business Report", "People", "Member Feedback", "Economics", "Definitions", "Despatch"])

@@ -6,6 +6,7 @@ import { syncMemberFeedback } from "@/lib/memberFeedbackSync";
 import { clearSheetCache } from "@/lib/googleSheets";
 import { syncFreshDashboardInputs } from "@/lib/freshDashboardInputSync";
 import { syncFonoTrackerData } from "@/lib/fonoTrackerSync";
+import { syncEnterpriseSupplyMatchColumns } from "@/lib/enterprise-demand-supply-match";
 
 let activeSync: Promise<SourceSyncReport> | null = null;
 let activeLiveSync: Promise<LiveSourceSyncReport> | null = null;
@@ -34,6 +35,7 @@ export type LiveSourceSyncReport = {
   shramParkDemandReport: Awaited<ReturnType<typeof syncShramParkDemandBotData>> | null;
   fonoTrackerReport: Awaited<ReturnType<typeof syncFonoTrackerData>> | null;
   freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>> | null;
+  enterpriseDemandSupplyReport: Awaited<ReturnType<typeof syncEnterpriseSupplyMatchColumns>> | null;
   changedRows: number;
   failures: readonly { source: string; error: string }[];
   syncedAt: string;
@@ -63,12 +65,13 @@ async function runLiveSourceSync(): Promise<LiveSourceSyncReport> {
   const freshDashboardInputReport = await attempt("fresh-dashboard-inputs", syncFreshDashboardInputs);
   const shramParkDemandReport = await attempt("shram-park-demand", syncShramParkDemandBotData);
   const fonoTrackerReport = await attempt("fono-tracker", syncFonoTrackerData);
+  const enterpriseDemandSupplyReport = await attempt("enterprise-demand-supply", syncEnterpriseSupplyMatchColumns);
   const essentialsReport = await attempt("essentials", syncEssentialsBotData);
   clearSheetCache();
-  const reports = [freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport];
+  const reports = [freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport, enterpriseDemandSupplyReport];
   if (reports.every((report) => report === null)) throw new AggregateError(failures.map((failure) => new Error(`${failure.source}: ${failure.error}`)), "Every live source sync failed");
   const changedRows = reports.reduce((sum, report) => sum + (report && typeof report === "object" && "changedRows" in report ? Number(report.changedRows) || 0 : 0), 0);
-  return { essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, changedRows, failures, syncedAt: new Date().toISOString() };
+  return { essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, enterpriseDemandSupplyReport, changedRows, failures, syncedAt: new Date().toISOString() };
 }
 
 export function syncLiveSources() {
