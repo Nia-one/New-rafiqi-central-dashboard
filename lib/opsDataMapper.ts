@@ -312,47 +312,7 @@ function summarizeLiving(rows: Record<string, any>[]) {
 }
 
 export async function buildOpsData(period: string = "all") {
-  console.log('OPS_MAPPER_START');
   const data = await getDashboardData(period);
-
-  console.log("Action Log (first 10 rows):");
-console.log(data.actionLog?.slice(0, 10));
-
-console.log("Incident Log (first 10 rows):");
-console.log(data.incidentLog?.slice(0, 10));
-
-console.log("Approval Log (first 10 rows):");
-console.log(data.approvalLog?.slice(0, 10));
-
-console.log("AVAILABLE SHEETS:", Object.keys(data));
-
-console.log("Finance Daily (first 5 rows):");
-console.log(data.financeDaily?.slice(0, 5));
-
-console.log("Dashboard Overview (first 5 rows):");
-console.log(data.dashboardOverview?.slice(0, 5));
-
-console.log("DASHBOARD CONTENT RAW");
-console.log(JSON.stringify(data.dashboardContent?.slice(0,10), null, 2));
-
-console.log("CM HISTORY RAW");
-console.log(JSON.stringify(data.cmHistory?.slice(0,5), null, 2));
-
-console.log("ENTERPRISE DEMAND RAW");
-console.log(JSON.stringify(data.enterpriseDemand?.slice(0,5), null, 2));
-
-console.log("Enterprise Demand (first 5 rows):");
-console.log(data.enterpriseDemand?.slice(0, 5));
-
-console.log("Member Activation (first 5 rows):");
-console.log(data.memberActivation?.slice(0, 5));
-
-console.log("Hourly Heartbeat (first 5 rows):");
-console.log(data.hourlyHeartbeat?.slice(0, 5));
-
-console.log("CONSTRAINTS RAW:", data.constraints?.slice(0,10));
-console.log("Evidence Log (first 5 rows):");
-console.log(data.evidenceLog?.slice(0, 5));
 
   // Convert all Google Sheet tabs into objects
   const studios = toObjects(data.studioMaster);
@@ -362,9 +322,6 @@ console.log(data.evidenceLog?.slice(0, 5));
   // appear in FONO/SP and in the independent Existing Occupancy snapshot.
   const living = latestLivingRows(toObjects(data.livingHourly));
   const livingDashboard = toObjects(data.livingDashboard);
-
-console.log("LIVING HOURLY SAMPLE");
-console.log(JSON.stringify(living.slice(0,5), null, 2));
 
 const fonoOccupancyLive = living
   .filter((row) => first(row, [
@@ -423,16 +380,11 @@ const livingSummary = {
   const history = toObjects(data.cmHistory);
 const constraints = toObjects(data.constraints);
 const actionLog = toObjects(data.actionLog);
-console.log("ACTION LOG OBJECTS SAMPLE");
-console.log(JSON.stringify(actionLog.slice(0,5), null, 2));
 const rootCause = toObjects(data.rootCause);
 const actions = toObjects(data.actions);
 const executionQueue = toObjects(data.executionQueue);
 const previousBlocks = toObjects(data.previousBlock);
 const enterpriseDemand = toObjects(data.enterpriseDemand);
-console.log("Enterprise Demand Objects (first 3):");
-console.log("Enterprise Demand Raw Rows:", data.enterpriseDemand.length);
-console.log(enterpriseDemand.slice(0, 3));
 
   // Lightweight studio summary (used in upcoming mapping)
   const studioSummary = studios.map((studio) => ({
@@ -491,17 +443,6 @@ console.log(enterpriseDemand.slice(0, 3));
       ];
     })
   );
-
-console.log(
-  "GOOGLE METRICS\n" +
-  JSON.stringify(metrics, null, 2)
-);
-
-console.log("POLICY REGISTRY RAW");
-console.log(JSON.stringify(data.policyRegistry, null, 2));
-
-console.log("SOURCE REGISTRY RAW");
-console.log(JSON.stringify(data.sourceRegistry, null, 2));
 
 const plans = {
   Demand_Contracted: num(metrics.Demand_Contracted),
