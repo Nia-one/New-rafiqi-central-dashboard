@@ -209,6 +209,10 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   }
   const livingLoop = buildControlTowerLivingLoop(liveOpsData)
   const enterpriseRows = (liveOpsData?.enterpriseWorkspaceDemand ?? []) as Record<string, unknown>[]
+  const enterpriseMatchRows = (liveOpsData?.enterpriseDemandSupplyMatches ?? []) as { theatre?: string; company?: string; rank?: number | null }[]
+  const enterpriseMatchedProperties = enterpriseMatchRows.filter((row) => row.rank === 1).length
+  const enterpriseMatchCompanies = new Set(enterpriseMatchRows.map((row) => `${row.theatre ?? ""}:${row.company ?? ""}`))
+  const enterpriseNoOption = [...enterpriseMatchCompanies].filter((key) => !enterpriseMatchRows.some((row) => `${row.theatre ?? ""}:${row.company ?? ""}` === key && row.rank === 1)).length
   const enterpriseStageCounts = Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((stage) => [stage, enterpriseRows.filter((row) => enterprisePipelineStage(sourceValue(row, "stage", "certainty"), sourceValue(row, "status")) === stage).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number>
   const enterpriseApproved = ENTERPRISE_PIPELINE_STAGES.reduce((sum, stage) => sum + enterpriseStageCounts[stage], 0)
   const enterpriseExcluded = Math.max(0, enterpriseRows.length - enterpriseApproved)
@@ -219,7 +223,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const enterpriseUpdated = enterpriseRows.map((row) => sourceValue(row, "updated at", "opened at")).filter(Boolean).sort().at(-1)
   const loops = [
     enterpriseRows.length
-      ? { name: "Enterprise demand", current: `${enterpriseApproved} active leads`, target: `${enterpriseRows.length} sheet rows`, gap: `${enterpriseExcluded} excluded`, due: enterpriseDue ? displayDate(enterpriseDue) : "Stage review", verified: enterpriseUpdated ? displayDate(enterpriseUpdated) : "Backend sheet" }
+      ? { name: "Enterprise demand", current: `${enterpriseApproved} active leads · ${enterpriseMatchedProperties} property matched`, target: `${enterpriseRows.length} sheet rows`, gap: `${enterpriseExcluded} excluded · ${enterpriseNoOption} no option`, due: enterpriseDue ? displayDate(enterpriseDue) : "Stage review", verified: enterpriseUpdated ? displayDate(enterpriseUpdated) : "Backend sheet" }
       : enterpriseDemandPreview
         ? { name: "Enterprise demand", current: `${Math.max(0, enterpriseDemandPreview.activeNode.committedNests - enterpriseDemandPreview.activeNode.readinessGap)} Nests`, target: `${enterpriseDemandPreview.activeNode.committedNests} Nests`, gap: `${enterpriseDemandPreview.activeNode.readinessGap} Nests`, due: displayDate(enterpriseDemandPreview.activeNode.arrivalAt), verified: displayDate(enterpriseDemandPreview.source.lastRefreshAt) }
         : { name: "Enterprise demand", current: "No data", target: "No data", gap: "0 open", due: "No open action", verified: "Not recorded" },

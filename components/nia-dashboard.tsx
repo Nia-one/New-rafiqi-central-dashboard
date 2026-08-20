@@ -412,7 +412,7 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
         onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")}
       /> : <LensProvider lens={lens}>
       {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} onModeChange={setOverviewMode} onNavigate={navigate} />}
-      {active === "Enterprise Demand" && <EnterpriseLeadWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />}
+      {active === "Enterprise Demand" && <EnterpriseLeadWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} matches={liveOpsData?.enterpriseDemandSupplyMatches ?? []} asOf={dataAsOf} />}
       {active === "Enterprise Demand vs Supply" && <EnterpriseDemandSupplyScreen rows={liveOpsData?.enterpriseDemandSupplyMatches ?? []} />}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
