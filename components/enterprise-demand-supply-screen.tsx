@@ -25,10 +25,17 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
     const candidates = scoped.filter((row) => `${row.theatre}:${row.company}` === key)
     return candidates.find((row) => row.rank === 1) ?? [...candidates].sort((a, b) => a.bikeMinutes - b.bikeMinutes || a.bikeDistanceKm - b.bikeDistanceKm)[0]
   })).filter(Boolean)
+  const visibleIssues = issues.filter((row) => {
+    if (row.dataIssueKind === "demand") {
+      return (location === "All locations" || (row.demandLocation || "Location not recorded") === location)
+        && (enterprise === "All enterprises" || row.company === enterprise)
+    }
+    return location === "All locations" && enterprise === "All enterprises"
+  })
   const firstMatches = filtered.filter((row) => row.eligible && row.rank === 1)
   const verifiedMatches = filtered.filter(isVerifiedMatch)
-  const totalDemandCount = new Set([...filtered.map((row) => `${row.theatre}:${row.company}`), ...issues.filter((row) => row.dataIssueKind === "demand").map((row) => `${row.theatre}:${row.company}`)]).size
-  const totalSupplyCount = new Set([...scoped.map((row) => `${row.theatre}:${row.property}`), ...issues.filter((row) => row.dataIssueKind === "supply").map((row) => `${row.theatre}:${row.property}`)]).size
+  const totalDemandCount = new Set([...filtered.map((row) => `${row.theatre}:${row.company}`), ...visibleIssues.filter((row) => row.dataIssueKind === "demand").map((row) => `${row.theatre}:${row.company}`)]).size
+  const totalSupplyCount = new Set([...scoped.map((row) => `${row.theatre}:${row.property}`), ...visibleIssues.filter((row) => row.dataIssueKind === "supply").map((row) => `${row.theatre}:${row.property}`)]).size
   const hunterPerformance = Array.from(firstMatches.reduce((summary, row) => {
     const hunter = row.hunter.trim()
     if (hunter) summary.set(hunter, (summary.get(hunter) ?? 0) + 1)
@@ -45,14 +52,26 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
         <label>Enterprise<select aria-label="Match enterprise" value={enterprises.includes(enterprise) ? enterprise : "All enterprises"} onChange={(event) => setEnterprise(event.target.value)}>{enterprises.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label>View<select aria-label="Match view" value={view} onChange={(event) => setView(event.target.value)}><option>Best option per demand</option><option>All evaluated properties</option></select></label>
       </div>
-      {issues.length ? <div className="enterprise-data-issues" role="status">{issues.map((issue) => <article key={`${issue.theatre}:${issue.company}:${issue.property}`}><strong>{issue.theatre}: Coordinates unavailable</strong><span>{issue.dataIssue}</span><small>Record dashboard count mein included hai; route matching coordinates milne ke baad calculate hoga.</small></article>)}</div> : null}
       <div className="business-kpi-strip"><article><span>DEMANDS</span><strong>{totalDemandCount}</strong><small>{new Set(filtered.map((row) => `${row.theatre}:${row.company}`)).size} with valid coordinates</small></article><article><span>SUPPLY OPTIONS</span><strong>{totalSupplyCount}</strong><small>{new Set(scoped.map((row) => `${row.theatre}:${row.property}`)).size} with valid coordinates</small></article><article><span>PROVISIONAL MATCHES</span><strong>{firstMatches.length}</strong><small>free-router shortlist</small></article><article><span>VERIFIED MATCHES</span><strong>{verifiedMatches.length}</strong><small>verified route results</small></article><article><span>NO OPTION</span><strong>{filtered.filter((row) => !row.eligible).length}</strong><small>outside theatre criteria</small></article></div>
       <div className="hunter-performance-summary"><strong>PROPERTY HUNTER PERFORMANCE</strong><span>{hunterPerformance.length ? hunterPerformance.map(([hunter, matches]) => `${hunter}: ${matches} matched ${matches === 1 ? "property" : "properties"}`).join(" · ") : "Property Hunter names Y column mein pending hain"}</span></div>
       <div className="table-wrap"><table><thead><tr><th>THEATRE</th><th>ENTERPRISE / LOCATION</th><th>DEMAND STATUS</th><th>SALES PERSON</th><th>MATCH RANK</th><th>MATCHED PROPERTY</th><th>NEAREST CHECKED PROPERTY / LOCATION</th><th>PROPERTY HUNTER</th><th>AUTO ROUTE</th><th>GOOGLE MAPS CHECK</th><th>APPROVAL STATUS</th><th>CRITERIA</th></tr></thead><tbody>{filtered.map((row) => {
         const routeUrl = googleMapsUrl(row)
         const verified = isVerifiedMatch(row)
         return <tr key={`${row.theatre}-${row.company}-${row.property}`}><td>{row.theatre}</td><td><strong>{row.company}</strong><small>{row.demandLocation || "Location not recorded"}</small></td><td>{row.demandStatus}</td><td>{row.salesPerson || "Not available in sheet"}</td><td>{row.rank ?? "—"}</td><td><strong>{row.eligible || view === "All evaluated properties" ? row.property : "No option within criteria"}</strong><small>{row.propertyOwner ? `Owner: ${row.propertyOwner}` : ""}</small></td><td><strong>{row.property}</strong><small>{row.propertyOwner ? `Owner: ${row.propertyOwner}` : "Nearest available supply"}</small></td><td>{row.hunter || "Not available in sheet"}</td><td><strong>{row.bikeDistanceKm.toFixed(2)} km</strong><small>{row.bikeMinutes.toFixed(1)} min · estimated</small></td><td>{routeUrl ? <a className="google-maps-route-link" href={routeUrl} target="_blank" rel="noreferrer" aria-label={`Open Google Maps route for ${row.company} to ${row.property}`}>Open Google Maps ↗</a> : "Coordinates unavailable"}<small className="google-maps-route-note">{row.verifiedDistanceKm !== undefined && row.verifiedBikeMinutes !== undefined ? `${row.verifiedDistanceKm.toFixed(2)} km · ${row.verifiedBikeMinutes.toFixed(1)} min` : "Coordinate route · two-wheeler select karein"}</small></td><td><strong>{verified ? "Verified match" : row.verificationStatus || (row.eligible ? "Provisional match" : "Provisional no option")}</strong><small>{verified && row.verifiedBy ? `Verified by ${row.verifiedBy}` : "Verification pending"}</small></td><td>{row.rule}</td></tr>
-      })}</tbody></table></div>
+      })}{visibleIssues.map((row) => <tr className="enterprise-data-issue-row" key={`issue:${row.theatre}:${row.company}:${row.property}`}>
+        <td>{row.theatre}</td>
+        <td><strong>{row.dataIssueKind === "demand" ? row.company : "—"}</strong><small>{row.dataIssueKind === "demand" ? row.demandLocation : "Demand not applicable"}</small></td>
+        <td><strong>Coordinates unavailable</strong><small>{row.dataIssueKind === "demand" ? row.dataIssue : "Matching cannot be calculated"}</small></td>
+        <td>{row.salesPerson || "Not available in sheet"}</td>
+        <td>—</td>
+        <td><strong>{row.dataIssueKind === "supply" ? row.property : "Matching pending"}</strong><small>{row.dataIssueKind === "supply" ? row.dataIssue : "Demand coordinates required"}</small></td>
+        <td>{row.dataIssueKind === "supply" ? row.property : "—"}</td>
+        <td>{row.hunter || "Not available in sheet"}</td>
+        <td>Not calculated</td>
+        <td>Coordinates unavailable</td>
+        <td><strong>Data pending</strong><small>Included in dashboard count</small></td>
+        <td>{row.rule}</td>
+      </tr>)}</tbody></table></div>
       <p className="footer-note">Automatic distance and duration use the free OpenStreetMap Valhalla motor_scooter router and remain provisional. A result is shown as “Verified match” only when the verified property, distance, time, and verification status are available. No paid Google API is used.</p>
     </section>
   </div>
