@@ -32,12 +32,12 @@ let lastOpsDataAt = 0
 let activeOpsDataBuild: Promise<Awaited<ReturnType<typeof buildOpsData>>> | undefined
 const buildSharedOpsData = unstable_cache(
   () => buildOpsData(),
-  ["governed-ops-data-v2"],
+  ["governed-ops-data-v3"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v2"],
+  ["enterprise-demand-supply-matches-v3"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 async function buildCachedOpsData() {

@@ -19,6 +19,15 @@ export type DemandSupplyMatch = {
   rank: number | null
   rule: string
   dataIssue?: string
+  demandLat?: number
+  demandLng?: number
+  propertyLat?: number
+  propertyLng?: number
+  verifiedProperty?: string
+  verifiedDistanceKm?: number
+  verifiedBikeMinutes?: number
+  verifiedBy?: string
+  verificationStatus?: string
 }
 
 type SourceConfig = { theatre: string; demandTab: string; supplyTab?: string; maxKm: number; maxMinutes?: number }
@@ -77,11 +86,11 @@ async function readRanges(ranges: string[]) {
 
 async function readStoredMatches(): Promise<DemandSupplyMatch[]> {
   try {
-    const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:M5000`])
+    const [rows = []] = await readRanges([`'${MATCH_RESULTS_TAB}'!A2:V5000`])
     return rows.map((row) => {
       const theatre = value(row, 0)
       const company = value(row, 1)
-      return { theatre, company, demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12), dataIssue: company === "Data not available" ? `${theatre}-Properties supply tab not available · Enterprise coordinates not available` : undefined }
+      return { theatre, company, demandStatus: value(row, 2), demandLocation: value(row, 3), property: value(row, 4), propertyOwner: value(row, 5), hunter: value(row, 6), distanceKm: Number(row[7]) || 0, bikeDistanceKm: Number(row[8]) || 0, bikeMinutes: Number(row[9]) || 0, eligible: normalize(row[10]) === "true", rank: row[11] === "" || row[11] === undefined ? null : Number(row[11]), rule: value(row, 12), demandLat: Number(row[13]) || undefined, demandLng: Number(row[14]) || undefined, propertyLat: Number(row[15]) || undefined, propertyLng: Number(row[16]) || undefined, verifiedProperty: value(row, 17), verifiedDistanceKm: row[18] === "" || row[18] === undefined ? undefined : Number(row[18]), verifiedBikeMinutes: row[19] === "" || row[19] === undefined ? undefined : Number(row[19]), verifiedBy: value(row, 20), verificationStatus: value(row, 21), dataIssue: company === "Data not available" ? `${theatre}-Properties supply tab not available · Enterprise coordinates not available` : undefined }
     }).filter((row) => row.theatre && row.company && row.property)
   } catch {
     return []
@@ -179,6 +188,8 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
           distanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeDistanceKm: Number(candidate.bikeDistanceKm.toFixed(2)), bikeMinutes: Number(candidate.bikeMinutes.toFixed(1)),
           eligible: candidate.eligible, rank: candidate.eligible ? eligibleRank : null,
           rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`,
+          demandLat: demand.coordinate.lat, demandLng: demand.coordinate.lng,
+          propertyLat: candidate.supply.coordinate!.lat, propertyLng: candidate.supply.coordinate!.lng,
         })
       }
     }
@@ -190,8 +201,15 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
   try {
     const calculated = await calculateEnterpriseDemandSupplyMatches()
     if (calculated.length) {
-      lastVerifiedMatches = calculated
-      return calculated
+      const stored = await readStoredMatches()
+      const storedByPair = new Map(stored.map((row) => [`${normalize(row.theatre)}:${normalize(row.company)}:${normalize(row.property)}`, row]))
+      const merged = calculated.map((row) => {
+        const previous = storedByPair.get(`${normalize(row.theatre)}:${normalize(row.company)}:${normalize(row.property)}`)
+        if (!previous) return row
+        return { ...row, verifiedProperty: previous.verifiedProperty, verifiedDistanceKm: previous.verifiedDistanceKm, verifiedBikeMinutes: previous.verifiedBikeMinutes, verifiedBy: previous.verifiedBy, verificationStatus: previous.verificationStatus }
+      })
+      lastVerifiedMatches = merged
+      return merged
     }
     const stored = await readStoredMatches()
     if (stored.length) {
@@ -235,16 +253,23 @@ export async function syncEnterpriseSupplyMatchColumns() {
     if (!response.ok) throw new Error(`Unable to update ${source.supplyTab} match columns: ${response.status} ${await response.text()}`)
     changedRows += values.length
   }
-  const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(title)`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+  const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
   if (!metadataResponse.ok) throw new Error(`Unable to inspect persisted match tab: ${metadataResponse.status} ${await metadataResponse.text()}`)
-  const metadata = await metadataResponse.json() as { sheets?: { properties?: { title?: string } }[] }
-  if (!(metadata.sheets ?? []).some((sheet) => sheet.properties?.title === MATCH_RESULTS_TAB)) {
-    const createResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: MATCH_RESULTS_TAB, gridProperties: { rowCount: 5000, columnCount: 13, frozenRowCount: 1 } } } }] }), cache: "no-store" })
+  const metadata = await metadataResponse.json() as { sheets?: { properties?: { sheetId?: number; title?: string; gridProperties?: { columnCount?: number } } }[] }
+  const matchSheet = (metadata.sheets ?? []).find((sheet) => sheet.properties?.title === MATCH_RESULTS_TAB)
+  if (!matchSheet) {
+    const createResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: MATCH_RESULTS_TAB, gridProperties: { rowCount: 5000, columnCount: 22, frozenRowCount: 1 } } } }] }), cache: "no-store" })
     if (!createResponse.ok) throw new Error(`Unable to create persisted match tab: ${createResponse.status} ${await createResponse.text()}`)
+  } else if ((matchSheet.properties?.gridProperties?.columnCount ?? 0) < 22) {
+    const appendResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ appendDimension: { sheetId: matchSheet.properties?.sheetId, dimension: "COLUMNS", length: 22 - (matchSheet.properties?.gridProperties?.columnCount ?? 0) } }] }), cache: "no-store" })
+    if (!appendResponse.ok) throw new Error(`Unable to add verification columns: ${appendResponse.status} ${await appendResponse.text()}`)
   }
-  const storedValues = matches.map((row) => [row.theatre, row.company, row.demandStatus, row.demandLocation, row.property, row.propertyOwner, row.hunter, row.distanceKm, row.bikeDistanceKm, row.bikeMinutes, row.eligible, row.rank ?? "", row.rule])
-  const storedRange = `'${MATCH_RESULTS_TAB}'!A1:M${Math.max(2, storedValues.length + 1)}`
-  const storedResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(storedRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: storedRange, majorDimension: "ROWS", values: [["Theatre", "Enterprise Name", "Demand Status", "Demand Location", "Property", "Property Owner", "Hunted By", "Distance KM", "Bike Route Distance KM", "Bike Travel Time Min", "Eligible", "Match Rank", "Matching Rule"], ...storedValues] }), cache: "no-store" })
+  const storedValues = matches.map((row) => [row.theatre, row.company, row.demandStatus, row.demandLocation, row.property, row.propertyOwner, row.hunter, row.distanceKm, row.bikeDistanceKm, row.bikeMinutes, row.eligible, row.rank ?? "", row.rule, row.demandLat ?? "", row.demandLng ?? "", row.propertyLat ?? "", row.propertyLng ?? ""])
+  const storedRange = `'${MATCH_RESULTS_TAB}'!A1:Q${Math.max(2, storedValues.length + 1)}`
+  const storedResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(storedRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: storedRange, majorDimension: "ROWS", values: [["Theatre", "Enterprise Name", "Demand Status", "Demand Location", "Property", "Property Owner", "Hunted By", "Distance KM", "Bike Route Distance KM", "Bike Travel Time Min", "Eligible", "Match Rank", "Matching Rule", "Demand Latitude", "Demand Longitude", "Property Latitude", "Property Longitude"], ...storedValues] }), cache: "no-store" })
   if (!storedResponse.ok) throw new Error(`Unable to persist match matrix: ${storedResponse.status} ${await storedResponse.text()}`)
+  const verificationHeaderRange = `'${MATCH_RESULTS_TAB}'!R1:V1`
+  const verificationHeaderResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(verificationHeaderRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: verificationHeaderRange, majorDimension: "ROWS", values: [["Google Maps Verified Property", "Google Maps Distance KM", "Google Maps Bike Time Min", "Verified By", "Verification Status"]] }), cache: "no-store" })
+  if (!verificationHeaderResponse.ok) throw new Error(`Unable to prepare Google Maps verification columns: ${verificationHeaderResponse.status} ${await verificationHeaderResponse.text()}`)
   return { changedRows, source: SOURCE_ID, syncedAt: new Date().toISOString() }
 }
