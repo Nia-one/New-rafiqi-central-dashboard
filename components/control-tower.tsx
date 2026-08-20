@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowRight, ArrowUpRight, BadgeIndianRupee, Building2, ChartNoAxesCombined, CheckCircle2, ChevronRight, Clock3, Gauge, HeartHandshake, Pause, RefreshCw, RotateCcw, Send, ShieldAlert, ShieldCheck, TrendingUp, UserCheck, UserPlus, UserRound } from "lucide-react"
+import { ArrowRight, ArrowUpRight, BadgeIndianRupee, Building2, CheckCircle2, ChevronRight, Clock3, Gauge, HeartHandshake, Pause, RefreshCw, RotateCcw, Send, ShieldAlert, ShieldCheck, TrendingUp, UserCheck, UserPlus, UserRound } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import type { EnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
 import type { ControlledAutonomyPreview } from "@/lib/operating-loop/controlled-autonomy-preview"
@@ -19,8 +19,6 @@ const consoleDefinitions = [
   { name: "Member Engagement", icon: HeartHandshake },
   { name: "Member Savings", icon: BadgeIndianRupee },
   { name: "Living", icon: Building2 },
-  { name: "Collections", icon: BadgeIndianRupee },
-  { name: "Nia Margins", icon: ChartNoAxesCombined },
   { name: "Nia Growth", icon: TrendingUp },
 ] as const
 
@@ -210,9 +208,6 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     return owner && owner.toLowerCase() !== "unassigned" ? owner : fallback
   }
   const livingLoop = buildControlTowerLivingLoop(liveOpsData)
-  const collectionsLoop = livingLoop.collectionRows > 0
-    ? { name: "Collections", current: `₹${livingLoop.collectionCollected.toLocaleString("en-IN")} applied`, target: `₹${livingLoop.collectionBilled.toLocaleString("en-IN")} billed`, gap: `₹${livingLoop.collectionDue.toLocaleString("en-IN")} actual dues`, due: `${livingLoop.collectionOverdue} overdue · ${livingLoop.collectionOpen} open`, verified: livingLoop.verified }
-    : { name: "Collections", current: "No data", target: "No data", gap: "No recorded pending", due: "No collection input", verified: livingLoop.verified }
   const enterpriseRows = (liveOpsData?.enterpriseWorkspaceDemand ?? []) as Record<string, unknown>[]
   const enterpriseStageCounts = Object.fromEntries(ENTERPRISE_PIPELINE_STAGES.map((stage) => [stage, enterpriseRows.filter((row) => enterprisePipelineStage(sourceValue(row, "stage", "certainty"), sourceValue(row, "status")) === stage).length])) as Record<(typeof ENTERPRISE_PIPELINE_STAGES)[number], number>
   const enterpriseApproved = ENTERPRISE_PIPELINE_STAGES.reduce((sum, stage) => sum + enterpriseStageCounts[stage], 0)
@@ -222,7 +217,6 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
   const enterpriseGap = 0
   const enterpriseDue = enterpriseRows.map((row) => sourceValue(row, "activation required at")).filter(Boolean).sort()[0]
   const enterpriseUpdated = enterpriseRows.map((row) => sourceValue(row, "updated at", "opened at")).filter(Boolean).sort().at(-1)
-  const canonicalMargins = canonicalNiaMarginsControl(niaMarginsPreview.measures, Boolean((niaMarginsPreview as NiaMarginsPreview & { liveTargetRecorded?: boolean }).liveTargetRecorded))
   const loops = [
     enterpriseRows.length
       ? { name: "Enterprise demand", current: `${enterpriseApproved} active leads`, target: `${enterpriseRows.length} sheet rows`, gap: `${enterpriseExcluded} excluded`, due: enterpriseDue ? displayDate(enterpriseDue) : "Stage review", verified: enterpriseUpdated ? displayDate(enterpriseUpdated) : "Backend sheet" }
@@ -235,8 +229,6 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
       : { name: "Member engagement", current: "No data", target: "No data", gap: "0 open", due: "No open action", verified: "Not recorded" },
     { name: "Member savings", current: String(livePreviews.memberSavingsPreview.summary.current), target: String(livePreviews.memberSavingsPreview.summary.target), gap: String(livePreviews.memberSavingsPreview.summary.gap), due: livePreviews.memberSavingsPreview.tasks[0]?.dueAt ? displayDate(livePreviews.memberSavingsPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.memberSavingsPreview.source.lastRefreshAt), owner: resolvedOwner(livePreviews.memberSavingsPreview.summary.owner, registeredOwner("essential", "supply")) },
     { ...livingLoop, owner: registeredOwner("occupancy") },
-    { ...collectionsLoop, owner: registeredOwner("collection", "finance") || registeredOwner("collection") },
-    { name: "Nia margins", current: canonicalMargins.current, target: canonicalMargins.target, gap: canonicalMargins.gap, due: "No sheet action", verified: "Calculated from backend", owner: registeredOwner("finance") },
     { name: "Nia growth", current: String(livePreviews.niaGrowthPreview.summary.current), target: String(livePreviews.niaGrowthPreview.summary.target), gap: String(livePreviews.niaGrowthPreview.summary.gap), due: livePreviews.niaGrowthPreview.tasks[0]?.dueAt ? displayDate(livePreviews.niaGrowthPreview.tasks[0].dueAt) : "No open action", verified: displayDate(livePreviews.niaGrowthPreview.source.lastRefreshAt), verifiedPercent: Number.parseInt(String(livePreviews.niaGrowthPreview.summary.progress), 10) || 0, owner: livePreviews.niaGrowthPreview.summary.owner },
   ]
   const governanceRecords = (controlledAutonomyPreview.routineLoop.records ?? []) as any[]
@@ -244,7 +236,7 @@ export function ControlTower({ liveOpsData, enterpriseDemandPreview, controlledA
     String(record.title || record.exceptionId), String(record.exceptionId), governanceConsole(record), String(record.ownerActorId || "Unassigned"), "Governed clock", String(record.state || "Detected"),
   ])
   const enterpriseAlarms: readonly (readonly [string, string, string, string, string, string])[] = []
-  const alarms = [...governanceAlarms, ...enterpriseAlarms]
+  const alarms = [...governanceAlarms, ...enterpriseAlarms].filter((alarm) => !/finance|cash|collection|margin/i.test(`${alarm[0]} ${alarm[2]} ${alarm[3]}`))
   const memberAddsOpenTheatres = newAddsPreview.theatres.filter((theatre) => theatre.vacantNests > 0).length
   const consoles = consoleDefinitions.map((definition) => ({
     ...definition,

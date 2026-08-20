@@ -96,6 +96,12 @@ export async function syncFonoTrackerData() {
     const evidence = String(cell(row, headers, "Evidence_Ref", "Evidence Ref")).trim();
     const remarks = String(cell(row, headers, "Remarks")).trim();
     const verifier = String(cell(row, headers, "Verifier")).trim();
+    const linkedDemandId = String(cell(row, headers, "Enterprise Demand ID", "Demand ID", "Linked Demand ID")).trim();
+    const linkedEnterpriseId = String(cell(row, headers, "Enterprise ID")).trim();
+    const linkedEnterpriseName = String(cell(row, headers, "Enterprise Name", "Company Name")).trim();
+    const propertyStatus = String(cell(row, headers, "Property Status")).trim() || after;
+    const matchStatus = String(cell(row, headers, "Match Status", "Enterprise Match Status")).trim() || (linkedDemandId || linkedEnterpriseId ? "Mapped" : "Unmapped");
+    const propertyFor = String(cell(row, headers, "Property For", "Property Purpose")).trim();
     if (norm(studioId).startsWith("sample") || norm(remarks).includes("do not count")) return [];
     if (acquirer) actorRecords.set(ownerActorId, {
       "actor id": ownerActorId, "display name": acquirer, role: "FONO Acquirer",
@@ -141,16 +147,19 @@ export async function syncFonoTrackerData() {
       });
     }
     return [{
-      "demand id": key, "enterprise id": stable("FONO-PROSPECT", [prospect]), "enterprise name": prospect || "FONO prospect",
+      "demand id": key, "enterprise id": linkedEnterpriseId || stable("FONO-PROSPECT", [prospect]), "enterprise name": linkedEnterpriseName || prospect || "FONO prospect",
       "plant id": studioId, "plant name": studioName,
       "role required": "Living supply", "headcount required": nests, "headcount matched": isSupply ? nests : 0,
       "headcount remaining": isSupply ? 0 : nests, certainty: after, status: after, "owner actor id": ownerActorId,
       "opened at": date, "source submission id": key, "updated at": lastUpdated, "theatre id": theatre,
+      "linked demand id": linkedDemandId, "property location": [corridor, studioName].filter(Boolean).join(" · "),
+      "hunter name": acquirer, "property status": propertyStatus, "match status": matchStatus,
+      "property for": propertyFor,
       "source note": `Business Report Fono Funnel | Demand=${nests} | Supply=${isSupply ? nests : 0}${evidence ? ` | Evidence=${evidence}` : ""}`,
       [REPORTING_MONTH_HEADER]: reportingMonthFromDate(date) || "",
     }];
   });
-  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords], ["theatre id"]);
+  const written = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-TRACKER-", [...records, ...memberAddsRecords], ["theatre id", "linked demand id", "property location", "hunter name", "property status", "match status", "property for"]);
   const monthlyTargetsWritten = await replaceOwned(sheets, backendId, "Enterprise_Demand", "demand id", "FONO-MONTHLY-TARGET-", [...monthlyTargetRecords.values()], ["theatre id"]);
   const livingWritten = await replaceOwned(sheets, backendId, "Living_Hourly", "living hourly id", "FONO-TRACKER-LIVING-", livingRecords);
   const peopleWritten = await replaceOwned(sheets, backendId, "People_Roster", "actor id", "ACT-FONO-", [...actorRecords.values()]);

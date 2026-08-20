@@ -10,11 +10,9 @@ import type { CSSProperties } from "react"
 import { ContextStrip, DecisionBand } from "@/components/operating-ui"
 import type { DashboardTab } from "@/lib/dashboard-model"
 import type { EnterpriseDemandLoopPreview } from "@/lib/operating-loop/enterprise-demand-loop"
-import type { CashControlPreview } from "@/lib/operating-loop/cash-control-loop"
 import type { NewAddsPreview } from "@/lib/operating-loop/new-adds-loop"
 import type { MemberEngagementPreview } from "@/lib/operating-loop/member-engagement-loop"
 import type { MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
-import type { NiaMarginsPreview } from "@/lib/operating-loop/nia-margins-loop"
 import type { NiaGrowthPreview } from "@/lib/operating-loop/nia-growth-loop"
 import type { LoopHealth } from "@/lib/operating-loop/loop-health"
 
@@ -68,11 +66,9 @@ type LoopRow = {
 
 export type DecisionRoomProps = {
   enterpriseDemandPreview: EnterpriseDemandLoopPreview | null
-  cashControlPreview: CashControlPreview | null
   newAddsPreview: NewAddsPreview
   memberEngagementPreview: MemberEngagementPreview | null
   memberSavingsPreview: MemberSavingsPreview
-  niaMarginsPreview: NiaMarginsPreview
   niaGrowthPreview: NiaGrowthPreview
   signOffCount: number
   period: string
@@ -80,26 +76,13 @@ export type DecisionRoomProps = {
   onOpenSignOff: () => void
 }
 
-export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaMarginsPreview, niaGrowthPreview, signOffCount, period, onOpenLoop, onOpenSignOff }: DecisionRoomProps) {
+export function DecisionRoom({ enterpriseDemandPreview, newAddsPreview, memberEngagementPreview, memberSavingsPreview, niaGrowthPreview, signOffCount, period, onOpenLoop, onOpenSignOff }: DecisionRoomProps) {
   const pendingDecisions: PendingDecision[] = [
     ...niaGrowthPreview.signOffs.map((row) => ({ id: row.id, decision: row.decision, loop: "Nia Growth" as const, loopLabel: "Nia Growth", owner: row.owner, impact: row.impact, dueAt: null })),
-    ...(cashControlPreview?.approvals ?? []).map((row) => ({ id: row.id, decision: row.decision, loop: "Cash & Control" as const, loopLabel: "Cash & Control", owner: row.owner, impact: row.impact, dueAt: null })),
   ].sort((left, right) => (left.dueAt ?? "9999").localeCompare(right.dueAt ?? "9999") || left.id.localeCompare(right.id))
   const primaryDecision = pendingDecisions[0] ?? null
 
   const loops: LoopRow[] = [
-    ...(cashControlPreview ? [{
-      tab: "Cash & Control" as const,
-      label: "Cash & Control",
-      headline: cashControlPreview.headline,
-      target: cashControlPreview.summary.target,
-      current: cashControlPreview.summary.current,
-      gap: cashControlPreview.summary.gap,
-      owner: cashControlPreview.summary.owner,
-      health: cashControlPreview.loopHealth,
-      escalations: cashControlPreview.despatchEscalations.length,
-      position: positionPercent(lastNumber(cashControlPreview.summary.current), lastNumber(cashControlPreview.summary.target)),
-    }] : []),
     ...(enterpriseDemandPreview ? [{
       tab: "Enterprise Demand" as const,
       label: "Enterprise Demand",
@@ -149,18 +132,6 @@ export function DecisionRoom({ enterpriseDemandPreview, cashControlPreview, newA
       health: memberSavingsPreview.loopHealth,
       escalations: memberSavingsPreview.despatchEscalations.length,
       position: positionPercent(firstNumber(memberSavingsPreview.summary.current), firstNumber(memberSavingsPreview.summary.target)),
-    },
-    {
-      tab: "Nia Margins" as const,
-      label: "Nia Margins",
-      headline: niaMarginsPreview.answer,
-      target: niaMarginsPreview.measures.fullUseTargetInr > 0 ? `₹${niaMarginsPreview.measures.fullUseTargetInr} full-use CM2` : "Approved target not recorded",
-      current: `₹${Math.round(niaMarginsPreview.measures.fullUseCm2Inr)} today`,
-      gap: niaMarginsPreview.measures.fullUseTargetInr > 0 ? `${Math.max(0, niaMarginsPreview.measures.fullUseTargetInr - niaMarginsPreview.measures.fullUseCm2Inr)} per-unit gap` : "Cannot calculate without approved target",
-      owner: "Nia Margins loop",
-      health: niaMarginsPreview.loopHealth,
-      escalations: niaMarginsPreview.despatchEscalations.length,
-      position: niaMarginsPreview.measures.fullUseTargetInr > 0 ? positionPercent(niaMarginsPreview.measures.fullUseCm2Inr, niaMarginsPreview.measures.fullUseTargetInr) : 0,
     },
     {
       tab: "Nia Growth" as const,

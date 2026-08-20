@@ -2,6 +2,7 @@ import { DashboardSectionAccordion } from "@/components/dashboard-section-accord
 import { DataTable } from "@/components/data-table"
 import { buildBusinessReportData } from "@/lib/live-mappers/business-report"
 import { ENTERPRISE_PIPELINE_STAGES } from "@/lib/enterprise-pipeline-stage"
+import { buildEnterpriseDemandSupplyStatus } from "@/lib/live-mappers/enterprise-demand-supply"
 
 const inr = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
 const compactInr = (value: number) => value ? `₹${(value / 100_000).toLocaleString("en-IN", { maximumFractionDigits: 2 })}L` : "Not recorded"
@@ -65,7 +66,7 @@ function EssentialsAttachmentReport({ essentials }: { essentials: ReturnType<typ
 
   return <section className="business-report-panel essentials-report-card">
     <div className="essentials-report-heading">
-      <p className="pillar-kicker"><b>5</b> ESSENTIALS</p>
+      <p className="pillar-kicker"><b>6</b> ESSENTIALS</p>
       <p>Combined attach is {combinedAttach.toFixed(1)}%. {leaders[0]?.theatre} leads at {leaders[0]?.attachPct.toFixed(1)}%, followed by {leaders[1]?.theatre} at {leaders[1]?.attachPct.toFixed(1)}%.</p>
     </div>
     <div className="essentials-report-grid">
@@ -95,6 +96,7 @@ function EssentialsAttachmentReport({ essentials }: { essentials: ReturnType<typ
 
 export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
   const report = buildBusinessReportData(liveOpsData)
+  const demandSupply = buildEnterpriseDemandSupplyStatus(liveOpsData?.enterpriseDemand ?? [])
   const top = [
     ["GROUP OCCUPANCY", `${report.occupancy.percent}%`, `${report.occupancy.occupied.toLocaleString("en-IN")} / ${report.occupancy.contracted.toLocaleString("en-IN")} Nests filled`],
     ["VACANT NESTS", report.occupancy.vacant.toLocaleString("en-IN"), "Headroom to fill"],
@@ -112,6 +114,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
     { title: "Contribution margin", summary: report.contribution.actual ? `${compactInr(report.contribution.actual)} recorded actual CM` : "Governed CM values not recorded" },
     { title: "FONO pipeline", summary: `${report.fono.stages.Contracted.toLocaleString("en-IN")} contracted Nests` },
     { title: "Enterprise Demand", summary: `${report.enterprise.records} governed records` },
+    { title: "Enterprise Demand vs Supply Status", summary: `${demandSupply.rows.length} company-property records · ${demandSupply.performance.length} Theatre × hunter groups` },
     { title: "Essentials", summary: `${report.essentials.attachPct}% live attach` },
     { title: "Source and controls", summary: "Existing normalized backend · read-only projection" },
   ]}>
@@ -120,6 +123,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
     <section className="business-report-panel"><p className="pillar-kicker">2 · CONTRIBUTION MARGIN</p><h2>{report.contribution.actual ? `${compactInr(report.contribution.actual)} actuals; ${report.contribution.pipelineRecorded ? `${compactInr(report.contribution.pipeline)} expected pipeline` : "pipeline not recorded"}.` : "Governed contribution margin is not recorded."}</h2><div className="business-split"><ContributionWaterfall components={report.contribution.components} actual={report.contribution.actual} pipeline={report.contribution.pipeline} /><DataTable caption="Closure and pipeline" columns={["COMPONENT", "TYPE", "CM", "REVENUE"]} rows={[...report.contribution.components.map((row) => [row.component, row.type, compactInr(row.cmInr), row.revenueInr ? compactInr(row.revenueInr) : "—"]), ["Total actuals", "Actual", compactInr(report.contribution.actual), "—"], ["Total pipeline", "Pipeline", report.contribution.pipelineRecorded ? compactInr(report.contribution.pipeline) : "Not recorded", "—"]]} /></div></section>
     <section className="business-report-panel"><p className="pillar-kicker">3 · FONO PIPELINE · NESTS</p><h2>{report.fono.stages.Lead.toLocaleString("en-IN")} Lead · {report.fono.stages.Contracting.toLocaleString("en-IN")} Contracting · {report.fono.stages.Contracted.toLocaleString("en-IN")} Contracted.</h2><div className="business-split"><Funnel title="Cumulative total" values={Object.entries(report.fono.stages) as [string, number][]} /><DataTable caption="FONO pipeline by Theatre" columns={["THEATRE", "LEAD", "CONTRACTING", "CONTRACTED", "TOTAL"]} rows={report.fono.byTheatre.map((row) => [row.theatre, row.Lead.toLocaleString("en-IN"), row.Contracting.toLocaleString("en-IN"), row.Contracted.toLocaleString("en-IN"), row.total.toLocaleString("en-IN")])} /></div></section>
     <section className="business-report-panel"><p className="pillar-kicker">4 · ENTERPRISE DEMAND</p><h2>{report.enterprise.records} demand records.</h2><div style={{ marginBottom: 24 }}><Funnel title="Demand conversion funnel" values={Object.entries(report.enterprise.stages) as [string, number][]} /></div><EnterpriseTheatrePerformance rows={report.enterprise.byTheatre} /></section>
+    <section className="business-report-panel"><p className="pillar-kicker">5 · ENTERPRISE DEMAND VS SUPPLY STATUS</p><h2>Every Enterprise demand is shown against its hunted FONO properties.</h2><p>Company and demand status come from Enterprise Demand. Property, location, hunter and property status come from the FONO Funnel and join through Enterprise Demand ID or Enterprise ID.</p><DataTable caption="Enterprise company to hunted property status" columns={["COMPANY", "THEATRE", "DEMAND STATUS", "PROPERTY", "LOCATION", "HUNTED BY", "PROPERTY STATUS", "MATCH STATUS"]} rows={demandSupply.rows.length ? demandSupply.rows.map((row) => [row.company, row.theatre, row.demandStatus, row.property, row.location, row.hunter, row.propertyStatus, row.matchStatus]) : [["No Enterprise demand/property mapping", "—", "—", "—", "—", "—", "—", "—"]]} /><div style={{ marginTop: 24 }}><DataTable caption="Property hunting performance by Theatre and person" columns={["THEATRE", "HUNTING PERSON", "PROPERTIES HUNTED", "MAPPED TO DEMAND", "SELECTED / CONTRACTED", "MAPPING RATE"]} rows={demandSupply.performance.length ? demandSupply.performance.map((row) => [row.theatre, row.hunter, String(row.hunted), String(row.mapped), String(row.contracted), row.hunted ? `${Math.round(row.mapped / row.hunted * 100)}%` : "0%"]) : [["No hunting activity", "—", "0", "0", "0", "0%"]]} /></div></section>
     <EssentialsAttachmentReport essentials={report.essentials} />
     <section className="business-report-source"><strong>Source and controls</strong><p>Read-only projection of Living_Hourly, Enterprise_Demand, Work_Hourly, Finance_Daily and Essentials governed backend records. No manual board-report values are copied into production.</p></section>
   </DashboardSectionAccordion>

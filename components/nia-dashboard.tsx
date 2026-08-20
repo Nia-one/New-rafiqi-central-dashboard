@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { CalendarDays, LockKeyhole, Menu, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Truck, UserPlus } from "lucide-react"
+import { CalendarDays, Menu, RefreshCw, Search, ShieldCheck, SlidersHorizontal, Truck, UserPlus } from "lucide-react"
 import { AllocationContextStrip } from "@/components/allocation-context-strip"
 import { AttachSlopeChart } from "@/components/charts/attach-slope-chart"
 import { CmBridgeChart } from "@/components/charts/cm-bridge-chart"
@@ -16,7 +16,6 @@ import { LivingScreen } from "@/components/living-screen"
 import { EssentialsScreen } from "@/components/essentials-screen"
 import { PeopleScreen } from "@/components/people-screen"
 import { DespatchScreen } from "@/components/despatch-screen"
-import { FinanceExpansionWorkspace } from "@/components/finance-expansion-workspace"
 import { ControlledAutonomyWorkspace } from "@/components/controlled-autonomy-workspace"
 import { MemberFeedbackScreen } from "@/components/member-feedback-screen"
 import { OverviewStory, type OverviewMode } from "@/components/overview/overview-story"
@@ -24,12 +23,10 @@ import { WorkScreen } from "@/components/work-screen"
 import { BusinessReportScreen } from "@/components/business-report-screen"
 import { LiveOverviewWorkspace, LiveSheetWorkspace } from "@/components/live-sheet-workspace"
 import { EnterpriseLeadWorkspace } from "@/components/enterprise-lead-workspace"
-import { NiaMarginsWorkspace } from "@/components/nia-margins-workspace"
 import { NewAddsWorkspace } from "@/components/new-adds-workspace"
 import { MemberEngagementWorkspace } from "@/components/member-engagement-workspace"
 import { MemberSavingsWorkspace } from "@/components/member-savings-workspace"
 import { NiaGrowthWorkspace } from "@/components/nia-growth-workspace"
-import { CashControlWorkspace } from "@/components/cash-control-workspace"
 import { LearningHistoryWorkspace, type LearningHistoryEntry } from "@/components/learning-history-workspace"
 import { ContextStrip, SegmentedControl } from "@/components/operating-ui"
 import { dashboardDisplayLabel, FINANCE_TABS, POST_LOGIN_DASHBOARD_STATE, SELF_LEARN_TABS, TABLE_SCREENS, workspaceLandingTab, type DashboardRoute, type DashboardTab, type DashboardWorkspace, type LivingSection } from "@/lib/dashboard-model"
@@ -222,7 +219,9 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     // A direct launch from Control Tower is an explicit navigation request and
     // must not be overwritten by the page visited in an earlier dashboard
     // session. Standalone dashboard reloads still restore their last page.
-    const restoredActive = restoreStoredPage ? storedActive || initialActive : initialActive
+    const requestedActive = restoreStoredPage ? storedActive || initialActive : initialActive
+    const removedFinanceTabs: readonly DashboardTab[] = ["Cash & Control", "Finance control", "Nia Margins", "Economics"]
+    const restoredActive = removedFinanceTabs.includes(requestedActive) ? "Despatch" : requestedActive
     const inferredWorkspace: DashboardWorkspace = (SELF_LEARN_TABS as readonly string[]).includes(restoredActive)
       ? "self-learn"
       : (FINANCE_TABS as readonly string[]).includes(restoredActive) ? "finance" : "self-drive"
@@ -253,7 +252,6 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     { domain: "New Adds" as const, health: newAddsPreview.loopHealth },
     ...(memberEngagementPreview ? [{ domain: "Member Engagement" as const, health: memberEngagementPreview.loopHealth }] : []),
     { domain: "Member Savings" as const, health: memberSavingsPreview.loopHealth },
-    { domain: "Nia Margins" as const, health: niaMarginsPreview.loopHealth },
     { domain: "Nia Growth" as const, health: niaGrowthPreview.loopHealth },
     ...(cashControlPreview ? [{ domain: "Cash & Control" as const, health: cashControlPreview.loopHealth }] : []),
   ]), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview, memberSavingsPreview.loopHealth, newAddsPreview.loopHealth, niaGrowthPreview.loopHealth, niaMarginsPreview.loopHealth])
@@ -262,7 +260,6 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     ...newAddsPreview.despatchEscalations,
     ...(memberEngagementPreview?.despatchEscalations ?? []),
     ...memberSavingsPreview.despatchEscalations,
-    ...niaMarginsPreview.despatchEscalations,
     ...niaGrowthPreview.despatchEscalations,
     ...(cashControlPreview?.despatchEscalations ?? []),
   ], Number.MAX_SAFE_INTEGER), [cashControlPreview, enterpriseDemandPreview, memberEngagementPreview, memberSavingsPreview.despatchEscalations, newAddsPreview.despatchEscalations, niaGrowthPreview.despatchEscalations, niaMarginsPreview.despatchEscalations])
@@ -332,12 +329,10 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
     const query = searchQuery.trim().toLowerCase()
     if (!query) return
     const destinations: Array<[DashboardWorkspace, DashboardTab, string]> = [
-      ["self-drive", "Cash & Control", "cash control collections buffer opex"],
       ["self-drive", "Enterprise Demand", "enterprise demand arrivals capacity"],
       ["self-drive", "New Adds", "member adds vacancy billing"],
       ["self-drive", "Member Engagement", "member engagement retention risk"],
       ["self-drive", "Member Savings", "member savings service margin"],
-      ["self-drive", "Nia Margins", "nia margins contribution"],
       ["self-drive", "Nia Growth", "nia growth capacity"],
       ["self-drive", "Despatch", "despatch exceptions actions"],
       ["self-learn", "Overview", "overview continuity"],
@@ -403,11 +398,9 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       <div className="x-page-body">
       {decisionRoomOpen ? <DecisionRoom
         enterpriseDemandPreview={enterpriseDemandPreview}
-        cashControlPreview={cashControlPreview}
         newAddsPreview={newAddsPreview}
         memberEngagementPreview={memberEngagementPreview}
         memberSavingsPreview={memberSavingsDisplay}
-        niaMarginsPreview={niaMarginsPreview}
         niaGrowthPreview={niaGrowthPreview}
         signOffCount={learningHistory.length}
         period={dashboardPeriod}
@@ -415,15 +408,12 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
         onOpenSignOff={() => navigateFromRail("self-drive", "Your Sign-Off")}
       /> : <LensProvider lens={lens}>
       {active === "Overview" && <OverviewStory mode={overviewMode} commitments={commitments} loopHealth={platformLoopHealth} liveOpsData={liveOpsData} onModeChange={setOverviewMode} onNavigate={navigate} />}
-      {active === "Cash & Control" && (cashControlPreview ? <CashControlWorkspace preview={cashControlPreview} /> : <section className="restricted-control" aria-label="Restricted Cash and Control"><LockKeyhole aria-hidden /><p className="eyebrow">RESTRICTED CONTROL</p><h2>Cash &amp; Control is available to authorised Finance users.</h2><p>Operating teams can continue through the remaining Self Drive tabs. Financial goals, cash, opex and leakage remain protected.</p></section>)}
-      {active === "Enterprise Demand" && <EnterpriseLeadWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} asOf={dataAsOf} />}
+      {active === "Enterprise Demand" && <EnterpriseLeadWorkspace rows={liveOpsData?.enterpriseWorkspaceDemand ?? []} supplyRows={liveOpsData?.enterpriseDemand ?? []} asOf={dataAsOf} />}
       {active === "New Adds" && <NewAddsWorkspace preview={newAddsPreview} />}
       {active === "Member Engagement" && (memberEngagementPreview ? <MemberEngagementWorkspace preview={memberEngagementPreview} /> : <LiveSheetWorkspace kind="Member Feedback" rows={(liveOpsData?.incidentLog ?? []).filter((row: any) => String(row.domain ?? "").toLowerCase().includes("engagement"))} secondaryRows={liveOpsData?.memberNpsResponses ?? []} asOf={dataAsOf} />)}
       {active === "Member Savings" && <MemberSavingsWorkspace preview={memberSavingsDisplay} />}
       {active === "Nia Growth" && <NiaGrowthWorkspace preview={niaGrowthPreview} />}
-      {active === "Finance control" && financeExpansionPreview && <FinanceExpansionWorkspace preview={financeExpansionPreview} />}
       {active === "Your Sign-Off" && controlledAutonomyPreview && <ControlledAutonomyWorkspace preview={controlledAutonomyPreview} />}
-      {active === "Nia Margins" && <NiaMarginsWorkspace preview={niaMarginsPreview} owner={registeredFinanceOwner || "Finance JCO"} />}
       {active === "Living" && <LivingScreen focus={livingFocus} allocationFocus={allocationFocus} liveOpsData={liveOpsData} />}
       {active === "Work" && <WorkScreen liveRows={liveOpsData?.work ?? []} />}
       {active === "Essentials" && <EssentialsScreen allocationFocus={allocationFocus} liveData={{ dashboard: liveOpsData?.essentialsDashboard ?? [], hourly: liveOpsData?.essentials ?? [], cohorts: liveOpsData?.essentialsCohorts ?? [], inventory: liveOpsData?.essentialsInventory ?? [] }} />}
@@ -432,7 +422,6 @@ export function NiaDashboard({ liveOpsData, memberFeedbackItems = [], memberNpsR
       {active === "Member Feedback" && <MemberFeedbackScreen actions={commitments} items={memberFeedbackItems} responses={memberNpsResponses} sourceAsOf={String(liveOpsData?.fetchedAt ?? "")} onOpenExecution={openFeedbackExecution} onOpenDespatch={openFeedbackDespatch} />}
       {active === "Definitions" && <LearningHistoryWorkspace entries={learningHistory} />}
       {active === "Despatch" && <DespatchScreen commitments={commitments} escalations={platformDespatchQueue.visible} escalationTotal={platformDespatchQueue.totalOpen} loopHealth={platformLoopHealth} onValidateAction={validateExecutionAction} />}
-      {active === "Economics" && <LiveSheetWorkspace kind="Economics" rows={liveOpsData?.finance ?? []} secondaryRows={liveOpsData?.essentialsInventory ?? []} asOf={dataAsOf} allocationFocus={allocationFocus} />}
       </LensProvider>}
       </div>
     </section></div>
