@@ -98,7 +98,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
   const report = buildBusinessReportData(liveOpsData)
   const enterpriseMatches = (liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => !row.dataIssue)
   const provisionalMatches = enterpriseMatches.filter((row: any) => row.rank === 1)
-  const founderReadyMatches = provisionalMatches.filter((row: any) => String(row.verificationStatus ?? "").trim().toLowerCase() === "verified match" && String(row.verifiedProperty ?? "").trim().toLowerCase() === String(row.property ?? "").trim().toLowerCase() && Number.isFinite(row.verifiedDistanceKm) && Number.isFinite(row.verifiedBikeMinutes))
+  const verifiedMatches = provisionalMatches.filter((row: any) => String(row.verificationStatus ?? "").trim().toLowerCase() === "verified match" && String(row.verifiedProperty ?? "").trim().toLowerCase() === String(row.property ?? "").trim().toLowerCase() && Number.isFinite(row.verifiedDistanceKm) && Number.isFinite(row.verifiedBikeMinutes))
   const top = [
     ["GROUP OCCUPANCY", `${report.occupancy.percent}%`, `${report.occupancy.occupied.toLocaleString("en-IN")} / ${report.occupancy.contracted.toLocaleString("en-IN")} Nests filled`],
     ["VACANT NESTS", report.occupancy.vacant.toLocaleString("en-IN"), "Headroom to fill"],
@@ -116,7 +116,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
     { title: "Contribution margin", summary: report.contribution.actual ? `${compactInr(report.contribution.actual)} recorded actual CM` : "Governed CM values not recorded" },
     { title: "FONO pipeline", summary: `${report.fono.stages.Contracted.toLocaleString("en-IN")} contracted Nests` },
     { title: "Enterprise Demand", summary: `${report.enterprise.records} governed records` },
-    { title: "Enterprise Demand vs Supply", summary: `${provisionalMatches.length} provisional · ${founderReadyMatches.length} Founder-ready` },
+    { title: "Enterprise Demand vs Supply", summary: `${provisionalMatches.length} provisional · ${verifiedMatches.length} verified` },
     { title: "Essentials", summary: `${report.essentials.attachPct}% live attach` },
     { title: "Source and controls", summary: "Existing normalized backend · read-only projection" },
   ]}>
