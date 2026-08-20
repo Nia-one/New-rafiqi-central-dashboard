@@ -3,6 +3,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials"
 
 const SOURCE_ID = "1sD05271Z-MNEvS-1cRneavjF0XLmxdUhHczxZ1HlAVs"
 const MATCH_RESULTS_TAB = "Enterprise-Match-Results"
+const ENABLED_THEATRES = new Set(["coromandel"])
 let lastVerifiedMatches: DemandSupplyMatch[] = []
 export type DemandSupplyMatch = {
   theatre: string
@@ -51,6 +52,7 @@ async function discoverSources(): Promise<SourceConfig[]> {
   return titles.flatMap((demandTab) => {
     if (!demandSuffix.test(demandTab)) return []
     const theatre = demandTab.replace(demandSuffix, "").trim()
+    if (!ENABLED_THEATRES.has(normalize(theatre))) return []
     const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
     return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
   })
