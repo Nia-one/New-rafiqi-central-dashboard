@@ -37,7 +37,7 @@ const buildSharedOpsData = unstable_cache(
 )
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v10-b2b-tab-discovery"],
+  ["enterprise-demand-supply-matches-v11-router-timeout"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 async function buildCachedOpsData() {
