@@ -37,7 +37,7 @@ const buildSharedOpsData = unstable_cache(
 )
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v5-coromandel-only"],
+  ["enterprise-demand-supply-matches-v6-coromandel-only"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 async function buildCachedOpsData() {
