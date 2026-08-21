@@ -100,7 +100,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
   const verifiedMatches = provisionalMatches.filter((row: any) => String(row.verificationStatus ?? "").trim().toLowerCase() === "verified match" && String(row.verifiedProperty ?? "").trim().toLowerCase() === String(row.property ?? "").trim().toLowerCase() && Number.isFinite(row.verifiedDistanceKm) && Number.isFinite(row.verifiedBikeMinutes))
   const listedDemands = new Set((liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => row.dataIssueKind !== "supply" && row.company && row.company !== "Supply data pending").map((row: any) => `${row.theatre}:${row.company}`)).size
   const matchReadyDemands = new Set(enterpriseMatches.map((row: any) => `${row.theatre}:${row.company}`)).size
-  const listedSupply = new Set((liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => row.property && row.property !== "Matching pending").map((row: any) => `${row.theatre}:${row.property}`)).size
+  const listedSupply = new Set((liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => row.property && row.property !== "Matching pending").map((row: any) => row.supplyId || `${row.theatre}:${row.property}`)).size
   const top = [
     ["GROUP OCCUPANCY", `${report.occupancy.percent}%`, `${report.occupancy.occupied.toLocaleString("en-IN")} / ${report.occupancy.contracted.toLocaleString("en-IN")} Nests filled`],
     ["VACANT NESTS", report.occupancy.vacant.toLocaleString("en-IN"), "Headroom to fill"],

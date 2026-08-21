@@ -31,6 +31,21 @@ export type DemandSupplyMatch = {
   verifiedBikeMinutes?: number
   verifiedBy?: string
   verificationStatus?: string
+  supplyId?: string
+  supplyDate?: string
+  supplyContact?: string
+  supplyRoomType?: string
+  supplySize?: string
+  supplyTotalRooms?: string
+  supplyCapacityWithoutBunk?: string
+  supplyCostWithoutBeds?: string
+  supplyBunkCapacity?: string
+  supplyCostWithBeds?: string
+  supplyRoomRent?: string
+  supplyAdvance?: string
+  supplyEb?: string
+  supplyDrainage?: string
+  supplyNearbyFacilities?: string
 }
 
 type SourceConfig = { theatre: string; demandTab: string; supplyTab?: string; maxKm: number; maxMinutes?: number }
@@ -162,14 +177,35 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
       continue
     }
     const demands = demandRecords.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
-    const allSupplies = supplyTable.slice(1).map((row) => ({ property: value(row, columnIndex(supplyHeaders, ["Property Location", "Property Name", "Location", "Supply Location"], 1)), coordinate: parseCoordinate(row[columnIndex(supplyHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], 2)]), owner: value(row, columnIndex(supplyHeaders, ["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, columnIndex(supplyHeaders, ["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)) })).filter((row) => row.property)
-    const supplies = allSupplies.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
+    const supplyColumn = (names: string[], fallback = -1) => columnIndex(supplyHeaders, names, fallback)
+    const allSupplies = supplyTable.slice(1).map((row, index) => {
+      const sourceRow = index + 2
+      const property = value(row, supplyColumn(["Property Location", "Property Name", "Location", "Supply Location"], 1))
+      const coordinate = parseCoordinate(row[supplyColumn(["Google Location", "Lat & Long", "Latitude Longitude"], 2)])
+      const hasSourceData = row.some((cell) => String(cell ?? "").trim())
+      return {
+        supplyId: `${normalize(source.theatre)}:row-${sourceRow}`,
+        property: property || `Property name pending (row ${sourceRow})`, propertyNameMissing: !property, coordinate,
+        owner: value(row, supplyColumn(["Owner Name", "Property Owner", "Owner"], 3)),
+        hunter: value(row, supplyColumn(["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)),
+        supplyDate: value(row, supplyColumn(["Date"], 0)), supplyContact: value(row, supplyColumn(["Contact", "Contact Number"], 4)),
+        supplyRoomType: value(row, supplyColumn(["Room Type", "Room Tye"], 5)), supplySize: value(row, supplyColumn(["Size, ft", "Size"], 6)),
+        supplyTotalRooms: value(row, supplyColumn(["Total Rooms"], 7)), supplyCapacityWithoutBunk: value(row, supplyColumn(["Without Bunk beds Capacity"], 8)),
+        supplyCostWithoutBeds: value(row, supplyColumn(["Cost (W/o Beds)", "Cost Without Beds"], 9)), supplyBunkCapacity: value(row, supplyColumn(["Bunk Bed Capacity"], 10)),
+        supplyCostWithBeds: value(row, supplyColumn(["Cost with Beds"], 11)), supplyRoomRent: value(row, supplyColumn(["Room rent", "Room Rent"], 12)),
+        supplyAdvance: value(row, supplyColumn(["Advance"], 13)), supplyEb: value(row, supplyColumn(["EB"], 14)),
+        supplyDrainage: value(row, supplyColumn(["Drainage"], 15)), supplyNearbyFacilities: value(row, supplyColumn(["Near By facilities", "Nearby Facilities"], 16)),
+        hasSourceData,
+      }
+    }).filter((row) => row.hasSourceData)
+    const supplies = allSupplies.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate) && !row.propertyNameMissing)
+    const supplyFields = (row: typeof allSupplies[number]) => ({ supplyId: row.supplyId, supplyDate: row.supplyDate, supplyContact: row.supplyContact, supplyRoomType: row.supplyRoomType, supplySize: row.supplySize, supplyTotalRooms: row.supplyTotalRooms, supplyCapacityWithoutBunk: row.supplyCapacityWithoutBunk, supplyCostWithoutBeds: row.supplyCostWithoutBeds, supplyBunkCapacity: row.supplyBunkCapacity, supplyCostWithBeds: row.supplyCostWithBeds, supplyRoomRent: row.supplyRoomRent, supplyAdvance: row.supplyAdvance, supplyEb: row.supplyEb, supplyDrainage: row.supplyDrainage, supplyNearbyFacilities: row.supplyNearbyFacilities })
     if (!supplies.length) {
       output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available", dataIssueKind: "theatre" })
       continue
     }
     demandRecords.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Demand coordinates not available for ${row.company}`, dataIssueKind: "demand" }))
-    allSupplies.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: "Supply data pending", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Property coordinates not available for ${row.property}`, dataIssueKind: "supply" }))
+    allSupplies.filter((row) => !row.coordinate || row.propertyNameMissing).forEach((row) => output.push({ theatre: source.theatre, company: "Supply data pending", demandStatus: "Matching cannot be calculated", demandLocation: row.coordinate ? "Coordinates available" : "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: row.propertyNameMissing ? "Property name required" : "Coordinates required", dataIssue: row.propertyNameMissing ? `Property/location name is blank in source row ${row.supplyId.split("-").pop()}` : `Property coordinates not available for ${row.property}`, dataIssueKind: "supply", ...supplyFields(row) }))
 
     let matrix: RouteMatrixElement[]
     try {
@@ -202,6 +238,7 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
           rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`,
           demandLat: demand.coordinate.lat, demandLng: demand.coordinate.lng,
           propertyLat: candidate.supply.coordinate!.lat, propertyLng: candidate.supply.coordinate!.lng,
+          ...supplyFields(candidate.supply),
         })
       }
     }
