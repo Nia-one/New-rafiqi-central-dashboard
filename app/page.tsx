@@ -37,7 +37,7 @@ const buildSharedOpsData = unstable_cache(
 )
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v9-independent-inventory"],
+  ["enterprise-demand-supply-matches-v10-b2b-tab-discovery"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 async function buildCachedOpsData() {

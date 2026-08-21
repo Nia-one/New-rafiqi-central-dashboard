@@ -68,7 +68,7 @@ async function discoverSources(): Promise<SourceConfig[]> {
   const supplySuffixes = ["properties", "property", "supply"]
   return titles.flatMap((demandTab) => {
     if (!demandSuffix.test(demandTab)) return []
-    const theatre = demandTab.replace(demandSuffix, "").trim()
+    const theatre = demandTab.replace(demandSuffix, "").replace(/(?:\s|-)+b2b$/i, "").trim()
     if (!ENABLED_THEATRES.has(normalize(theatre))) return []
     const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
     return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
