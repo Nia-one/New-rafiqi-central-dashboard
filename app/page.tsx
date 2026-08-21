@@ -37,7 +37,7 @@ const buildSharedOpsData = unstable_cache(
 )
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v7-supply-row-identity"],
+  ["enterprise-demand-supply-matches-v8-live-inventory-fallback"],
   { revalidate: false, tags: ["governed-ops-data"] },
 )
 async function buildCachedOpsData() {

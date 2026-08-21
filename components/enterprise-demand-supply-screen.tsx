@@ -18,8 +18,9 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
   const [view, setView] = useState("Best option per demand")
   const [coverage, setCoverage] = useState("All demand")
   const [showSupplyDetails, setShowSupplyDetails] = useState(false)
-  const issues = rows.filter((row) => row.dataIssue && (theatre === "All theatres" || row.theatre === theatre))
-  const matchRows = rows.filter((row) => !row.dataIssue)
+  const inventoryRows = rows.filter((row) => row.inventoryOnly && (theatre === "All theatres" || row.theatre === theatre))
+  const issues = rows.filter((row) => row.dataIssue && !row.inventoryOnly && (theatre === "All theatres" || row.theatre === theatre))
+  const matchRows = rows.filter((row) => !row.dataIssue && !row.inventoryOnly)
   const theatreRows = matchRows.filter((row) => theatre === "All theatres" || row.theatre === theatre)
   const locations = ["All locations", ...Array.from(new Set(theatreRows.map((row) => row.demandLocation || "Location not recorded"))).sort()]
   const enterprises = ["All enterprises", ...Array.from(new Set(theatreRows.map((row) => row.company))).sort()]
@@ -41,10 +42,11 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
   const firstMatches = filtered.filter((row) => row.eligible && row.rank === 1)
   const verifiedMatches = filtered.filter(isVerifiedMatch)
   const totalDemandCount = new Set([...filtered.map((row) => `${row.theatre}:${row.company}`), ...visibleIssues.filter((row) => row.dataIssueKind === "demand").map((row) => `${row.theatre}:${row.company}`)]).size
-  const totalSupplyCount = new Set([...scoped.map(supplyKey), ...visibleIssues.filter((row) => row.dataIssueKind === "supply").map(supplyKey)]).size
-  const listedSupplyCount = new Set([...theatreRows.map(supplyKey), ...issues.filter((row) => row.dataIssueKind === "supply").map(supplyKey)]).size
-  const supplyRecords = Array.from(new Map([...theatreRows, ...issues.filter((row) => row.dataIssueKind === "supply")].map((row) => [supplyKey(row), row])).values())
-  const routeReadySupplyCount = supplyRecords.filter((row) => row.propertyLat !== undefined && row.propertyLng !== undefined && !row.dataIssue).length
+  const supplySourceRows = inventoryRows.length ? inventoryRows : [...theatreRows, ...issues.filter((row) => row.dataIssueKind === "supply")]
+  const supplyRecords = Array.from(new Map(supplySourceRows.map((row) => [supplyKey(row), row])).values())
+  const totalSupplyCount = supplyRecords.length
+  const listedSupplyCount = supplyRecords.length
+  const routeReadySupplyCount = supplyRecords.filter((row) => row.propertyLat !== undefined && row.propertyLng !== undefined && !row.property.startsWith("Property name pending")).length
   const hunterPerformance = Array.from(firstMatches.reduce((summary, row) => {
     const hunter = row.hunter.trim()
     if (hunter) summary.set(hunter, (summary.get(hunter) ?? 0) + 1)

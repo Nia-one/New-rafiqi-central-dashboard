@@ -46,6 +46,7 @@ export type DemandSupplyMatch = {
   supplyEb?: string
   supplyDrainage?: string
   supplyNearbyFacilities?: string
+  inventoryOnly?: boolean
 }
 
 type SourceConfig = { theatre: string; demandTab: string; supplyTab?: string; maxKm: number; maxMinutes?: number }
@@ -214,7 +215,8 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
       const stored = await readStoredMatches()
       if (stored.length) {
         console.warn("Live motor-scooter router unavailable; serving the last verified persisted match matrix.", error)
-        return stored
+        const liveInventory = allSupplies.map((row) => ({ theatre: source.theatre, company: "Supply inventory", demandStatus: "Not applicable", demandLocation: row.coordinate ? "Coordinates available" : "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: row.propertyNameMissing ? "Property name required" : row.coordinate ? "Live supply inventory" : "Coordinates required", dataIssue: row.propertyNameMissing ? `Property/location name is blank in source row ${row.supplyId.split("-").pop()}` : row.coordinate ? undefined : `Property coordinates not available for ${row.property}`, dataIssueKind: "supply" as const, inventoryOnly: true, propertyLat: row.coordinate?.lat, propertyLng: row.coordinate?.lng, ...supplyFields(row) }))
+        return [...stored.filter((row) => row.dataIssueKind !== "supply"), ...liveInventory]
       }
       throw error
     }
