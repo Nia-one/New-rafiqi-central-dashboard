@@ -132,6 +132,36 @@ function columnIndex(headers: string[], names: string[], fallback = -1) {
   return fallback
 }
 
+async function readLiveSupplyInventory(): Promise<DemandSupplyMatch[]> {
+  const sources = await discoverSources()
+  const active = sources.filter((source) => source.supplyTab)
+  const tables = await readRanges(active.map((source) => `'${source.supplyTab}'!A1:Y1000`))
+  return active.flatMap((source, tableIndex) => {
+    const table = tables[tableIndex] ?? []
+    const headers = table[0] ?? []
+    const index = (names: string[], fallback = -1) => columnIndex(headers, names, fallback)
+    return table.slice(1).flatMap((row, rowIndex) => {
+      if (!row.some((cell) => String(cell ?? "").trim())) return []
+      const sourceRow = rowIndex + 2
+      const propertyName = value(row, index(["Property Location", "Property Name", "Location", "Supply Location"], 1))
+      const coordinate = parseCoordinate(row[index(["Google Location", "Lat & Long", "Latitude Longitude"], 2)])
+      const property = propertyName || `Property name pending (row ${sourceRow})`
+      const nameMissing = !propertyName
+      return [{ theatre: source.theatre, company: "Supply inventory", demandStatus: "Not applicable", demandLocation: coordinate ? "Coordinates available" : "Coordinates unavailable", property, propertyOwner: value(row, index(["Owner Name", "Property Owner", "Owner"], 3)), hunter: value(row, index(["Hunted By", "Hunting Person", "Property Hunter", "Property Hunting Person"], -1)), salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: nameMissing ? "Property name required" : coordinate ? "Live supply inventory" : "Coordinates required", dataIssue: nameMissing ? `Property/location name is blank in source row ${sourceRow}` : coordinate ? undefined : `Property coordinates not available for ${property}`, dataIssueKind: "supply" as const, inventoryOnly: true, supplyId: `${normalize(source.theatre)}:row-${sourceRow}`, propertyLat: coordinate?.lat, propertyLng: coordinate?.lng, supplyDate: value(row, index(["Date"], 0)), supplyContact: value(row, index(["Contact", "Contact Number"], 4)), supplyRoomType: value(row, index(["Room Type", "Room Tye"], 5)), supplySize: value(row, index(["Size, ft", "Size"], 6)), supplyTotalRooms: value(row, index(["Total Rooms"], 7)), supplyCapacityWithoutBunk: value(row, index(["Without Bunk beds Capacity"], 8)), supplyCostWithoutBeds: value(row, index(["Cost (W/o Beds)", "Cost Without Beds"], 9)), supplyBunkCapacity: value(row, index(["Bunk Bed Capacity"], 10)), supplyCostWithBeds: value(row, index(["Cost with Beds"], 11)), supplyRoomRent: value(row, index(["Room rent", "Room Rent"], 12)), supplyAdvance: value(row, index(["Advance"], 13)), supplyEb: value(row, index(["EB"], 14)), supplyDrainage: value(row, index(["Drainage"], 15)), supplyNearbyFacilities: value(row, index(["Near By facilities", "Nearby Facilities"], 16)) }]
+    })
+  })
+}
+
+async function attachLiveInventory(rows: DemandSupplyMatch[]) {
+  try {
+    const inventory = enabledMatches(await readLiveSupplyInventory())
+    return inventory.length ? [...rows.filter((row) => row.dataIssueKind !== "supply" && !row.inventoryOnly), ...inventory] : rows
+  } catch (error) {
+    console.warn("Live supply inventory unavailable; retaining persisted supply summary.", error)
+    return rows
+  }
+}
+
 type RouteMatrixElement = { originIndex?: number; destinationIndex?: number; distanceMeters?: number; duration?: string; condition?: string; status?: { code?: number; message?: string } }
 
 const VALHALLA_ENDPOINT = "https://valhalla1.openstreetmap.de/sources_to_targets"
@@ -264,16 +294,18 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     }
     const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
-      lastVerifiedMatches = stored
-      return stored
+      const current = await attachLiveInventory(stored)
+      lastVerifiedMatches = current
+      return current
     }
     return enabledMatches(lastVerifiedMatches)
   } catch (error) {
     const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
       console.warn("Live Enterprise matching inputs unavailable; serving the last verified persisted match matrix.", error)
-      lastVerifiedMatches = stored
-      return stored
+      const current = await attachLiveInventory(stored)
+      lastVerifiedMatches = current
+      return current
     }
     if (lastVerifiedMatches.length) {
       console.warn("Live and persisted Enterprise matching inputs unavailable; serving the last successful in-process match matrix.", error)
