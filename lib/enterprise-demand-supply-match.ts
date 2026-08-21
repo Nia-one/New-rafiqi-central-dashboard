@@ -40,6 +40,7 @@ const THEATRE_RULES: Record<string, { maxKm: number; maxMinutes?: number }> = {
 }
 
 function normalize(value: unknown) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() }
+function enabledMatches(rows: DemandSupplyMatch[]) { return rows.filter((row) => ENABLED_THEATRES.has(normalize(row.theatre))) }
 
 async function discoverSources(): Promise<SourceConfig[]> {
   const token = await accessToken()
@@ -206,9 +207,9 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
 
 export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
   try {
-    const calculated = await calculateEnterpriseDemandSupplyMatches()
+    const calculated = enabledMatches(await calculateEnterpriseDemandSupplyMatches())
     if (calculated.length) {
-      const stored = await readStoredMatches()
+      const stored = enabledMatches(await readStoredMatches())
       const storedByPair = new Map(stored.map((row) => [`${normalize(row.theatre)}:${normalize(row.company)}:${normalize(row.property)}`, row]))
       const merged = calculated.map((row) => {
         const previous = storedByPair.get(`${normalize(row.theatre)}:${normalize(row.company)}:${normalize(row.property)}`)
@@ -218,14 +219,14 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
       lastVerifiedMatches = merged
       return merged
     }
-    const stored = await readStoredMatches()
+    const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
       lastVerifiedMatches = stored
       return stored
     }
-    return lastVerifiedMatches
+    return enabledMatches(lastVerifiedMatches)
   } catch (error) {
-    const stored = await readStoredMatches()
+    const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
       console.warn("Live Enterprise matching inputs unavailable; serving the last verified persisted match matrix.", error)
       lastVerifiedMatches = stored
@@ -233,7 +234,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     }
     if (lastVerifiedMatches.length) {
       console.warn("Live and persisted Enterprise matching inputs unavailable; serving the last successful in-process match matrix.", error)
-      return lastVerifiedMatches
+      return enabledMatches(lastVerifiedMatches)
     }
     throw error
   }
