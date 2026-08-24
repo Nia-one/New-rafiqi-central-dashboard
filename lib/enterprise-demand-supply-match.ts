@@ -14,6 +14,14 @@ export type DemandSupplyMatch = {
   propertyOwner: string
   hunter: string
   salesPerson: string
+  demandContactPerson?: string
+  demandContactNumber?: string
+  demandCapacityWithoutBunk?: string
+  demandCapacityWithBunk?: string
+  demandBudgetPerHead?: string
+  demandDistanceNote?: string
+  demandAssignedProperty?: string
+  demandActionTaken?: string
   distanceKm: number
   bikeDistanceKm: number
   bikeMinutes: number
@@ -201,10 +209,15 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
     const demandHeaders = demandTable[0] ?? []
     const supplyHeaders = supplyTable[0] ?? []
     const demandCoordinateIndex = columnIndex(demandHeaders, ["Google Location", "Lat & Long", "Latitude Longitude"], -1)
-    const demandRecords = demandTable.slice(1).map((row) => ({ company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), salesPerson: value(row, columnIndex(demandHeaders, ["Sales Person", "Sales Persona", "Sales Owner", "Lead Owner", "JCO"], -1)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null })).filter((row) => row.company)
+    const demandRecords = demandTable.slice(1).map((row) => {
+      const withoutBunk = [value(row, columnIndex(demandHeaders, ["Required Capacity, nos"], 7)), value(row, 8)].map(Number).filter(Number.isFinite).reduce((sum, count) => sum + count, 0)
+      const withBunk = [value(row, 9), value(row, 10)].map(Number).filter(Number.isFinite).reduce((sum, count) => sum + count, 0)
+      return { company: value(row, columnIndex(demandHeaders, ["Company Name", "Enterprise Name", "Client Name"], 0)), status: value(row, columnIndex(demandHeaders, ["Current Status", "Demand Status", "Status"], 17)), location: value(row, columnIndex(demandHeaders, ["Company Location", "Demand Location", "Location"], 4)), salesPerson: value(row, columnIndex(demandHeaders, ["Sales Person", "Sales Persona", "Sales Owner", "Lead Owner", "JCO"], -1)), coordinate: demandCoordinateIndex >= 0 ? parseCoordinate(row[demandCoordinateIndex]) : null, demandContactPerson: value(row, columnIndex(demandHeaders, ["Contact Person"], 1)), demandContactNumber: value(row, columnIndex(demandHeaders, ["Contact Number", "Phone Number"], 3)), demandCapacityWithoutBunk: withoutBunk ? String(withoutBunk) : "", demandCapacityWithBunk: withBunk ? String(withBunk) : "", demandBudgetPerHead: value(row, columnIndex(demandHeaders, ["Price Per Head", "Budget Per Head"], 11)), demandDistanceNote: value(row, columnIndex(demandHeaders, ["Req Location, KM", "Required Location KM"], 14)), demandAssignedProperty: value(row, columnIndex(demandHeaders, ["Property Place", "Assigned Property"], 18)), demandActionTaken: value(row, columnIndex(demandHeaders, ["Action Taken"], 19)) }
+    }).filter((row) => row.company)
+    const demandFields = (row: typeof demandRecords[number]) => ({ demandContactPerson: row.demandContactPerson, demandContactNumber: row.demandContactNumber, demandCapacityWithoutBunk: row.demandCapacityWithoutBunk, demandCapacityWithBunk: row.demandCapacityWithBunk, demandBudgetPerHead: row.demandBudgetPerHead, demandDistanceNote: row.demandDistanceNote, demandAssignedProperty: row.demandAssignedProperty, demandActionTaken: row.demandActionTaken })
     if (!source.supplyTab || !demandRecords.some((row) => row.coordinate)) {
       const issues = [!source.supplyTab ? `${source.theatre}-Properties supply tab not available` : "", !demandRecords.some((row) => row.coordinate) ? "Enterprise coordinates not available" : ""].filter(Boolean)
-      demandRecords.forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · "), dataIssueKind: "demand" }))
+      demandRecords.forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: issues.join(" · "), dataIssueKind: "demand", ...demandFields(row) }))
       continue
     }
     const demands = demandRecords.filter((row): row is typeof row & { coordinate: { lat: number; lng: number } } => Boolean(row.coordinate))
@@ -235,7 +248,7 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
       output.push({ theatre: source.theatre, company: "Data not available", demandStatus: "Matching cannot be calculated", demandLocation: "Coordinates available", property: "Data not available", propertyOwner: "", hunter: "", salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`, dataIssue: "Supply property coordinates not available", dataIssueKind: "theatre" })
       continue
     }
-    demandRecords.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Demand coordinates not available for ${row.company}`, dataIssueKind: "demand" }))
+    demandRecords.filter((row) => !row.coordinate).forEach((row) => output.push({ theatre: source.theatre, company: row.company, demandStatus: row.status || "Not updated", demandLocation: row.location || "Location not recorded", property: "Matching pending", propertyOwner: "", hunter: "", salesPerson: row.salesPerson, distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: "Coordinates required", dataIssue: `Demand coordinates not available for ${row.company}`, dataIssueKind: "demand", ...demandFields(row) }))
     allSupplies.filter((row) => !row.coordinate || row.propertyNameMissing).forEach((row) => output.push({ theatre: source.theatre, company: "Supply data pending", demandStatus: "Matching cannot be calculated", demandLocation: row.coordinate ? "Coordinates available" : "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: row.propertyNameMissing ? "Property name required" : "Coordinates required", dataIssue: row.propertyNameMissing ? `Property/location name is blank in source row ${row.supplyId.split("-").pop()}` : `Property coordinates not available for ${row.property}`, dataIssueKind: "supply", ...supplyFields(row) }))
 
     let matrix: RouteMatrixElement[]
@@ -270,6 +283,7 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
           rule: source.maxMinutes === undefined ? `Within ${source.maxKm} km` : `Within ${source.maxKm} km and ${source.maxMinutes} motor-scooter minutes`,
           demandLat: demand.coordinate.lat, demandLng: demand.coordinate.lng,
           propertyLat: candidate.supply.coordinate!.lat, propertyLng: candidate.supply.coordinate!.lng,
+          ...demandFields(demand),
           ...supplyFields(candidate.supply),
         })
       }
