@@ -169,10 +169,9 @@ function liveSavingsServices(snapshot: LiveSelfDriveSnapshot): readonly ServiceG
   }))
 }
 
-export function buildLiveMemberSavingsPreview(snapshot: LiveSelfDriveSnapshot): MemberSavingsPreview | null {
+export function buildLiveMemberSavingsPreview(snapshot: LiveSelfDriveSnapshot): MemberSavingsPreview {
   const services = liveSavingsServices(snapshot)
   const tasks = buildLiveMemberSavingsTasks(snapshot)
-  if (!services.length && !tasks.length) return null
   const passing = services.filter((row) => row.status === "Pass").length
   const totalSaving = services.reduce((sum, row) => sum + row.memberSavingsInr, 0)
   const totalMargin = services.reduce((sum, row) => sum + row.niaMarginInr, 0)
@@ -204,8 +203,7 @@ export function buildLiveMemberSavingsPreview(snapshot: LiveSelfDriveSnapshot): 
   } as unknown as MemberSavingsPreview)
 }
 
-export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaGrowthPreview | null {
-  if (!snapshot.enterpriseDemand.length && !snapshot.living.length) return null
+export function buildLiveNiaGrowthPreview(snapshot: LiveSelfDriveSnapshot): NiaGrowthPreview {
   const projection = buildLiveNiaGrowthProjection(snapshot)
   const channelRows = (channel: "FONO" | "SP") => snapshot.enterpriseDemand.filter((row) => {
     const identity = `${text(row, "demand id")} ${text(row, "source submission id")}`.toLowerCase()

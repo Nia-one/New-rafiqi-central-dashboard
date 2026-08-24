@@ -107,10 +107,11 @@ export default async function Page() {
   const memberSavingsPreview = buildLiveMemberSavingsPreview(liveSnapshot)
   const niaGrowthPreview = buildLiveNiaGrowthPreview(liveSnapshot)
   const marginInputs = buildLiveMarginInputs(liveSnapshot)
-  if (!newAddsPreview || !memberSavingsPreview || !niaGrowthPreview || !marginInputs.length) {
-    console.error("LIVE_PREVIEW_GAP", { enterpriseDemand: Boolean(enterpriseDemandPreview), newAdds: Boolean(newAddsPreview), memberEngagement: Boolean(memberEngagementPreview), memberSavings: Boolean(memberSavingsPreview), niaGrowth: Boolean(niaGrowthPreview), marginInputs: marginInputs.length })
-    throw new Error("Required governed live data is unavailable; synthetic dashboard values are disabled.")
-  }
+  // A live lane can legitimately be empty (or briefly unavailable while a
+  // Sheet refresh is throttled). Render its governed no-data state instead of
+  // taking down every workspace. The preview builders keep synthetic=false,
+  // and an empty margin input produces an empty diagnostic rather than values
+  // inferred from another lane.
   const marginTargetPolicy = selectApprovedMarginTarget(liveSnapshot.policies)
   const recordedMarginTarget = Number(String(marginTargetPolicy?.["policy value"] ?? "").replace(/[^0-9.-]/g, "")) || 0
   const recordedOccupancyPolicy = liveSnapshot.policies.find((row) => {
