@@ -3,6 +3,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials";
 import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { unstable_cache } from "next/cache";
 
 const credentials = googleServiceAccountCredentials();
 const auth = new GoogleAuth({
@@ -26,6 +27,16 @@ const sheetCache = new Map<
 const batchCache = new Map<string, { timestamp: number; data: string[][][] }>();
 const batchRequests = new Map<string, Promise<string[][][]>>();
 const persistedBatchPath = join(tmpdir(), "rafiqi-google-sheets-batch-cache.json");
+const PERSISTENT_BATCH_CHUNK_SIZE = 6;
+
+// Keep each persistent item comfortably below Next/Vercel's 2 MB cache-item
+// limit. Successful chunks are shared by cold serverless instances and Next
+// serves their stale value while a timed refresh is attempted in background.
+const readPersistentBatchChunk = unstable_cache(
+  async (ranges: string[]) => fetchBatch(ranges),
+  ["google-sheets-batch-chunk-v1"],
+  { revalidate: 300, tags: ["governed-ops-data"] },
+);
 
 async function readPersistedBatch(key: string) {
   try {
@@ -114,7 +125,21 @@ export async function batchGet(ranges: string[]) {
   if (active) return active;
   const stale = cached?.data ?? await readPersistedBatch(key);
 
-  const request = fetchBatch(ranges, stale)
+  const request = (async () => {
+    const output: string[][][] = [];
+    for (let start = 0; start < ranges.length; start += PERSISTENT_BATCH_CHUNK_SIZE) {
+      const chunk = ranges.slice(start, start + PERSISTENT_BATCH_CHUNK_SIZE);
+      const staleChunk = stale?.slice(start, start + PERSISTENT_BATCH_CHUNK_SIZE);
+      try {
+        output.push(...await readPersistentBatchChunk(chunk));
+      } catch (error) {
+        if (!staleChunk?.length) throw error;
+        console.warn("Persistent Sheet chunk refresh unavailable; serving stale in-process chunk.", error);
+        output.push(...staleChunk);
+      }
+    }
+    return output;
+  })()
     .then((data) => {
       batchCache.set(key, { timestamp: Date.now(), data });
       void persistBatch(key, data);
