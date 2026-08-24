@@ -259,7 +259,22 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
       if (stored.length) {
         console.warn("Live motor-scooter router unavailable; serving the last verified persisted match matrix.", error)
         const liveInventory = allSupplies.map((row) => ({ theatre: source.theatre, company: "Supply inventory", demandStatus: "Not applicable", demandLocation: row.coordinate ? "Coordinates available" : "Coordinates unavailable", property: row.property, propertyOwner: row.owner, hunter: row.hunter, salesPerson: "", distanceKm: 0, bikeDistanceKm: 0, bikeMinutes: 0, eligible: false, rank: null, rule: row.propertyNameMissing ? "Property name required" : row.coordinate ? "Live supply inventory" : "Coordinates required", dataIssue: row.propertyNameMissing ? `Property/location name is blank in source row ${row.supplyId.split("-").pop()}` : row.coordinate ? undefined : `Property coordinates not available for ${row.property}`, dataIssueKind: "supply" as const, inventoryOnly: true, propertyLat: row.coordinate?.lat, propertyLng: row.coordinate?.lng, ...supplyFields(row) }))
-        return [...stored.filter((row) => row.dataIssueKind !== "supply"), ...liveInventory]
+        const liveDemandByCompany = new Map(demandRecords.map((row) => [normalize(row.company), row]))
+        const storedWithLiveDemand = stored.flatMap((row) => {
+          if (normalize(row.theatre) !== normalize(source.theatre) || row.dataIssueKind === "supply") return []
+          const demand = liveDemandByCompany.get(normalize(row.company))
+          if (!demand) return []
+          return [{
+            ...row,
+            demandStatus: demand.status || row.demandStatus || "Not updated",
+            demandLocation: demand.location || row.demandLocation || "Location not recorded",
+            salesPerson: demand.salesPerson || row.salesPerson,
+            demandLat: demand.coordinate?.lat ?? row.demandLat,
+            demandLng: demand.coordinate?.lng ?? row.demandLng,
+            ...demandFields(demand),
+          }]
+        })
+        return [...storedWithLiveDemand, ...liveInventory]
       }
       throw error
     }
