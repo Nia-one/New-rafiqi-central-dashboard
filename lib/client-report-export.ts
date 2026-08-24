@@ -9,7 +9,7 @@ function reportDocument(title: string, source: HTMLElement) {
   clone.querySelectorAll(".report-export-actions").forEach((node) => node.remove())
   clone.querySelectorAll("button, select").forEach((node) => node.setAttribute("disabled", "true"))
   const headAssets = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], style'))
-    .map((node) => node.outerHTML)
+    .map((node) => node instanceof HTMLLinkElement ? `<link rel="stylesheet" href="${escapeHtml(node.href)}">` : node.outerHTML)
     .join("\n")
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title>${headAssets}<style>body{margin:0;padding:24px;background:#fff;color:#111827;font-family:Arial,sans-serif}.report-export-document{max-width:1600px;margin:0 auto}.report-export-title{margin:0 0 18px;font-size:24px}.report-export-meta{margin:-10px 0 20px;color:#64748b;font-size:12px}@media print{body{padding:0}.report-export-document{max-width:none}.table-wrap,.supply-distance-grid{overflow:visible!important}table{font-size:9px}thead{display:table-header-group}tr{break-inside:avoid}details{break-inside:avoid}details>div{display:block!important}}</style></head><body><main class="report-export-document"><h1 class="report-export-title">${escapeHtml(title)}</h1><p class="report-export-meta">Generated ${escapeHtml(new Date().toLocaleString("en-IN"))} · Live Coromandel dashboard data</p>${clone.outerHTML}</main></body></html>`
 }
