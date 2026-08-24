@@ -37,8 +37,8 @@ let activeOpsDataBuild: Promise<Awaited<ReturnType<typeof buildOpsData>>> | unde
 const buildSharedOpsData = () => buildOpsData()
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
-  ["enterprise-demand-supply-matches-v13-ordered-live-requirements"],
-  { revalidate: false, tags: ["governed-ops-data"] },
+  ["enterprise-demand-supply-matches-v14-durable-live-requirements"],
+  { revalidate: 300 },
 )
 async function buildCachedOpsData() {
   if (lastOpsData && Date.now() - lastOpsDataAt < 45_000) return lastOpsData

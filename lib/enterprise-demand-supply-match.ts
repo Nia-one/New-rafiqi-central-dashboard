@@ -1,4 +1,5 @@
 import { GoogleAuth } from "google-auth-library"
+import { unstable_cache } from "next/cache"
 import { googleServiceAccountCredentials } from "./googleCredentials"
 
 const SOURCE_ID = "1sD05271Z-MNEvS-1cRneavjF0XLmxdUhHczxZ1HlAVs"
@@ -66,7 +67,7 @@ const THEATRE_RULES: Record<string, { maxKm: number; maxMinutes?: number }> = {
 function normalize(value: unknown) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() }
 function enabledMatches(rows: DemandSupplyMatch[]) { return rows.filter((row) => ENABLED_THEATRES.has(normalize(row.theatre))) }
 
-async function discoverSources(): Promise<SourceConfig[]> {
+const discoverSources = unstable_cache(async (): Promise<SourceConfig[]> => {
   const token = await accessToken()
   const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}?fields=sheets.properties(title)`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
   if (!response.ok) throw new Error(`Unable to inspect Enterprise demand/supply tabs: ${response.status} ${await response.text()}`)
@@ -81,7 +82,7 @@ async function discoverSources(): Promise<SourceConfig[]> {
     const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
     return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
   })
-}
+}, ["enterprise-demand-supply-source-tabs-v1"], { revalidate: 300 })
 
 function parseCoordinate(value: unknown) {
   const text = String(value ?? "").trim().toUpperCase()
@@ -103,7 +104,7 @@ async function accessToken(scope = "https://www.googleapis.com/auth/spreadsheets
   return value
 }
 
-async function readRanges(ranges: string[]) {
+const readRanges = unstable_cache(async (ranges: string[]) => {
   const token = await accessToken()
   const params = new URLSearchParams()
   ranges.forEach((range) => params.append("ranges", range))
@@ -111,7 +112,7 @@ async function readRanges(ranges: string[]) {
   if (!response.ok) throw new Error(`Enterprise demand/supply source unavailable: ${response.status} ${await response.text()}`)
   const json = await response.json() as { valueRanges?: { values?: string[][] }[] }
   return (json.valueRanges ?? []).map((range) => range.values ?? [])
-}
+}, ["enterprise-demand-supply-ranges-v1"], { revalidate: 300 })
 
 async function readStoredMatches(): Promise<DemandSupplyMatch[]> {
   try {
