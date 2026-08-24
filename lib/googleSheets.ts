@@ -34,8 +34,8 @@ const PERSISTENT_BATCH_CHUNK_SIZE = 6;
 // serves their stale value while a timed refresh is attempted in background.
 const readPersistentBatchChunk = unstable_cache(
   async (ranges: string[]) => fetchBatch(ranges),
-  ["google-sheets-batch-chunk-v1"],
-  { revalidate: 300, tags: ["governed-ops-data"] },
+  ["google-sheets-batch-chunk-v2-durable-stale"],
+  { revalidate: 300 },
 );
 
 async function readPersistedBatch(key: string) {
