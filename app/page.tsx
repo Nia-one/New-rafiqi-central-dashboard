@@ -30,11 +30,11 @@ export const dynamic = "force-dynamic"
 let lastOpsData: Awaited<ReturnType<typeof buildOpsData>> | undefined
 let lastOpsDataAt = 0
 let activeOpsDataBuild: Promise<Awaited<ReturnType<typeof buildOpsData>>> | undefined
-const buildSharedOpsData = unstable_cache(
-  () => buildOpsData(),
-  ["governed-ops-data-v3"],
-  { revalidate: false, tags: ["governed-ops-data"] },
-)
+// Do not put this payload in Next's persistent Data Cache: the complete
+// governed ledger is already larger than the framework's 2 MB item limit.
+// buildCachedOpsData below provides the intended in-process TTL, concurrency
+// deduplication, and last-successful-value fallback without serializing it.
+const buildSharedOpsData = () => buildOpsData()
 const loadSharedEnterpriseMatches = unstable_cache(
   () => loadEnterpriseDemandSupplyMatches(),
   ["enterprise-demand-supply-matches-v11-router-timeout"],
