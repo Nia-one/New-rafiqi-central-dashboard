@@ -2,6 +2,7 @@ import { DashboardSectionAccordion } from "@/components/dashboard-section-accord
 import { DataTable } from "@/components/data-table"
 import { buildBusinessReportData } from "@/lib/live-mappers/business-report"
 import { ENTERPRISE_PIPELINE_STAGES } from "@/lib/enterprise-pipeline-stage"
+import { EnterpriseSupplyFunnelScreen } from "@/components/enterprise-supply-funnel-screen"
 
 const inr = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value)
 const compactInr = (value: number) => value ? `₹${(value / 100_000).toLocaleString("en-IN", { maximumFractionDigits: 2 })}L` : "Not recorded"
@@ -65,7 +66,7 @@ function EssentialsAttachmentReport({ essentials }: { essentials: ReturnType<typ
 
   return <section className="business-report-panel essentials-report-card">
     <div className="essentials-report-heading">
-      <p className="pillar-kicker"><b>5</b> ESSENTIALS</p>
+      <p className="pillar-kicker"><b>7</b> ESSENTIALS</p>
       <p>Combined attach is {combinedAttach.toFixed(1)}%. {leaders[0]?.theatre} leads at {leaders[0]?.attachPct.toFixed(1)}%, followed by {leaders[1]?.theatre} at {leaders[1]?.attachPct.toFixed(1)}%.</p>
     </div>
     <div className="essentials-report-grid">
@@ -95,12 +96,13 @@ function EssentialsAttachmentReport({ essentials }: { essentials: ReturnType<typ
 
 export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
   const report = buildBusinessReportData(liveOpsData)
-  const enterpriseMatches = (liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => !row.dataIssue)
+  const coromandelRows = (liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => String(row.theatre ?? "").trim().toLowerCase() === "coromandel")
+  const enterpriseMatches = coromandelRows.filter((row: any) => !row.dataIssue)
   const provisionalMatches = enterpriseMatches.filter((row: any) => row.rank === 1)
   const verifiedMatches = provisionalMatches.filter((row: any) => String(row.verificationStatus ?? "").trim().toLowerCase() === "verified match" && String(row.verifiedProperty ?? "").trim().toLowerCase() === String(row.property ?? "").trim().toLowerCase() && Number.isFinite(row.verifiedDistanceKm) && Number.isFinite(row.verifiedBikeMinutes))
-  const listedDemands = new Set((liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => row.dataIssueKind !== "supply" && row.company && row.company !== "Supply data pending").map((row: any) => `${row.theatre}:${row.company}`)).size
+  const listedDemands = new Set(coromandelRows.filter((row: any) => row.dataIssueKind !== "supply" && row.company && row.company !== "Supply data pending").map((row: any) => `${row.theatre}:${row.company}`)).size
   const matchReadyDemands = new Set(enterpriseMatches.map((row: any) => `${row.theatre}:${row.company}`)).size
-  const listedSupply = new Set((liveOpsData?.enterpriseDemandSupplyMatches ?? []).filter((row: any) => row.property && row.property !== "Matching pending").map((row: any) => row.supplyId || `${row.theatre}:${row.property}`)).size
+  const listedSupply = new Set(coromandelRows.filter((row: any) => row.property && row.property !== "Matching pending").map((row: any) => row.supplyId || `${row.theatre}:${row.property}`)).size
   const top = [
     ["GROUP OCCUPANCY", `${report.occupancy.percent}%`, `${report.occupancy.occupied.toLocaleString("en-IN")} / ${report.occupancy.contracted.toLocaleString("en-IN")} Nests filled`],
     ["VACANT NESTS", report.occupancy.vacant.toLocaleString("en-IN"), "Headroom to fill"],
@@ -119,6 +121,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
     { title: "FONO pipeline", summary: `${report.fono.stages.Contracted.toLocaleString("en-IN")} contracted Nests` },
     { title: "Enterprise Demand", summary: `${report.enterprise.records} governed records` },
     { title: "Enterprise Demand vs Supply", summary: `${provisionalMatches.length} provisional · ${verifiedMatches.length} verified` },
+    { title: "Enterprise Supply Funnel", summary: `${listedSupply} Coromandel supply rows · 4 views` },
     { title: "Essentials", summary: `${report.essentials.attachPct}% live attach` },
     { title: "Source and controls", summary: "Existing normalized backend · read-only projection" },
   ]}>
@@ -128,6 +131,7 @@ export function BusinessReportScreen({ liveOpsData }: { liveOpsData: any }) {
     <section className="business-report-panel"><p className="pillar-kicker">3 · FONO PIPELINE · NESTS</p><h2>{report.fono.stages.Lead.toLocaleString("en-IN")} Lead · {report.fono.stages.Contracting.toLocaleString("en-IN")} Contracting · {report.fono.stages.Contracted.toLocaleString("en-IN")} Contracted.</h2><div className="business-split"><Funnel title="Cumulative total" values={Object.entries(report.fono.stages) as [string, number][]} /><DataTable caption="FONO pipeline by Theatre" columns={["THEATRE", "LEAD", "CONTRACTING", "CONTRACTED", "TOTAL"]} rows={report.fono.byTheatre.map((row) => [row.theatre, row.Lead.toLocaleString("en-IN"), row.Contracting.toLocaleString("en-IN"), row.Contracted.toLocaleString("en-IN"), row.total.toLocaleString("en-IN")])} /></div></section>
     <section className="business-report-panel"><p className="pillar-kicker">4 · ENTERPRISE DEMAND</p><h2>{report.enterprise.records} demand records.</h2><div style={{ marginBottom: 24 }}><Funnel title="Demand conversion funnel" values={Object.entries(report.enterprise.stages) as [string, number][]} /></div><EnterpriseTheatrePerformance rows={report.enterprise.byTheatre} /></section>
     <section className="business-report-panel"><p className="pillar-kicker">5 · ENTERPRISE DEMAND VS SUPPLY</p><h2>{listedDemands} listed demands · {matchReadyDemands} match-ready · {listedSupply} supply options.</h2><div className="business-kpi-strip"><article><span>LISTED DEMANDS</span><strong>{listedDemands}</strong><small>active matching tabs only</small></article><article><span>MATCH-READY DEMANDS</span><strong>{matchReadyDemands}</strong><small>coordinates and supply available</small></article><article><span>PROVISIONAL MATCHES</span><strong>{provisionalMatches.length}</strong><small>free-router shortlist</small></article><article><span>VERIFIED MATCHES</span><strong>{verifiedMatches.length}</strong><small>verified route results</small></article></div><p className="footer-note">Detailed demand-to-property matching is maintained in Enterprise Demand. Missing coordinates remain included in the active Theatre's listed demand total.</p></section>
+    <section className="business-report-panel"><p className="pillar-kicker">6 · ENTERPRISE SUPPLY FUNNEL · COROMANDEL</p><EnterpriseSupplyFunnelScreen rows={coromandelRows} /></section>
     <EssentialsAttachmentReport essentials={report.essentials} />
     <section className="business-report-source"><strong>Source and controls</strong><p>Read-only projection of Living_Hourly, Enterprise_Demand, Work_Hourly, Finance_Daily and Essentials governed backend records. No manual board-report values are copied into production.</p></section>
   </DashboardSectionAccordion>
