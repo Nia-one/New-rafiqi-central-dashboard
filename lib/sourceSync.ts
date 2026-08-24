@@ -63,10 +63,10 @@ async function runLiveSourceSync(): Promise<LiveSourceSyncReport> {
       return null;
     }
   };
+  const enterpriseDemandSupplyReport = await attempt("enterprise-demand-supply", syncEnterpriseSupplyMatchColumns);
   const freshDashboardInputReport = await attempt("fresh-dashboard-inputs", syncFreshDashboardInputs);
   const shramParkDemandReport = await attempt("shram-park-demand", syncShramParkDemandBotData);
   const fonoTrackerReport = await attempt("fono-tracker", syncFonoTrackerData);
-  const enterpriseDemandSupplyReport = await attempt("enterprise-demand-supply", syncEnterpriseSupplyMatchColumns);
   const essentialsReport = await attempt("essentials", syncEssentialsBotData);
   clearSheetCache();
   const reports = [freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport, enterpriseDemandSupplyReport];
@@ -136,6 +136,7 @@ async function runSourceSync(): Promise<SourceSyncReport> {
   // Google Sheets applies a strict per-user read quota. Run the governed
   // connectors sequentially so their internal batch reads do not create one
   // large burst on a serverless cold start.
+  const enterpriseDemandSupplyReport = await syncEnterpriseSupplyMatchColumns();
   const report = await syncTeamInputs();
   const essentialsReport = await syncEssentialsBotData();
   const shramParkDemandReport = await syncShramParkDemandBotData();
@@ -143,7 +144,6 @@ async function runSourceSync(): Promise<SourceSyncReport> {
   const verticalReport = await syncVerticalInputs();
   const fonoTrackerReport = await syncFonoTrackerData();
   const freshDashboardInputReport = await syncFreshDashboardInputs();
-  const enterpriseDemandSupplyReport = await syncEnterpriseSupplyMatchColumns();
   // Schemas are provisioned separately; live refresh only moves data. Keeping
   // schema discovery out of this hot path saves dozens of quota-bearing reads.
   const essentialsSchema: unknown = { provisioned: true };

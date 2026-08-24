@@ -66,6 +66,7 @@ const THEATRE_RULES: Record<string, { maxKm: number; maxMinutes?: number }> = {
 }
 
 function normalize(value: unknown) { return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() }
+function canonicalTheatre(value: string) { return ["coro", "coromandel"].includes(normalize(value)) ? "Coromandel" : value.trim() }
 function enabledMatches(rows: DemandSupplyMatch[]) { return rows.filter((row) => ENABLED_THEATRES.has(normalize(row.theatre))) }
 
 const discoverSources = unstable_cache(async (): Promise<SourceConfig[]> => {
@@ -78,9 +79,10 @@ const discoverSources = unstable_cache(async (): Promise<SourceConfig[]> => {
   const supplySuffixes = ["properties", "property", "supply"]
   return titles.flatMap((demandTab) => {
     if (!demandSuffix.test(demandTab)) return []
-    const theatre = demandTab.replace(demandSuffix, "").replace(/(?:\s|-)+b2b$/i, "").trim()
+    const sourceTheatre = demandTab.replace(demandSuffix, "").replace(/(?:\s|-)+b2b$/i, "").trim()
+    const theatre = canonicalTheatre(sourceTheatre)
     if (!ENABLED_THEATRES.has(normalize(theatre))) return []
-    const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${theatre} ${suffix}`)))
+    const supplyTab = titles.find((title) => supplySuffixes.some((suffix) => normalize(title) === normalize(`${sourceTheatre} ${suffix}`)))
     return [{ theatre, demandTab, supplyTab, ...(THEATRE_RULES[normalize(theatre)] ?? { maxKm: 10 }) }]
   })
 }, ["enterprise-demand-supply-source-tabs-v1"], { revalidate: 300 })
@@ -128,6 +130,13 @@ async function readBackendMatches(): Promise<DemandSupplyMatch[]> {
 }
 
 async function persistBackendMatches(matches: DemandSupplyMatch[], syncedAt: string) {
+  const inventory = matches.filter((row) => row.inventoryOnly && row.supplyId)
+  const demandCompanies = new Set(matches.filter((row) => !row.inventoryOnly && !["supply inventory", "supply data pending", "data not available"].includes(normalize(row.company))).map((row) => normalize(row.company)))
+  const requirements = new Set(matches.filter((row) => !row.inventoryOnly && (row.demandCapacityWithoutBunk || row.demandCapacityWithBunk || row.demandBudgetPerHead)).map((row) => normalize(row.company)))
+  const minimumRequirementCoverage = Math.max(1, demandCompanies.size - 1)
+  if (!inventory.length || !demandCompanies.size || requirements.size < minimumRequirementCoverage) {
+    throw new Error(`Enterprise backend snapshot rejected as incomplete: ${inventory.length} inventory rows and ${requirements.size}/${demandCompanies.size} demand requirements`)
+  }
   const spreadsheetId = backendSpreadsheetId()
   const token = await accessToken("https://www.googleapis.com/auth/spreadsheets")
   const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
@@ -409,8 +418,9 @@ async function loadSourceEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMa
         if (!previous) return row
         return { ...row, verifiedProperty: previous.verifiedProperty, verifiedDistanceKm: previous.verifiedDistanceKm, verifiedBikeMinutes: previous.verifiedBikeMinutes, verifiedBy: previous.verifiedBy, verificationStatus: previous.verificationStatus }
       })
-      lastVerifiedMatches = merged
-      return merged
+      const current = await attachLiveInventory(await attachLiveDemandRequirements(merged))
+      lastVerifiedMatches = current
+      return current
     }
     const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {

@@ -14,6 +14,7 @@ test("dashboard loader reads the governed backend snapshot", () => {
   assert.doesNotMatch(loader, /calculateEnterpriseDemandSupplyMatches\(\)/)
   assert.doesNotMatch(loader, /readStoredMatches\(\)/)
   assert.match(source, /const BACKEND_MATCH_RESULTS_TAB = "Enterprise_Demand_Supply_Matches"/)
+  assert.match(source, /\["coro", "coromandel"\].*"Coromandel"/)
 })
 
 test("live source sync persists the complete payload into the backend", () => {
@@ -22,4 +23,6 @@ test("live source sync persists the complete payload into the backend", () => {
   assert.match(sync, /loadSourceEnterpriseDemandSupplyMatches\(\)/)
   assert.match(sync, /persistBackendMatches\(matches, syncedAt\)/)
   assert.match(source, /process\.env\.GOOGLE_SHEET_ID/)
+  assert.match(source, /Enterprise backend snapshot rejected as incomplete/)
+  assert.match(source, /attachLiveInventory\(await attachLiveDemandRequirements\(merged\)\)/)
 })
