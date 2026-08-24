@@ -327,7 +327,61 @@ const learningPolicy: LearningPolicy = {
 }
 
 export function buildNiaMarginsPreview(inputs: readonly MarginStudioInput[], asOf = "2026-07-17T14:00:00+05:30", closureInputs: readonly MarginClosureInput[] = NIA_MARGINS_SYNTHETIC_CLOSURES, targets: NiaMarginTargets = NIA_MARGIN_TARGETS): NiaMarginsPreview {
-  if (inputs.length === 0) throw new Error("Nia Margins requires at least one Studio input.")
+  if (inputs.length === 0) {
+    const loopHealth = buildLoopHealth({
+      asOf,
+      feeds: Object.freeze([]),
+      clocks: Object.freeze([]),
+      verification: Object.freeze({ claimed: 0, verified: 0, awaiting: 0, reopened: 0, oldestAwaitingAt: null }),
+    })
+    const learning = evaluateLearningRecommendation({
+      recommendationId: "LEARN-NIA-MARGINS-NO-DATA",
+      domain: "Nia Margins",
+      policyVersion: "POL-MARGIN-DEFINITION@v1",
+      proposedChange: "Wait for governed Studio margin inputs before diagnosing contribution.",
+      expectedEffect: "Prevent unsupported margin conclusions when the live input set is empty.",
+      state: "Candidate",
+      evidenceCycles: 0,
+      sampleSize: 0,
+      forecastErrorPct: 100,
+      attributionGrade: "Observed",
+      confounders: Object.freeze(["No governed Studio margin inputs available"]),
+      criticalDataFresh: false,
+      verificationRatePct: 0,
+      reversible: true,
+      rollbackTrigger: "Governed Studio margin inputs become available.",
+      insideApprovedBoundary: true,
+      reversesHumanDecision: false,
+      categories: Object.freeze([]),
+      targetChangePct: 0,
+      channelMixChangePp: 0,
+      monthlyCmEffectInr: 0,
+      cashEffectInr: 0,
+      synthetic: false,
+    }, learningPolicy)
+    return Object.freeze({
+      mode: "Shadow only",
+      question: "Which operating cause is moving contribution, who owns it, and did contribution recover?",
+      answer: "Governed Studio margin inputs are temporarily unavailable; no contribution diagnosis has been calculated.",
+      measures: Object.freeze({
+        fullUseCm2Inr: 0,
+        fullUseTargetInr: targets.fullUse,
+        pillarTargetsInr: Object.freeze({ living: targets.living, work: targets.work, essentials: targets.essentials }),
+        pillarCm2Inr: Object.freeze({ living: 0, work: 0, essentials: 0 }),
+        occupancyPct: 0,
+        occupancyTargetPct: targets.occupancyPct,
+        negativeContributionStudios: 0,
+        studioGrossMarginPct: 0,
+      }),
+      diagnoses: Object.freeze([]),
+      actions: Object.freeze([]),
+      despatchEscalations: Object.freeze([]),
+      loopHealth,
+      learning,
+      writesEnabled: false,
+      collectionLeakageIncludedInCm2: false,
+    })
+  }
   const baseDiagnoses = inputs.map((input) => diagnoseMarginStudio(input, targets))
   const dueAt = new Date(new Date(asOf).getTime() + 24 * 60 * 60 * 1_000).toISOString()
   const createdActions = baseDiagnoses.map((diagnosis, index) => createMarginAction(diagnosis, inputs[index]!, dueAt, targets)).filter((action): action is MarginAction => action !== null)

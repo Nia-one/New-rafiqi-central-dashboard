@@ -10,6 +10,14 @@ test("Nia Margins keeps billed CM2 separate from collection leakage", () => {
   assert.match(preview.answer, /Full-use CM2/)
 })
 
+test("an empty governed Studio input set does not crash the dashboard", () => {
+  const preview = buildNiaMarginsPreview([], "2026-08-24T12:00:00+05:30", [], NIA_MARGIN_TARGETS)
+  assert.equal(preview.diagnoses.length, 0)
+  assert.equal(preview.actions.length, 0)
+  assert.equal(preview.measures.fullUseCm2Inr, 0)
+  assert.match(preview.answer, /temporarily unavailable/)
+})
+
 test("Studio diagnosis reconciles volume and pillar unit variances exactly", () => {
   const diagnosis = diagnoseMarginStudio(NIA_MARGINS_SYNTHETIC_INPUTS[0]!)
   assert.equal(diagnosis.studioTotalCm2GapInr, diagnosis.occupancyVolumeEffectInr + diagnosis.livingUnitVarianceInr + diagnosis.workUnitVarianceInr + diagnosis.essentialsUnitVarianceInr)
