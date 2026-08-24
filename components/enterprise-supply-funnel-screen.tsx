@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import type { DemandSupplyMatch } from "@/lib/enterprise-demand-supply-match"
+import { downloadReportHtml, printReportPdf } from "@/lib/client-report-export"
 
 type FunnelTab = "matched" | "inventory" | "hunting" | "distance"
 type MatchFilter = "all" | "full" | "partial" | "incomplete"
@@ -12,6 +13,7 @@ const isActualDemand = (row: DemandSupplyMatch) => !["supply inventory", "supply
 const money = (value?: string) => value ? `Rs ${value}` : "Not available"
 
 export function EnterpriseSupplyFunnelScreen({ rows }: { rows: DemandSupplyMatch[] }) {
+  const reportRef = useRef<HTMLElement>(null)
   const [tab, setTab] = useState<FunnelTab>("matched")
   const [matchFilter, setMatchFilter] = useState<MatchFilter>("all")
   const [huntingDate, setHuntingDate] = useState("all")
@@ -75,8 +77,10 @@ export function EnterpriseSupplyFunnelScreen({ rows }: { rows: DemandSupplyMatch
     .filter((row) => currentDemandNames.has(normalized(row.company)) && Number.isFinite(row.bikeDistanceKm) && row.bikeDistanceKm > 0)
     .map((row) => [`${normalized(row.theatre)}:${normalized(row.company)}:${normalized(row.property)}`, row])).values())
 
-  return <section className="operating-section supply-funnel-screen" aria-label="Supply Funnel dashboard">
-    <div className="enterprise-stage-heading"><div><p className="pillar-kicker">LIVE SUPPLY FUNNEL</p><h2>Demand suitability, inventory, hunting and distance grid</h2></div><p>{inventory.length} live source rows</p></div>
+  const activeViewTitle = tab === "matched" ? "Client - Supply Matched" : tab === "inventory" ? "Property Inventory" : tab === "hunting" ? "Hunting Details" : "Distance Grid"
+
+  return <section className="operating-section supply-funnel-screen" aria-label="Supply Funnel dashboard" ref={reportRef}>
+    <div className="enterprise-stage-heading"><div><p className="pillar-kicker">LIVE SUPPLY FUNNEL</p><h2>Demand suitability, inventory, hunting and distance grid</h2></div><div className="supply-funnel-heading-actions"><p>{inventory.length} live source rows</p><div className="report-export-actions"><button type="button" onClick={() => printReportPdf(`Supply Funnel - ${activeViewTitle}`, reportRef.current)}>Download PDF</button><button type="button" onClick={() => downloadReportHtml(`Supply Funnel - ${activeViewTitle}`, reportRef.current)}>Download HTML</button></div></div></div>
     <div className="supply-funnel-tabs" role="tablist" aria-label="Supply Funnel views">
       {([['matched','Client - Supply Matched'],['inventory','Property Inventory'],['hunting','Hunting Details'],['distance','Distance Grid']] as const).map(([id,label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => { setTab(id); if (id !== "matched") setMatchFilter("all") }}>{label}</button>)}
     </div>

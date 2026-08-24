@@ -4324,6 +4324,8 @@
 @media(max-width:900px){.business-kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr))}.business-report-grid{grid-template-columns:1fr}.business-report-wide{grid-column:auto}.business-split{grid-template-columns:1fr}}
 @media(max-width:560px){.business-kpi-strip{grid-template-columns:1fr}.business-report-title{display:block}.business-report-title p{text-align:left;margin-top:10px}}
 /* Business Report styles end. */
+
+.report-export-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}.report-export-actions button{border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:#0f172a;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer}.report-export-actions button:hover{border-color:#1d4f73;background:#eef6fb}.enterprise-match-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.supply-funnel-heading-actions{display:grid;justify-items:end;gap:8px}.supply-funnel-heading-actions>p{margin:0}@media(max-width:720px){.enterprise-match-heading{display:block}.enterprise-match-heading .report-export-actions{justify-content:flex-start;margin-top:12px}.supply-funnel-heading-actions{justify-items:start}.report-export-actions{justify-content:flex-start}}
 .essentials-report-card,.essentials-report-grid,.essentials-attach-chart,.essentials-summary-table{min-width:0;max-width:100%}
 .essentials-report-grid{grid-template-columns:minmax(360px,.72fr) minmax(0,1.28fr);gap:28px}
 .essentials-summary-table table{width:100%;min-width:0;table-layout:fixed}

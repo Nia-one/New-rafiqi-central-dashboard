@@ -1,7 +1,8 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import type { DemandSupplyMatch } from "@/lib/enterprise-demand-supply-match"
+import { downloadReportHtml, printReportPdf } from "@/lib/client-report-export"
 
 const normalized = (value: unknown) => String(value ?? "").trim().toLowerCase()
 const supplyKey = (row: DemandSupplyMatch) => row.supplyId || `${row.theatre}:${row.property}`
@@ -11,6 +12,7 @@ const googleMapsUrl = (row: DemandSupplyMatch) => row.demandLat !== undefined &&
   : ""
 
 export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows: DemandSupplyMatch[]; embedded?: boolean }) {
+  const reportRef = useRef<HTMLElement>(null)
   const theatres = useMemo(() => ["All theatres", ...Array.from(new Set(rows.map((row) => row.theatre))).sort()], [rows])
   const [theatre, setTheatre] = useState("All theatres")
   const [location, setLocation] = useState("All locations")
@@ -55,8 +57,8 @@ export function EnterpriseDemandSupplyScreen({ rows, embedded = false }: { rows:
 
   return <div className="enterprise-match-screen">
     {!embedded && <section className="decision-bar"><div><span>ENTERPRISE DEMAND VS SUPPLY</span><strong>{firstMatches.length} provisional matches · {verifiedMatches.length} verified matches</strong></div><p>Source updates are reflected automatically on dashboard refresh.</p></section>}
-    <section className="business-report-panel">
-      <div className="section-heading enterprise-match-heading"><p className="pillar-kicker">{embedded ? "5 · " : ""}ENTERPRISE DEMAND VS SUPPLY</p><h2>Demand → supply shortlist · free map check</h2></div>
+    <section className="business-report-panel" ref={reportRef}>
+      <div className="section-heading enterprise-match-heading"><div><p className="pillar-kicker">{embedded ? "5 · " : ""}ENTERPRISE DEMAND VS SUPPLY</p><h2>Demand → supply shortlist · free map check</h2></div><div className="report-export-actions"><button type="button" onClick={() => printReportPdf("Demand vs Supply", reportRef.current)}>Download PDF</button><button type="button" onClick={() => downloadReportHtml("Demand vs Supply", reportRef.current)}>Download HTML</button></div></div>
       <div className="enterprise-match-filters">
         <label>Theatre<select aria-label="Match theatre" value={theatre} onChange={(event) => { setTheatre(event.target.value); setLocation("All locations"); setEnterprise("All enterprises") }}>{theatres.map((item) => <option key={item}>{item}</option>)}</select></label>
         <label>Location<select aria-label="Match location" value={locations.includes(location) ? location : "All locations"} onChange={(event) => setLocation(event.target.value)}>{locations.map((item) => <option key={item}>{item}</option>)}</select></label>
