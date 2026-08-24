@@ -170,6 +170,49 @@ async function attachLiveInventory(rows: DemandSupplyMatch[]) {
   }
 }
 
+async function attachLiveDemandRequirements(rows: DemandSupplyMatch[]) {
+  try {
+    const sources = (await discoverSources()).filter((source) => source.demandTab)
+    const tables = await readRanges(sources.map((source) => `'${source.demandTab}'!A1:AD1000`))
+    let enriched = [...rows]
+    for (const [sourceIndex, source] of sources.entries()) {
+      const table = tables[sourceIndex] ?? []
+      const headers = table[0] ?? []
+      const index = (names: string[], fallback = -1) => columnIndex(headers, names, fallback)
+      const companyOrder = Array.from(new Set(enriched
+        .filter((row) => normalize(row.theatre) === normalize(source.theatre) && !row.inventoryOnly && !["supply inventory", "supply data pending", "data not available"].includes(normalize(row.company)))
+        .map((row) => row.company)))
+      const liveRequirements = table.slice(2).filter((row) => row.some((cell, cellIndex) => cellIndex > 0 && String(cell ?? "").trim())).map((row, rowIndex) => {
+        const withoutBunk = [value(row, index(["Required Capacity, nos"], 7)), value(row, 8)].map(Number).filter(Number.isFinite).reduce((sum, count) => sum + count, 0)
+        const withBunk = [value(row, 9), value(row, 10)].map(Number).filter(Number.isFinite).reduce((sum, count) => sum + count, 0)
+        return {
+          company: value(row, index(["Company Name", "Enterprise Name", "Client Name"], 0)) || companyOrder[rowIndex] || "",
+          demandStatus: value(row, index(["Current Status", "Demand Status", "Status"], 17)),
+          demandLocation: value(row, index(["Company Location", "Demand Location", "Location"], 4)),
+          demandContactPerson: value(row, index(["Contact Person"], 1)),
+          demandContactNumber: value(row, index(["Contact Number", "Phone Number"], 3)),
+          demandCapacityWithoutBunk: withoutBunk ? String(withoutBunk) : "",
+          demandCapacityWithBunk: withBunk ? String(withBunk) : "",
+          demandBudgetPerHead: value(row, index(["Price Per Head", "Budget Per Head"], 11)),
+          demandDistanceNote: value(row, index(["Req Location, KM", "Required Location KM"], 14)),
+          demandAssignedProperty: value(row, index(["Property Place", "Assigned Property"], 18)),
+          demandActionTaken: value(row, index(["Action Taken"], 19)),
+        }
+      }).filter((row) => row.company)
+      const byCompany = new Map(liveRequirements.map((row) => [normalize(row.company), row]))
+      enriched = enriched.map((row) => {
+        if (normalize(row.theatre) !== normalize(source.theatre) || row.inventoryOnly) return row
+        const live = byCompany.get(normalize(row.company))
+        return live ? { ...row, ...live, company: row.company, demandStatus: live.demandStatus || row.demandStatus, demandLocation: live.demandLocation || row.demandLocation } : row
+      })
+    }
+    return enriched
+  } catch (error) {
+    console.warn("Live demand requirements unavailable; retaining persisted route context.", error)
+    return rows
+  }
+}
+
 type RouteMatrixElement = { originIndex?: number; destinationIndex?: number; distanceMeters?: number; duration?: string; condition?: string; status?: { code?: number; message?: string } }
 
 const VALHALLA_ENDPOINT = "https://valhalla1.openstreetmap.de/sources_to_targets"
@@ -323,7 +366,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     }
     const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
-      const current = await attachLiveInventory(stored)
+      const current = await attachLiveInventory(await attachLiveDemandRequirements(stored))
       lastVerifiedMatches = current
       return current
     }
@@ -332,7 +375,7 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
     const stored = enabledMatches(await readStoredMatches())
     if (stored.length) {
       console.warn("Live Enterprise matching inputs unavailable; serving the last verified persisted match matrix.", error)
-      const current = await attachLiveInventory(stored)
+      const current = await attachLiveInventory(await attachLiveDemandRequirements(stored))
       lastVerifiedMatches = current
       return current
     }
