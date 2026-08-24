@@ -22,11 +22,21 @@ export function EnterpriseSupplyFunnelScreen({ rows }: { rows: DemandSupplyMatch
     const candidates = matches.filter((row) => `${row.theatre}:${row.company}` === demandKey)
     const issue = demandIssues.find((row) => `${row.theatre}:${row.company}` === demandKey)
     const base = candidates[0] || issue!
-    const best = candidates.find((row) => row.rank === 1) || candidates[0]
     const neededWithout = n(base?.demandCapacityWithoutBunk)
     const neededWith = n(base?.demandCapacityWithBunk)
     const needed = neededWithout || neededWith
     const budget = n(base?.demandBudgetPerHead)
+    const assessed = candidates.map((candidate) => {
+      const candidateCapacity = n(neededWith ? candidate.supplyBunkCapacity : candidate.supplyCapacityWithoutBunk)
+      const candidateCost = n(neededWith ? candidate.supplyCostWithBeds : candidate.supplyCostWithoutBeds)
+      const candidateCapacityOk = needed !== null && candidateCapacity !== null ? candidateCapacity >= needed : null
+      const candidateBudgetOk = budget !== null && candidateCost !== null ? candidateCost <= budget : null
+      const candidateComplete = needed !== null && budget !== null && candidateCapacity !== null && candidateCost !== null
+      const candidateStatus = !candidateComplete ? "incomplete" : candidate.eligible && candidateCapacityOk && candidateBudgetOk ? "full" : candidate.eligible && (candidateCapacityOk || candidateBudgetOk) ? "partial" : "outside"
+      return { candidate, candidateStatus }
+    })
+    const priority = { full: 0, partial: 1, outside: 2, incomplete: 3 } as const
+    const best = [...assessed].sort((a, b) => priority[a.candidateStatus] - priority[b.candidateStatus] || a.candidate.bikeDistanceKm - b.candidate.bikeDistanceKm || a.candidate.bikeMinutes - b.candidate.bikeMinutes)[0]?.candidate
     const capacity = best ? n(neededWith ? best.supplyBunkCapacity : best.supplyCapacityWithoutBunk) : null
     const cost = best ? n(neededWith ? best.supplyCostWithBeds : best.supplyCostWithoutBeds) : null
     const distanceOk = Boolean(best?.eligible)
