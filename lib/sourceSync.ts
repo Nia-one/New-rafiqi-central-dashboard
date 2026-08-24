@@ -27,6 +27,7 @@ export type SourceSyncReport = {
   memberFeedbackReport: Awaited<ReturnType<typeof syncMemberFeedback>>;
   freshDashboardInputReport: Awaited<ReturnType<typeof syncFreshDashboardInputs>>;
   fonoTrackerReport: Awaited<ReturnType<typeof syncFonoTrackerData>>;
+  enterpriseDemandSupplyReport: Awaited<ReturnType<typeof syncEnterpriseSupplyMatchColumns>>;
   syncedAt: string;
 };
 
@@ -49,7 +50,7 @@ export type UserInputSyncReport = {
 };
 
 async function runLiveSourceSync(): Promise<LiveSourceSyncReport> {
-  // The 45-second hot path moves only the four live operator/bot feeds. The
+  // The 45-second hot path moves the live operator/bot feeds. The
   // slower governance/history reconciliation remains on the daily full sync.
   // Manual dashboard inputs run first so a failure in an unrelated bot feed
   // cannot prevent UI_Targets (or another UI_* tab) from reaching the backend.
@@ -142,12 +143,13 @@ async function runSourceSync(): Promise<SourceSyncReport> {
   const verticalReport = await syncVerticalInputs();
   const fonoTrackerReport = await syncFonoTrackerData();
   const freshDashboardInputReport = await syncFreshDashboardInputs();
+  const enterpriseDemandSupplyReport = await syncEnterpriseSupplyMatchColumns();
   // Schemas are provisioned separately; live refresh only moves data. Keeping
   // schema discovery out of this hot path saves dozens of quota-bearing reads.
   const essentialsSchema: unknown = { provisioned: true };
   const shramParkDemandSchema: unknown = { provisioned: true };
   clearSheetCache();
-  return { report, essentialsReport, essentialsSchema, shramParkDemandReport, shramParkDemandSchema, verticalReport, memberFeedbackReport, fonoTrackerReport, freshDashboardInputReport, syncedAt: new Date().toISOString() };
+  return { report, essentialsReport, essentialsSchema, shramParkDemandReport, shramParkDemandSchema, verticalReport, memberFeedbackReport, fonoTrackerReport, freshDashboardInputReport, enterpriseDemandSupplyReport, syncedAt: new Date().toISOString() };
 }
 
 export function syncAllSources(options: { force?: boolean } = {}) {

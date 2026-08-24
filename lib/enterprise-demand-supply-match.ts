@@ -4,6 +4,7 @@ import { googleServiceAccountCredentials } from "./googleCredentials"
 
 const SOURCE_ID = "1sD05271Z-MNEvS-1cRneavjF0XLmxdUhHczxZ1HlAVs"
 const MATCH_RESULTS_TAB = "Enterprise-Match-Results"
+const BACKEND_MATCH_RESULTS_TAB = "Enterprise_Demand_Supply_Matches"
 const ENABLED_THEATRES = new Set(["coromandel"])
 let lastVerifiedMatches: DemandSupplyMatch[] = []
 export type DemandSupplyMatch = {
@@ -102,6 +103,52 @@ async function accessToken(scope = "https://www.googleapis.com/auth/spreadsheets
   const value = typeof token === "string" ? token : token?.token
   if (!value) throw new Error("Unable to authenticate the Enterprise demand/supply source.")
   return value
+}
+
+function backendSpreadsheetId() {
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID
+  if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing")
+  return spreadsheetId
+}
+
+async function readBackendMatches(): Promise<DemandSupplyMatch[]> {
+  const token = await accessToken()
+  const range = `'${BACKEND_MATCH_RESULTS_TAB}'!A2:F5000`
+  const response = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${backendSpreadsheetId()}/values/${encodeURIComponent(range)}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+  if (!response.ok) throw new Error(`Enterprise demand/supply backend unavailable: ${response.status} ${await response.text()}`)
+  const json = await response.json() as { values?: string[][] }
+  return (json.values ?? []).flatMap((row) => {
+    try {
+      const parsed = JSON.parse(String(row[5] ?? "")) as DemandSupplyMatch
+      return parsed && typeof parsed === "object" ? [parsed] : []
+    } catch {
+      return []
+    }
+  })
+}
+
+async function persistBackendMatches(matches: DemandSupplyMatch[], syncedAt: string) {
+  const spreadsheetId = backendSpreadsheetId()
+  const token = await accessToken("https://www.googleapis.com/auth/spreadsheets")
+  const metadataResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title,gridProperties(columnCount))`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" })
+  if (!metadataResponse.ok) throw new Error(`Unable to inspect Enterprise backend tab: ${metadataResponse.status} ${await metadataResponse.text()}`)
+  const metadata = await metadataResponse.json() as { sheets?: { properties?: { sheetId?: number; title?: string; gridProperties?: { columnCount?: number } } }[] }
+  const existing = (metadata.sheets ?? []).find((sheet) => sheet.properties?.title === BACKEND_MATCH_RESULTS_TAB)
+  if (!existing) {
+    const createResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ addSheet: { properties: { title: BACKEND_MATCH_RESULTS_TAB, gridProperties: { rowCount: 5000, columnCount: 6, frozenRowCount: 1 } } } }] }), cache: "no-store" })
+    if (!createResponse.ok) throw new Error(`Unable to create Enterprise backend tab: ${createResponse.status} ${await createResponse.text()}`)
+  } else if ((existing.properties?.gridProperties?.columnCount ?? 0) < 6) {
+    const appendResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: [{ appendDimension: { sheetId: existing.properties?.sheetId, dimension: "COLUMNS", length: 6 - (existing.properties?.gridProperties?.columnCount ?? 0) } }] }), cache: "no-store" })
+    if (!appendResponse.ok) throw new Error(`Unable to extend Enterprise backend tab: ${appendResponse.status} ${await appendResponse.text()}`)
+  }
+  const values = matches.map((row) => [syncedAt, SOURCE_ID, row.theatre, row.company, row.property, JSON.stringify(row)])
+  const range = `'${BACKEND_MATCH_RESULTS_TAB}'!A1:F${Math.max(2, values.length + 1)}`
+  const writeResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range, majorDimension: "ROWS", values: [["Synced At", "Source Spreadsheet ID", "Theatre", "Enterprise Name", "Property", "Dashboard Payload JSON"], ...values] }), cache: "no-store" })
+  if (!writeResponse.ok) throw new Error(`Unable to persist Enterprise backend snapshot: ${writeResponse.status} ${await writeResponse.text()}`)
+  const staleStart = values.length + 2
+  const staleRange = `'${BACKEND_MATCH_RESULTS_TAB}'!A${staleStart}:F5000`
+  const clearResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(staleRange)}:clear`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: "{}", cache: "no-store" })
+  if (!clearResponse.ok) throw new Error(`Unable to clear stale Enterprise backend rows: ${clearResponse.status} ${await clearResponse.text()}`)
 }
 
 const readRanges = unstable_cache(async (ranges: string[]) => {
@@ -351,7 +398,7 @@ async function calculateEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMat
   return output
 }
 
-export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
+async function loadSourceEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
   try {
     const calculated = enabledMatches(await calculateEnterpriseDemandSupplyMatches())
     if (calculated.length) {
@@ -388,9 +435,26 @@ export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyM
   }
 }
 
+export async function loadEnterpriseDemandSupplyMatches(): Promise<DemandSupplyMatch[]> {
+  try {
+    const stored = enabledMatches(await readBackendMatches())
+    if (stored.length) {
+      lastVerifiedMatches = stored
+      return stored
+    }
+    return enabledMatches(lastVerifiedMatches)
+  } catch (error) {
+    if (lastVerifiedMatches.length) {
+      console.warn("Enterprise demand/supply backend unavailable; serving the last successful in-process backend snapshot.", error)
+      return enabledMatches(lastVerifiedMatches)
+    }
+    throw error
+  }
+}
+
 export async function syncEnterpriseSupplyMatchColumns() {
   const SOURCES = await discoverSources()
-  const matches = await loadEnterpriseDemandSupplyMatches()
+  const matches = await loadSourceEnterpriseDemandSupplyMatches()
   const token = await accessToken("https://www.googleapis.com/auth/spreadsheets")
   let changedRows = 0
   for (const source of SOURCES) {
@@ -439,5 +503,8 @@ export async function syncEnterpriseSupplyMatchColumns() {
   const verificationHeaderRange = `'${MATCH_RESULTS_TAB}'!R1:V1`
   const verificationHeaderResponse = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SOURCE_ID}/values/${encodeURIComponent(verificationHeaderRange)}?valueInputOption=RAW`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: verificationHeaderRange, majorDimension: "ROWS", values: [["Google Maps Verified Property", "Google Maps Distance KM", "Google Maps Bike Time Min", "Verified By", "Verification Status"]] }), cache: "no-store" })
   if (!verificationHeaderResponse.ok) throw new Error(`Unable to prepare Google Maps verification columns: ${verificationHeaderResponse.status} ${await verificationHeaderResponse.text()}`)
-  return { changedRows, source: SOURCE_ID, syncedAt: new Date().toISOString() }
+  const syncedAt = new Date().toISOString()
+  await persistBackendMatches(matches, syncedAt)
+  lastVerifiedMatches = matches
+  return { changedRows, source: SOURCE_ID, backend: backendSpreadsheetId(), backendTab: BACKEND_MATCH_RESULTS_TAB, syncedAt }
 }
