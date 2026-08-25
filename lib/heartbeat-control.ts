@@ -11,6 +11,9 @@ export type HeartbeatRule = {
   threshold_minutes: number
   escalation_multiplier: number
   source_system: "action_log" | "commerce_orders"
+  action_label: string
+  due_label: string
+  checklist: string[]
 }
 
 export type HeartbeatSource = {
@@ -84,7 +87,7 @@ export function evaluateHeartbeat(source: HeartbeatSource, rule: HeartbeatRule, 
     rule,
     minutes_since_heartbeat: minutesSinceHeartbeat,
     status,
-    rule_text: `No ${rule.signal} in ${rule.threshold_minutes} min`,
+    rule_text: rule.definition,
     priority_ratio: priorityRatio,
   }
 }

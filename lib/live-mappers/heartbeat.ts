@@ -1,5 +1,5 @@
 import { buildHeartbeatSnapshot, type HeartbeatKind, type HeartbeatSnapshot, type HeartbeatSource, type RosterState } from "@/lib/heartbeat-control"
-import { heartbeatRules } from "@/lib/heartbeat-rules"
+import { heartbeatRulesFromPolicies } from "@/lib/heartbeat-rules"
 
 type Row = Record<string, unknown>
 
@@ -50,6 +50,7 @@ export function buildLiveHeartbeatSnapshot(input: {
   people: readonly Row[]
   actionLog: readonly Row[]
   essentials?: readonly Row[]
+  policies?: readonly Row[]
   computedAt?: string
 }): HeartbeatSnapshot | null {
   const computedAt = Number.isFinite(Date.parse(input.computedAt ?? "")) ? new Date(input.computedAt!).toISOString() : new Date().toISOString()
@@ -102,10 +103,11 @@ export function buildLiveHeartbeatSnapshot(input: {
       kind: "essentials_category",
       roster_state: "active_shift",
       last_heartbeat_at: at,
-      checklist: ["Check order-feed continuity", "Check Member demand", "Check category availability"],
     })
   }
 
   if (!sources.length) return null
-  return { ...buildHeartbeatSnapshot(sources, heartbeatRules, computedAt), persistence: "governed-live" }
+  const rules = heartbeatRulesFromPolicies(input.policies ?? [])
+  const governedSources = sources.map((source) => ({ ...source, checklist: rules.find((rule) => rule.kind === source.kind)?.checklist ?? [] }))
+  return { ...buildHeartbeatSnapshot(governedSources, rules, computedAt), persistence: "governed-live" }
 }

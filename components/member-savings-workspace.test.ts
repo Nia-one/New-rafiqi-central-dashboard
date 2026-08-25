@@ -20,8 +20,8 @@ test("task band carries a recoverable-risk dual-gate verdict pill", () => {
 })
 
 test("every headline exhibit closes with a so-what implication", () => {
-  assert.ok((componentSource.match(/styles\.soWhat/g) ?? []).length >= 3, "expected at least three So what lines")
-  assert.ok((componentSource.match(/So what:/g) ?? []).length >= 3)
+  assert.ok((componentSource.match(/styles\.soWhat/g) ?? []).length >= 2, "expected at least two So what lines")
+  assert.ok((componentSource.match(/So what:/g) ?? []).length >= 2)
 })
 
 test("workspace ends with an explicit owner-and-date ask before the source footer", () => {
@@ -76,12 +76,11 @@ test("pending human approvals and no-approved-value state remain in closed audit
   assert.ok(preview.policyRegistry.some((policy) => policy.status === "Pending human approval" && policy.value === null))
 })
 
-test("shadow controls update local state with no live side-effect path", () => {
-  assert.match(componentSource, /recoverMemberSavingsTask/)
-  assert.doesNotMatch(componentSource, /routeFor|state:\s*outcome ===/)
-  assert.match(componentSource, /setTasks\(\(current\) => current\.map/)
-  assert.match(componentSource, /setAudit\(\(current\) => \[\.\.\.current, Object\.freeze/)
-  assert.match(componentSource, /No price, supplier or external action/)
+test("Bot-managed actions expose source results without local shadow controls", () => {
+  assert.doesNotMatch(componentSource, /recoverMemberSavingsTask|setTasks|setAudit|TokenSelect|Record locally/)
+  assert.match(componentSource, /Bot managed/)
+  assert.match(componentSource, /Current Bot result/)
+  assert.match(componentSource, /auto-closes the action/)
   assert.doesNotMatch(componentSource, /\bfetch\s*\(|XMLHttpRequest|WebSocket|sendBeacon|navigator\.geolocation|use server|server action/)
 })
 

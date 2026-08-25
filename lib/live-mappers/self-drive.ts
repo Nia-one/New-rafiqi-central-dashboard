@@ -586,6 +586,16 @@ const isEssentialsBotTradingRow = (row: SheetRow) => text(row, "essentials hourl
     || number(row, "member savings inr") !== 0
     || number(row, "nia margin inr") !== 0)
 
+const isEssentialsBotException = (row: SheetRow) => isEssentialsBotTradingRow(row)
+  && (number(row, "member savings inr") <= 0 || number(row, "nia margin inr") <= 0)
+
+const botSavingsActionId = (row: SheetRow) => {
+  const sourceId = text(row, "essentials hourly id") || `${text(row, "studio id")}-${text(row, "service id", "product id", "service name", "product name", "category")}`
+  let hash = 2166136261
+  for (const character of sourceId) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619)
+  return `BOT-SAV-${(hash >>> 0).toString(36).toUpperCase()}`
+}
+
 /** Sheet-backed connectivity and control state for Member Savings. */
 export function buildLiveMemberSavingsFreshness(snapshot: LiveSelfDriveSnapshot): LiveMemberSavingsFreshness {
   const savingsActions = snapshot.actions.filter(isMemberSavingsAction)
@@ -619,32 +629,20 @@ export function buildLiveMemberSavingsFreshness(snapshot: LiveSelfDriveSnapshot)
 
 export function buildLiveMemberSavingsHealth(snapshot: LiveSelfDriveSnapshot): LoopHealth {
   const freshness = buildLiveMemberSavingsFreshness(snapshot)
-  const savingsActions = snapshot.actions.filter(isMemberSavingsAction)
-  const actionIds = new Set(savingsActions.map((row) => text(row, "action id")).filter(Boolean))
-  const evidence = snapshot.evidence.filter((row) => actionIds.has(text(row, "linked id")))
-  const approvals = snapshot.approvals.filter((row) => actionIds.has(text(row, "linked action id")))
-  const verified = evidence.filter((row) => text(row, "verification status").toLowerCase() === "verified").length
-  const reopened = evidence.filter((row) => text(row, "verification status").toLowerCase() === "reopened").length
-    + savingsActions.filter((row) => text(row, "state").toLowerCase() === "reopened").length
-  const claimed = Math.max(evidence.length, savingsActions.length)
-  const awaiting = Math.max(0, claimed - verified - reopened)
-  const oldestAwaitingAt = awaiting > 0 ? ([
-    ...evidence.filter((row) => !["verified", "reopened"].includes(text(row, "verification status").toLowerCase()))
-      .map((row) => text(row, "uploaded at") || text(row, "updated at")),
-    ...savingsActions.filter((row) => !["verified", "closed", "reopened"].includes(text(row, "state").toLowerCase()))
-      .map((row) => text(row, "proposed at") || text(row, "assigned at") || text(row, "in progress at") || text(row, "updated at")),
-    ...approvals.filter((row) => !["approved", "rejected"].includes(text(row, "decision").toLowerCase()))
-      .map((row) => text(row, "requested at") || text(row, "updated at")),
-  ]
+  const botRows = snapshot.essentials.filter(isEssentialsBotTradingRow)
+  const exceptions = botRows.filter(isEssentialsBotException)
+  const claimed = botRows.length
+  const verified = claimed - exceptions.length
+  const awaiting = exceptions.length
+  const reopened = 0
+  const oldestAwaitingAt = awaiting > 0 ? (exceptions
+    .map((row) => text(row, "updated at", "captured at"))
     .filter((value) => Number.isFinite(Date.parse(value)))
     .sort((left, right) => Date.parse(left) - Date.parse(right))[0] ?? snapshot.asOf) : null
   return buildLoopHealth({
     asOf: snapshot.asOf,
     feeds: freshness.feeds.map((feed) => Object.freeze({ feedId: feed.feedId, label: feed.label, lastUpdatedAt: feed.lastUpdatedAt, cadenceMinutes: feed.cadenceMinutes, critical: feed.critical, affectedClaims: feed.affectedClaims })),
-    clocks: savingsActions.filter((row) => Number.isFinite(Date.parse(text(row, "due at")))).map((row) => {
-      const state = text(row, "state").toLowerCase()
-      return Object.freeze({ clockId: `LIVE-MEMBER-SAVINGS-${text(row, "action id")}`, label: text(row, "operating objective") || "Member Savings recovery", ownerRole: text(row, "owner actor id") || "Unassigned", dueAt: text(row, "due at"), state: state === "verified" || state === "closed" ? "Recovered" as const : "Running" as const })
-    }),
+    clocks: exceptions.map((row) => Object.freeze({ clockId: botSavingsActionId(row), label: `${text(row, "service name", "product name", "category") || "Essentials service"} dual-gate recovery`, ownerRole: "Essentials Bot", dueAt: text(row, "updated at", "captured at") || snapshot.asOf, state: "Running" as const })),
     verification: Object.freeze({ claimed, verified, awaiting, reopened, oldestAwaitingAt }),
     quarantinedRecords: freshness.quarantinedRecords,
   })
@@ -655,7 +653,7 @@ export function buildLiveMemberSavingsTasks(snapshot: LiveSelfDriveSnapshot): re
   const peopleById = new Map(snapshot.people.map((row) => [text(row, "actor id"), row]))
   const studiosById = new Map(snapshot.studios.flatMap((row) => [text(row, "studio id"), text(row, "studio code")].filter(Boolean).map((id) => [id, row] as const)))
 
-  return Object.freeze(actions.flatMap((action) => {
+  const governedTasks = actions.flatMap((action) => {
     const actionId = text(action, "action id")
     const evidence = snapshot.evidence.filter((row) => text(row, "linked id") === actionId)
     const latestEvidence = evidence.slice().sort((left, right) => {
@@ -689,7 +687,29 @@ export function buildLiveMemberSavingsTasks(snapshot: LiveSelfDriveSnapshot): re
       state,
       engineAction: action as unknown as SavingsAction,
     })]
-  }))
+  })
+
+  const governedServiceIds = new Set(governedTasks.map((task) => task.actionId))
+  const botTasks = snapshot.essentials.filter(isEssentialsBotException).flatMap((row) => {
+    const actionId = botSavingsActionId(row)
+    if (governedServiceIds.has(actionId)) return []
+    const serviceName = text(row, "service name", "product name", "category") || "Essentials service"
+    const studioId = text(row, "studio id")
+    const studio = studiosById.get(studioId)
+    const service = text(row, "studio name") || text(studio ?? {}, "studio", "studio name") || studioId || "Unassigned Studio"
+    const saving = number(row, "member savings inr")
+    const margin = number(row, "nia margin inr")
+    const capturedAt = text(row, "updated at", "captured at") || snapshot.asOf
+    const issue = saving <= 0 ? `${serviceName}: Member saving must recover above ₹0` : `${serviceName}: Nia margin must recover above ₹0`
+    const engineAction = {
+      actionId, eventId: `BOT-EVENT-${actionId}`, idempotencyKey: actionId, serviceRef: text(row, "essentials hourly id"),
+      theatre: text(row, "theatre", "theatre id") || "Unassigned", studio: service, serviceName, ownerRole: "Essentials Bot",
+      dueAt: capturedAt, kind: "Supplier/service review", expectedMetric: "Dual gate", targetValue: 1,
+      expectedOutcome: "Member saving and Nia margin above ₹0", state: "Assigned", nextAction: "Bot will re-evaluate automatically on the next source update", externalEffect: false,
+    } as SavingsAction
+    return [Object.freeze({ actionId, issue, service, owner: "Essentials Bot", dueAt: capturedAt, expectedMetric: "Dual gate", progress: "Open from latest Bot values", verifiedResult: `Member saving ₹${saving.toLocaleString("en-IN")} · Nia margin ₹${margin.toLocaleString("en-IN")}`, state: "Assigned" as const, engineAction })]
+  })
+  return Object.freeze([...governedTasks, ...botTasks])
 }
 
 /** Sheet-backed command for Member Engagement > Retention command. */

@@ -1,10 +1,8 @@
 "use client"
 
-import { useState } from "react"
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Clock3, FileCheck2, LockKeyhole, ShieldCheck } from "lucide-react"
-import { recoverMemberSavingsTask, type MemberSavingsPreview, type MemberSavingsShadowOutcome, type SavingsTaskPreview, type SavingsVerification } from "@/lib/operating-loop/member-savings-loop"
+import { type MemberSavingsPreview } from "@/lib/operating-loop/member-savings-loop"
 import { actionStageFromStatus, OperationalCard, OperationalCardStack } from "@/components/operational-card"
-import { TokenSelect } from "@/components/token-select"
 import { MeasureViz } from "@/components/measure-viz"
 import { compactAge } from "@/lib/operating-loop/loop-health"
 import { DashboardSectionAccordion } from "@/components/dashboard-section-accordion"
@@ -35,9 +33,7 @@ function DualGateMatrix({ preview }: Props) {
 }
 
 export function MemberSavingsWorkspace({ preview }: Props) {
-  const [tasks, setTasks] = useState<readonly SavingsTaskPreview[]>(preview.tasks)
-  const [selected, setSelected] = useState<Record<string, MemberSavingsShadowOutcome>>(() => Object.fromEntries(preview.tasks.map((task) => [task.actionId, "Unresolved"])) as Record<string, MemberSavingsShadowOutcome>)
-  const [audit, setAudit] = useState<readonly { id: string; actionId: string; outcome: MemberSavingsShadowOutcome; verification: SavingsVerification["status"]; route: string; at: string }[]>([])
+  const tasks = preview.tasks
   const money = (value: number) => `₹${Math.round(value).toLocaleString("en-IN")}`
   const totals = preview.services.reduce((sum, service) => ({
     savings: sum.savings + service.memberSavingsInr,
@@ -59,16 +55,6 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     return groups
   }, new Map<string, { theatre: string; studios: Set<string>; buyers: number; orders: number; billed: number; savings: number; margin: number }>()).values()]
 
-  function recordShadowOutcome(actionId: string) {
-    const outcome = selected[actionId] ?? "Unresolved"
-    const at = new Date().toISOString()
-    const task = tasks.find((candidate) => candidate.actionId === actionId)
-    if (!task) return
-    const transition = recoverMemberSavingsTask(task, outcome)
-    setTasks((current) => current.map((candidate) => candidate.actionId === actionId ? transition.task : candidate))
-    setAudit((current) => [...current, Object.freeze({ id: `shadow-${actionId}-${Date.parse(at)}`, actionId, outcome, verification: transition.verification.status, route: transition.route, at })])
-  }
-
   return <DashboardSectionAccordion className={styles.workspace} ariaLabel="Member Savings sections" sections={[
     { title: "Data freshness", summary: `Last refresh ${date(preview.source.lastRefreshAt)} · ${preview.quarantineCount} quarantined` },
     { title: "Savings overview", summary: `${money(totals.savings)} saved by ${totals.buyers} members` },
@@ -83,7 +69,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     { title: "Service implication", summary: "Fix cost or attach without withdrawing Member savings.", lens: "decide" },
     { title: "Services needing action", summary: `${tasks.length} service actions open`, lens: "operate" },
     { title: "Issues needing review", summary: `${preview.services.filter((service) => service.status === "Exception").length} Bot exception needs review` },
-    { title: "Background record", summary: `${audit.length} local shadow events · governed controls retained`, lens: "operate" },
+    { title: "Background record", summary: `${preview.services.length} automated Bot events · ${tasks.length} open`, lens: "operate" },
     { title: "Decision required", summary: `Recover ${preview.summary.gap} dual-gate failure` },
     { title: "Source and confidence", summary: `${preview.source.name} · Production confidence Low` },
   ]}>
@@ -175,16 +161,16 @@ export function MemberSavingsWorkspace({ preview }: Props) {
     <p className={styles.soWhat}>So what: the failing service loses Nia margin while still saving the Member, so it needs a cost or attach fix, not withdrawal of the saving.</p>
 
     <section className={styles.workPanel} aria-label="Services needing action now">
-      <header><div><span>Services needing action now</span><strong>{tasks.length} service actions open</strong></div><p>Preview only</p></header>
-      <OperationalCardStack label="Member Savings action work">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.issue} domain={`${task.service} · ${task.actionId}`} status={task.state} progress={actionStageFromStatus(task.state)} fields={[{ label: "Owner", value: task.owner }, { label: "Due", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected metric", value: task.expectedMetric }, { label: "Progress", value: task.progress }, { label: "Verified result", value: task.verifiedResult }]}><div className={styles.shadowControl}><TokenSelect ariaLabel={`Shadow outcome for ${task.service}`} value={selected[task.actionId] ?? "Unresolved"} options={["Unresolved", "Evidence received", "Failed evidence", "Systemic pattern"] as const} onChange={(outcome) => setSelected((current) => ({ ...current, [task.actionId]: outcome }))} /><button type="button" onClick={() => recordShadowOutcome(task.actionId)}>Record locally</button><small>No price, supplier or external action</small></div></OperationalCard>)}</OperationalCardStack>
-      <p className={styles.soWhat}>So what: each action closes only on verified attach or repeat evidence, so a Member visit alone does not count as recovery.</p>
+      <header><div><span>Services needing action now</span><strong>{tasks.length} service actions open</strong></div><p>Bot managed</p></header>
+      <OperationalCardStack label="Member Savings action work">{tasks.map((task) => <OperationalCard key={task.actionId} title={task.issue} domain={`${task.service} · ${task.actionId}`} status={task.state} progress={actionStageFromStatus(task.state)} fields={[{ label: "Owner", value: task.owner }, { label: "Detected", value: <time dateTime={task.dueAt}>{date(task.dueAt)}</time> }, { label: "Expected metric", value: task.expectedMetric }, { label: "Automation", value: task.progress }, { label: "Current Bot result", value: task.verifiedResult }]} />)}</OperationalCardStack>
+      <p className={styles.soWhat}>Bot values create the action automatically. The action closes automatically when both Member saving and Nia margin are above ₹0 in the latest source row.</p>
     </section>
 
     <section className={styles.exceptions} aria-label="Issues needing your review">
       <header><div><span>Issues needing your review</span><strong>{preview.services.filter((service) => service.status === "Exception").length} Bot exception needs review</strong></div><p>Evidence retained</p></header>
       <OperationalCardStack label="Issues needing your review">
         {preview.despatchEscalations.map((row) => <OperationalCard key={row.escalationId} title={row.title} status={row.severity} domain="Member Savings" fields={[{ label: "Owner", value: row.ownerRole }, { label: "Due", value: <time dateTime={row.dueAt}>{date(row.dueAt)}</time> }, { label: "Despatch", value: row.status }]} progress={row.status === "Acknowledged" ? "working" : "assigned"} story={[{ label: "Why it matters", value: row.reason }, { label: "What Nia already did", value: `Confirmed the repeated dual-gate failure and routed it to ${row.ownerRole}.` }, { label: "What happens next", value: "Recover both Member savings and Nia margin, then submit verified evidence." }]} />)}
-        {preview.services.filter((service) => service.status === "Exception").map((service) => <OperationalCard key={service.serviceId} title={`${service.studio} savings exception`} status="Detected from Bot" domain={`${service.theatre || "Unassigned"} · ${service.serviceName}`} fields={[{ label: "Member saving", value: money(service.memberSavingsInr) }, { label: "Nia margin", value: money(service.niaMarginInr) }, { label: "Buying members", value: String(service.buyingMembers ?? 0) }, { label: "Orders", value: String(service.ordersFulfilled ?? service.ordersPlaced ?? 0) }]} story={[{ label: "Why it matters", value: service.statusReason }, { label: "What Nia already did", value: "Detected the governed Bot row; no price or supplier change was made." }, { label: "What happens next", value: "Create a governed recovery action and verify that both savings and margin clear ₹0." }]} progress="assigned" />)}
+        {preview.services.filter((service) => service.status === "Exception").map((service) => <OperationalCard key={service.serviceId} title={`${service.studio} savings exception`} status="Detected from Bot" domain={`${service.theatre || "Unassigned"} · ${service.serviceName}`} fields={[{ label: "Member saving", value: money(service.memberSavingsInr) }, { label: "Nia margin", value: money(service.niaMarginInr) }, { label: "Buying members", value: String(service.buyingMembers ?? 0) }, { label: "Orders", value: String(service.ordersFulfilled ?? service.ordersPlaced ?? 0) }]} story={[{ label: "Why it matters", value: service.statusReason }, { label: "What Nia already did", value: "Detected the Bot row and automatically opened one stable action." }, { label: "What happens next", value: "The next Bot update re-evaluates both values and auto-closes the action when both clear ₹0." }]} progress="assigned" />)}
       </OperationalCardStack>
     </section>
 
@@ -194,7 +180,7 @@ export function MemberSavingsWorkspace({ preview }: Props) {
         <section><strong>Versioned controls and pending approvals</strong><div className={styles.auditTable}><table><thead><tr><th>Policy</th><th>Value</th><th>Version</th><th>Status</th></tr></thead><tbody>{preview.policyRegistry.map((policy) => <tr key={policy.policyId}><td>{policy.name}</td><td>{policy.value === null ? "No value approved" : `${policy.value} ${policy.unit}`}</td><td>v{policy.version}</td><td>{policy.status}</td></tr>)}</tbody></table></div></section>
         <section><strong>Weekly savings-message inputs</strong>{preview.weeklyMessageInputs.map((input) => <dl key={input.serviceRef}><div><dt>Service</dt><dd>Protected service reference</dd></div><div><dt>Verified saving</dt><dd>{input.verifiedSavingsInr === null ? "Unavailable" : `₹${input.verifiedSavingsInr}`}</dd></div><div><dt>Freshness</dt><dd>{input.dataFreshness}</dd></div><div><dt>Mode</dt><dd>{input.mode} · sent {String(input.sent)}</dd></div></dl>)}</section>
         <section><strong>Shared learning-control inputs</strong>{preview.learningInputs.map((input) => <dl className={styles.learningGrid} key={input.action_id}><div><dt>Proposed change</dt><dd>{input.proposed_change}</dd></div><div><dt>Expected effect</dt><dd>{input.expected_effect}</dd></div><div><dt>Evidence</dt><dd>{input.evidence_cycles} cycles · n={input.sample_size} · {input.verification_rate_pct}% verified</dd></div><div><dt>Attribution</dt><dd>{input.attribution_grade} · {input.confounders.join(", ")}</dd></div><div><dt>Forecast error</dt><dd>{input.forecast_error_pct}%</dd></div><div><dt>Fresh / reversible</dt><dd>{String(input.critical_data_fresh)} / {String(input.reversible)}</dd></div><div><dt>Approved boundary</dt><dd>{String(input.inside_approved_boundary)} · reverses human decision {String(input.reverses_human_decision)}</dd></div><div><dt>Human controls</dt><dd>{input.affected_human_controlled_categories.join(", ") || "No category changed"}</dd></div><div><dt>Effects</dt><dd>{input.target_effect} {input.channel_effect} {input.cm_effect} {input.cash_effect}</dd></div><div><dt>Confidence / adoption</dt><dd>{input.production_confidence} · auto-adopt {String(input.auto_adopt)}</dd></div><div><dt>Rollback</dt><dd>{input.rollback_trigger}</dd></div></dl>)}</section>
-        <section><strong>Append-only local shadow audit</strong>{audit.length > 0 ? <ol>{audit.map((entry) => <li key={entry.id}><CheckCircle2 aria-hidden /><span><b>{entry.outcome} · {entry.verification}</b>{entry.actionId} · {entry.route}</span><time dateTime={entry.at}>{date(entry.at)}</time></li>)}</ol> : <p>No local shadow outcome recorded.</p>}</section>
+        <section><strong>Automated Bot background record</strong><ol>{preview.services.map((service) => <li key={service.serviceId}><CheckCircle2 aria-hidden /><span><b>{service.status === "Pass" ? "Auto-confirmed" : "Action auto-opened"}</b>{service.serviceName} · {service.studio} · saving {money(service.memberSavingsInr)} · margin {money(service.niaMarginInr)}</span><time dateTime={preview.source.asOf}>{date(preview.source.asOf)}</time></li>)}</ol></section>
         <section><strong>Structural action boundary</strong><p>{Object.entries(preview.blockedCapabilities).map(([capability, enabled]) => `${capability}: ${enabled ? "enabled" : "blocked"}`).join(" · ")}</p><p>RafiQi may detect, assign and verify governed records. It cannot change price, contact a supplier or Member, sign a contract, move money, delist a service, call externally, write Production or adopt policy.</p></section>
       </div>
     </details>

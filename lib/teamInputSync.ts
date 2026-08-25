@@ -346,7 +346,7 @@ export async function syncTeamInputs() {
   // preventing duplicate Finance, People, Action, Evidence and Approval rows.
   const freshWorkbookSource = sourceSpreadsheetId === process.env.GOOGLE_TEAM_INPUT_SHEET_ID && !process.env.GOOGLE_LEGACY_TEAM_INPUT_SHEET_ID;
   const activeMappings = freshWorkbookSource
-    ? mappings.filter(([source]) => source === "TEAM_MEMBER_ACTIVATION" || source === "TEAM_LEARNING_HISTORY")
+    ? mappings.filter(([source]) => source === "TEAM_MEMBER_ACTIVATION" || source === "TEAM_LEARNING_HISTORY" || source === "TEAM_REQ_POLICY_REGISTRY")
     : mappings;
   const credentials = googleServiceAccountCredentials();
   const auth = new google.auth.GoogleAuth({ credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"] });

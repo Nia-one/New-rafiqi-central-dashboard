@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react"
 import { Activity, BellRing, Check, Clock3, Pause, Play, RefreshCw, ShieldCheck } from "lucide-react"
 import { HEARTBEAT_POLL_INTERVAL_SECONDS, type EvaluatedHeartbeat, type HeartbeatSnapshot } from "@/lib/heartbeat-control"
-import { heartbeatRules } from "@/lib/heartbeat-data"
 import { EXECUTION_REPORT_AS_OF } from "@/lib/execution-data"
 import { buildDespatchValidationQueue, type ExecutionAction } from "@/lib/execution-control"
 import type { LoopHealth } from "@/lib/operating-loop/loop-health"
@@ -122,8 +121,8 @@ function ownerItemSummary(item: DespatchOwnerItem) {
       issue: `${item.record.name} went silent`,
       domain: `${item.record.theatre} · ${item.record.location}`,
       timingLabel: "Due",
-      timing: "Now",
-      action: "Check safety, then confirm",
+      timing: item.record.rule.due_label,
+      action: item.record.rule.action_label,
       optic: { label: `${item.record.minutes_since_heartbeat} min · limit ${item.record.rule.threshold_minutes}`, percent: item.record.minutes_since_heartbeat / scale * 100 },
     }
   }
@@ -178,6 +177,7 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
   const acknowledgedIds = useMemo(() => new Set(snapshot.action_log.filter((entry) => entry.action_type === "alert_acknowledged").map((entry) => entry.heartbeat_id)), [snapshot.action_log])
   const openAlerts = snapshot.alerts.filter((alert) => !acknowledgedIds.has(alert.id))
   const highestAlert = openAlerts[0]
+  const liveHeartbeatRules = [...new Map(snapshot.streams.map((stream) => [stream.rule.kind, stream.rule])).values()]
   const actionLog = snapshot.action_log
   const validationQueue = useMemo(() => buildDespatchValidationQueue(commitments, EXECUTION_REPORT_AS_OF), [commitments])
   const ownerItems: readonly DespatchOwnerItem[] = [
@@ -326,11 +326,11 @@ export function DespatchScreen({ commitments, escalations = [], escalationTotal 
     <div className="heartbeat-lower-grid">
       <section className="heartbeat-section heartbeat-rules">
         <header><div><p className="heartbeat-kicker">CONFIGURED RULES</p><h2>What counts as a heartbeat</h2></div></header>
-        <div>{heartbeatRules.map((rule) => <article key={rule.kind}><Clock3 aria-hidden /><div><strong>{rule.label}</strong><p>{rule.definition}</p><p><code>{rule.event_type}</code> · breach after {rule.threshold_minutes} min · escalate after {rule.threshold_minutes * rule.escalation_multiplier} min</p></div><span>{rule.source_system === "action_log" ? "Action log" : "Order system"}</span></article>)}</div>
+        <div>{liveHeartbeatRules.map((rule) => <article key={rule.kind}><Clock3 aria-hidden /><div><strong>{rule.label}</strong><p>{rule.definition}</p><p><code>{rule.event_type}</code> · breach after {rule.threshold_minutes} min · escalate after {rule.threshold_minutes * rule.escalation_multiplier} min</p></div><span>{rule.source_system === "action_log" ? "Action log" : "Order system"}</span></article>)}</div>
       </section>
 
       <section className="heartbeat-section heartbeat-audit">
-        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Illustrative server log · resets with preview</p></header>
+        <header><div><p className="heartbeat-kicker">APPEND-ONLY AUDIT</p><h2>Alert and acknowledgment log</h2></div><p>Governed Action_Log · persistent</p></header>
         {actionError && <p className="heartbeat-action-error" role="alert">{actionError}</p>}
         <ol>{actionLog.map((entry) => <li key={entry.id}><span>{formatTime(entry.occurred_at)}</span><div><strong>{auditLabels[entry.action_type]}</strong><p>{entry.actor_id} · {entry.note}</p></div></li>)}</ol>
       </section>
