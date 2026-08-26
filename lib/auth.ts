@@ -37,10 +37,11 @@ export function resolveLoginAccounts(runtime: LoginRuntime): readonly LoginAccou
       return []
     }
   }
-  if (configured.length) return Object.freeze(configured)
-
   const legacy = resolveLoginConfiguration(runtime)
-  return legacy ? Object.freeze([{ email: legacy.email, password: legacy.password }]) : Object.freeze([])
+  if (legacy && !configured.some((account) => account.email === legacy.email)) {
+    configured.push({ email: legacy.email, password: legacy.password })
+  }
+  return Object.freeze(configured)
 }
 
 export function loginAccountsFromEnvironment(

@@ -35,6 +35,20 @@ test("supports multiple production login accounts without exposing them to the c
   ])
 })
 
+test("preserves the existing central login while department accounts are configured", () => {
+  const accounts = resolveLoginAccounts({
+    nodeEnv: "production",
+    email: "rafiqi.control@nia.one",
+    password: "existing-central-password",
+    sessionSecret: "server-only-secret",
+    accounts: JSON.stringify([{ email: "operations@nia.one", password: "ops-password" }]),
+  })
+  assert.deepEqual(accounts, [
+    { email: "operations@nia.one", password: "ops-password" },
+    { email: "rafiqi.control@nia.one", password: "existing-central-password" },
+  ])
+})
+
 test("rejects a malformed multi-account configuration", () => {
   assert.deepEqual(resolveLoginAccounts({ nodeEnv: "production", accounts: "not-json" }), [])
 })
