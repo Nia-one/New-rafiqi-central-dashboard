@@ -5,6 +5,7 @@ import {
   isValidSessionToken,
   loginConfigurationFromEnvironment,
   readSessionEmail,
+  resolveLoginAccounts,
   resolveLoginConfiguration,
   sessionCookieOptions,
   SESSION_DURATION_SECONDS,
@@ -15,6 +16,27 @@ test("signed sessions validate before expiry", async () => {
   const token = await createSessionToken("operator@nia.one", "a-long-test-secret-for-rafiqi-central", now)
   assert.equal(await isValidSessionToken(token, "a-long-test-secret-for-rafiqi-central", now + 1_000), true)
   assert.equal(await readSessionEmail(token, "a-long-test-secret-for-rafiqi-central", now + 1_000), "operator@nia.one")
+})
+
+test("supports multiple production login accounts without exposing them to the client", () => {
+  const accounts = resolveLoginAccounts({
+    nodeEnv: "production",
+    sessionSecret: "server-only-secret",
+    accounts: JSON.stringify([
+      { email: " Operations@Nia.One ", password: "ops-password" },
+      { email: "finance@nia.one", password: "finance-password" },
+      { email: "admin@nia.one", password: "admin-password" },
+    ]),
+  })
+  assert.deepEqual(accounts, [
+    { email: "operations@nia.one", password: "ops-password" },
+    { email: "finance@nia.one", password: "finance-password" },
+    { email: "admin@nia.one", password: "admin-password" },
+  ])
+})
+
+test("rejects a malformed multi-account configuration", () => {
+  assert.deepEqual(resolveLoginAccounts({ nodeEnv: "production", accounts: "not-json" }), [])
 })
 
 test("tampered and expired sessions are rejected", async () => {

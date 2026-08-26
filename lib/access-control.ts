@@ -27,6 +27,24 @@ export function financeAccessAllowed(role: OperatorRole | null | undefined) {
   return role === "finance" || role === "administrator"
 }
 
+export type DashboardAccess = Readonly<{
+  administration: boolean
+  operations: boolean
+  finance: boolean
+  reporting: boolean
+  canOperate: boolean
+}>
+
+export function dashboardAccessForRole(role: OperatorRole | null | undefined): DashboardAccess {
+  return Object.freeze({
+    administration: role === "administrator",
+    operations: role === "operator" || role === "administrator",
+    finance: role === "finance" || role === "administrator",
+    reporting: role === "operator" || role === "finance" || role === "administrator",
+    canOperate: role === "operator" || role === "administrator",
+  })
+}
+
 export function productionWritesEnabled() {
   return process.env.NODE_ENV !== "production"
 }

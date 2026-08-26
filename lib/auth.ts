@@ -14,6 +14,47 @@ type LoginRuntime = {
   email?: string
   password?: string
   sessionSecret?: string
+  accounts?: string
+}
+
+export type LoginAccount = Readonly<{ email: string; password: string }>
+
+export function resolveLoginAccounts(runtime: LoginRuntime): readonly LoginAccount[] {
+  const configured: LoginAccount[] = []
+  if (runtime.accounts) {
+    try {
+      const parsed = JSON.parse(runtime.accounts) as unknown
+      if (Array.isArray(parsed)) {
+        for (const value of parsed) {
+          if (!value || typeof value !== "object") continue
+          const record = value as Record<string, unknown>
+          const email = typeof record.email === "string" ? record.email.trim().toLowerCase() : ""
+          const password = typeof record.password === "string" ? record.password : ""
+          if (email && password && !configured.some((account) => account.email === email)) configured.push({ email, password })
+        }
+      }
+    } catch {
+      return []
+    }
+  }
+  if (configured.length) return Object.freeze(configured)
+
+  const legacy = resolveLoginConfiguration(runtime)
+  return legacy ? Object.freeze([{ email: legacy.email, password: legacy.password }]) : Object.freeze([])
+}
+
+export function loginAccountsFromEnvironment(
+  runtime: LoginRuntime = {
+    nodeEnv: process.env.NODE_ENV,
+    vercelEnv: process.env.VERCEL_ENV,
+    gitCommitRef: process.env.VERCEL_GIT_COMMIT_REF,
+    email: process.env.RAFIQI_LOGIN_EMAIL,
+    password: process.env.RAFIQI_LOGIN_PASSWORD,
+    sessionSecret: process.env.RAFIQI_SESSION_SECRET,
+    accounts: process.env.RAFIQI_LOGIN_ACCOUNTS,
+  },
+) {
+  return resolveLoginAccounts(runtime)
 }
 
 export function resolveLoginConfiguration(runtime: LoginRuntime) {
