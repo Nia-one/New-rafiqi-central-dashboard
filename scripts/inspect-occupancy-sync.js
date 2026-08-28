@@ -12,21 +12,39 @@ async function main() {
     ranges: ["Studios!A1:W160", "TEAM_OCCUPANCY!A1:W160"],
   })
   const [studios = [], occupancy = []] = (result.data.valueRanges || []).map((range) => range.values || [])
-  const backend = await sheets.spreadsheets.values.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID, range: "Living_Hourly!A1:AZ" })
-  const backendRows = backend.data.values || []
+  const norm = (value) => String(value || "").trim().toLowerCase().replaceAll("_", " ").replace(/\s+/g, " ")
+  const headerIndex = studios.findIndex((row) => row.some((cell) => norm(cell) === "studio code"))
+  const headers = studios[headerIndex] || []
+  const column = (name) => headers.findIndex((header) => norm(header) === norm(name))
+  const sourceRows = studios.slice(headerIndex + 1).filter((row) => String(row[column("Studio Code")] || "").trim())
+  const activeSourceRows = sourceRows.filter((row) => norm(row[column("Status")]) === "active")
+  const numeric = (value) => Number(String(value || "").replace(/[^0-9.-]/g, "")) || 0
+  const backendResult = await sheets.spreadsheets.values.batchGet({ spreadsheetId: process.env.GOOGLE_SHEET_ID, ranges: ["Living_Hourly!A1:AZ", "TEAM_OCCUPANCY!A1:AZ"] })
+  const backendRows = backendResult.data.valueRanges?.[0]?.values || []
+  const teamBackendRows = backendResult.data.valueRanges?.[1]?.values || []
+  const teamHeader = teamBackendRows[0] || []
+  const teamColumn = (name) => teamHeader.findIndex((header) => norm(header) === norm(name))
+  const activeTeamRows = teamBackendRows.slice(1).filter((row) => norm(row[teamColumn("Status")]) === "active")
   const backendHeaders = backendRows[0] || []
   const backendIdIndex = backendHeaders.indexOf("living hourly id")
   const backendSupplyIndex = backendHeaders.indexOf("supply model")
   const occupancyBackendRows = backendRows.slice(1).filter((row) => String(row[backendIdIndex] || "").startsWith("OPS-RPT-OCC"))
-  const activeSourceRows = studios.slice(3).filter((row) => String(row[2] || "").trim() && String(row[4] || "").trim().toLowerCase() === "active")
   console.log(JSON.stringify({
     studiosRows: studios.length,
     occupancyRows: occupancy.length,
-    sourceRecords: studios.slice(3).filter((row) => String(row[2] || "").trim()).length,
+    sourceHeaderRow: headerIndex + 1,
+    sourceRecords: sourceRows.length,
     activeSourceRecords: activeSourceRows.length,
+    activeSourceContracted: activeSourceRows.reduce((sum, row) => sum + numeric(row[column("Contracted Nest")]), 0),
+    activeSourceOccupied: activeSourceRows.reduce((sum, row) => sum + numeric(row[column("Occupied Nest")]), 0),
     mirroredRecords: occupancy.slice(1).filter((row) => String(row[2] || "").trim()).length,
     nonExistingMirrorRows: occupancy.slice(1).filter((row) => String(row[2] || "").trim() && String(row[20] || "") !== "EXISTING").length,
     backendOccupancyRecords: occupancyBackendRows.length,
+    teamBackendHeaders: teamBackendRows[0] || [],
+    teamBackendRecords: teamBackendRows.slice(1).filter((row) => row.some((cell) => String(cell || "").trim())).length,
+    teamBackendActiveRecords: activeTeamRows.length,
+    teamBackendActiveContracted: activeTeamRows.reduce((sum, row) => sum + numeric(row[teamColumn("Contracted Nest")]), 0),
+    teamBackendActiveOccupied: activeTeamRows.reduce((sum, row) => sum + numeric(row[teamColumn("Occupied Nest")]), 0),
     nonExistingBackendRows: occupancyBackendRows.filter((row) => String(row[backendSupplyIndex] || "") !== "EXISTING").length,
     missingAutomatedIds: occupancy.slice(1).filter((row) => String(row[2] || "").trim() && !String(row[17] || "").trim()).length,
     manualActivationReadyValues: occupancy.slice(1).filter((row) => String(row[22] || "").trim()).length,

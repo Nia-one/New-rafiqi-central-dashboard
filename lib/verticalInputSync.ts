@@ -61,6 +61,66 @@ async function replaceAllRows(target: string, records: Record<string, unknown>[]
   return output.length;
 }
 
+/**
+ * Replace the canonical backend TEAM_OCCUPANCY rows from the latest Studios
+ * report. The founder dashboard reads this tab directly, so keeping only
+ * Living_Hourly current leaves its Control Tower on stale fallback totals.
+ */
+export async function syncTeamOccupancyFromStudios() {
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
+  const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
+  const sheets = google.sheets({ version: "v4", auth });
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(title,index)" });
+  const studioTab = (metadata.data.sheets || [])
+    .map((sheet) => sheet.properties)
+    .filter((properties) => properties?.title === "Studios" || properties?.title?.startsWith("Studios ("))
+    .sort((a, b) => (b?.index || 0) - (a?.index || 0))[0]?.title;
+  if (!studioTab) throw new Error("The source workbook has no Studios tab");
+
+  const [sourceResult, backendResult] = await Promise.all([
+    sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_ID, range: `'${studioTab.replaceAll("'", "''")}'!A:AZ` }),
+    sheets.spreadsheets.values.get({ spreadsheetId, range: "TEAM_OCCUPANCY!A1:AZ" }),
+  ]);
+  const sourceRows = (sourceResult.data.values || []) as unknown[][];
+  const headerIndex = sourceRows.findIndex((row) => row.some((cell) => norm(cell) === "studio code"));
+  if (headerIndex < 0) throw new Error(`${studioTab} has no Studio Code header`);
+  const sourceHeaders = (sourceRows[headerIndex] || []).map(String);
+  const backendRows = (backendResult.data.values || []) as unknown[][];
+  const backendHeaders = (backendRows[0] || []).map(String);
+  if (!backendHeaders.length) throw new Error("TEAM_OCCUPANCY has no canonical headers");
+
+  const now = new Date().toISOString();
+  const records = sourceRows.slice(headerIndex + 1)
+    .filter((row) => {
+      const studio = String(value(row, sourceHeaders, "Studio Code") || "").trim();
+      return studio && norm(studio) !== "studio code" && norm(studio) !== "total" && !isSampleRow(row);
+    })
+    .map((row) => {
+      const studio = value(row, sourceHeaders, "Studio Code");
+      return Object.fromEntries(backendHeaders.map((header) => {
+        const sourceIndex = sourceHeaders.findIndex((candidate) => norm(candidate) === norm(header));
+        if (sourceIndex >= 0) return [header, row[sourceIndex] ?? ""];
+        if (norm(header) === "dashboard record id") return [header, id("OPS-OCC", [studio])];
+        if (norm(header) === "as of at" || norm(header) === "source updated at") return [header, now];
+        if (norm(header) === "location id") return [header, studio];
+        if (norm(header) === "supply model") return [header, "EXISTING"];
+        return [header, ""];
+      }));
+    });
+
+  await replaceAllRows("TEAM_OCCUPANCY", records);
+  const active = records.filter((record) => norm(record[backendHeaders.find((header) => norm(header) === "status") || "Status"]) === "active");
+  return {
+    sourceTab: studioTab,
+    rows: records.length,
+    activeRows: active.length,
+    activeContracted: active.reduce((sum, record) => sum + number(record[backendHeaders.find((header) => norm(header) === "contracted nest") || "Contracted Nest"]), 0),
+    activeOccupied: active.reduce((sum, record) => sum + number(record[backendHeaders.find((header) => norm(header) === "occupied nest") || "Occupied Nest"]), 0),
+    syncedAt: now,
+  };
+}
+
 export async function syncVerticalInputs() {
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });

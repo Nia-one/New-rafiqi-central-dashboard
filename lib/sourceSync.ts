@@ -1,7 +1,7 @@
 import { syncTeamInputs } from "@/lib/teamInputSync";
 import { syncEssentialsBotData } from "@/lib/essentialsBotSync";
 import { syncShramParkDemandBotData } from "@/lib/shramParkDemandBotSync";
-import { syncVerticalInputs } from "@/lib/verticalInputSync";
+import { syncTeamOccupancyFromStudios, syncVerticalInputs } from "@/lib/verticalInputSync";
 import { syncMemberFeedback } from "@/lib/memberFeedbackSync";
 import { clearSheetCache } from "@/lib/googleSheets";
 import { syncFreshDashboardInputs } from "@/lib/freshDashboardInputSync";
@@ -32,6 +32,7 @@ export type SourceSyncReport = {
 };
 
 export type LiveSourceSyncReport = {
+  teamOccupancyReport: Awaited<ReturnType<typeof syncTeamOccupancyFromStudios>> | null;
   essentialsReport: Awaited<ReturnType<typeof syncEssentialsBotData>> | null;
   shramParkDemandReport: Awaited<ReturnType<typeof syncShramParkDemandBotData>> | null;
   fonoTrackerReport: Awaited<ReturnType<typeof syncFonoTrackerData>> | null;
@@ -65,14 +66,17 @@ async function runLiveSourceSync(): Promise<LiveSourceSyncReport> {
   };
   const enterpriseDemandSupplyReport = await attempt("enterprise-demand-supply", syncEnterpriseSupplyMatchColumns);
   const freshDashboardInputReport = await attempt("fresh-dashboard-inputs", syncFreshDashboardInputs);
+  // The founder Control Tower reads TEAM_OCCUPANCY directly. Refresh it from
+  // the latest Studios source on every live sync without touching UI code.
+  const teamOccupancyReport = await attempt("team-occupancy", syncTeamOccupancyFromStudios);
   const shramParkDemandReport = await attempt("shram-park-demand", syncShramParkDemandBotData);
   const fonoTrackerReport = await attempt("fono-tracker", syncFonoTrackerData);
   const essentialsReport = await attempt("essentials", syncEssentialsBotData);
   clearSheetCache();
-  const reports = [freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport, enterpriseDemandSupplyReport];
+  const reports = [teamOccupancyReport, freshDashboardInputReport, shramParkDemandReport, fonoTrackerReport, essentialsReport, enterpriseDemandSupplyReport];
   if (reports.every((report) => report === null)) throw new AggregateError(failures.map((failure) => new Error(`${failure.source}: ${failure.error}`)), "Every live source sync failed");
   const changedRows = reports.reduce((sum, report) => sum + (report && typeof report === "object" && "changedRows" in report ? Number(report.changedRows) || 0 : 0), 0);
-  return { essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, enterpriseDemandSupplyReport, changedRows, failures, syncedAt: new Date().toISOString() };
+  return { teamOccupancyReport, essentialsReport, shramParkDemandReport, fonoTrackerReport, freshDashboardInputReport, enterpriseDemandSupplyReport, changedRows, failures, syncedAt: new Date().toISOString() };
 }
 
 export function syncLiveSources() {
