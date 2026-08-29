@@ -110,7 +110,10 @@ export async function syncTeamOccupancyFromStudios() {
     "vacant nests": ["Vacant_Nests"],
     "occupancy %": ["Occupancy_Pct"],
     "occupancy pct": ["Occupancy_Pct"],
-    status: ["Status"],
+    // UI_Occupancy "Status" is an alarm/attention verdict (Open, Attention,
+    // Closed), not the canonical studio lifecycle status.  Every governed row
+    // in this input is an active operating studio, so do not overlay that field
+    // onto TEAM_OCCUPANCY.Status.
     remarks: ["Remarks"],
     "as of at": ["Last_Updated", "Reporting_Time", "Reporting_Date"],
     "source updated at": ["Last_Updated", "Reporting_Time", "Reporting_Date"],
@@ -129,6 +132,7 @@ export async function syncTeamOccupancyFromStudios() {
       return Object.fromEntries(backendHeaders.map((header) => {
         const aliases = overlay[norm(header)] || [header];
         const sourceValue = value(row, sourceHeaders, ...aliases);
+        if (norm(header) === "status") return [header, "Active"];
         if (sourceValue !== "") return [header, sourceValue];
         if (norm(header) === "dashboard record id") return [header, id("OPS-OCC", [studio])];
         if (norm(header) === "as of at" || norm(header) === "source updated at") return [header, now];
