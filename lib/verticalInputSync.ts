@@ -62,80 +62,49 @@ async function replaceAllRows(target: string, records: Record<string, unknown>[]
 }
 
 /**
- * Refresh the canonical backend TEAM_OCCUPANCY rows from UI_Occupancy.
- *
- * UI_Occupancy is the governed operator input.  TEAM_OCCUPANCY is the backend
- * projection consumed by the founder dashboard.  Preserve finance/enrichment
- * columns already present in the backend, but always overlay the live capacity
- * and occupancy fields from UI_Occupancy.
+ * Replace the canonical backend TEAM_OCCUPANCY rows from the latest Studios
+ * report. The founder dashboard reads this tab directly, so keeping only
+ * Living_Hourly current leaves its Control Tower on stale fallback totals.
  */
 export async function syncTeamOccupancyFromStudios() {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("GOOGLE_SHEET_ID is missing");
   const auth = new google.auth.GoogleAuth({ credentials: credentials(), scopes: ["https://www.googleapis.com/auth/spreadsheets"] });
   const sheets = google.sheets({ version: "v4", auth });
+  const metadata = await sheets.spreadsheets.get({ spreadsheetId: SOURCE_ID, fields: "sheets.properties(title,index)" });
+  const studioTab = (metadata.data.sheets || [])
+    .map((sheet) => sheet.properties)
+    .filter((properties) => properties?.title === "Studios" || properties?.title?.startsWith("Studios ("))
+    .sort((a, b) => (b?.index || 0) - (a?.index || 0))[0]?.title;
+  if (!studioTab) throw new Error("The source workbook has no Studios tab");
+
   const [sourceResult, backendResult] = await Promise.all([
-    sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_ID, range: "UI_Occupancy!A:AZ" }),
+    sheets.spreadsheets.values.get({ spreadsheetId: SOURCE_ID, range: `'${studioTab.replaceAll("'", "''")}'!A:AZ` }),
     sheets.spreadsheets.values.get({ spreadsheetId, range: "TEAM_OCCUPANCY!A1:AZ" }),
   ]);
   const sourceRows = (sourceResult.data.values || []) as unknown[][];
-  const headerIndex = sourceRows.findIndex((row) => row.some((cell) => norm(cell) === "studio id"));
-  if (headerIndex < 0) throw new Error("UI_Occupancy has no Studio_ID header");
+  const headerIndex = sourceRows.findIndex((row) => row.some((cell) => norm(cell) === "studio code"));
+  if (headerIndex < 0) throw new Error(`${studioTab} has no Studio Code header`);
   const sourceHeaders = (sourceRows[headerIndex] || []).map(String);
   const backendRows = (backendResult.data.values || []) as unknown[][];
   const backendHeaders = (backendRows[0] || []).map(String);
   if (!backendHeaders.length) throw new Error("TEAM_OCCUPANCY has no canonical headers");
 
-  const backendStudioHeader = backendHeaders.find((header) => norm(header) === "studio code") || "Studio Code";
-  const existingByStudio = new Map(
-    backendRows.slice(1)
-      .filter((row) => !isSampleRow(row))
-      .map((row) => [norm(value(row, backendHeaders, backendStudioHeader)), row]),
-  );
-  const overlay: Record<string, string[]> = {
-    "dashboard record id": ["Record_ID"],
-    theatre: ["Theatre_Name"],
-    "theatre id": ["Theatre_ID"],
-    "studio code": ["Studio_ID"],
-    "studio id": ["Studio_ID"],
-    "studio name": ["Studio_Name"],
-    "location id": ["Studio_ID"],
-    "business owner": ["Business_Owner"],
-    "contracted nest": ["Contracted_Nests"],
-    "contracted nests": ["Contracted_Nests"],
-    "activation ready nests": ["Activation_Ready_Nests"],
-    "occupied nest": ["Occupied_Nests"],
-    "occupied nests": ["Occupied_Nests"],
-    "vacant nest": ["Vacant_Nests"],
-    "vacant nests": ["Vacant_Nests"],
-    "occupancy %": ["Occupancy_Pct"],
-    "occupancy pct": ["Occupancy_Pct"],
-    status: ["Status"],
-    remarks: ["Remarks"],
-    "as of at": ["Last_Updated", "Reporting_Time", "Reporting_Date"],
-    "source updated at": ["Last_Updated", "Reporting_Time", "Reporting_Date"],
-  };
-
   const now = new Date().toISOString();
   const records = sourceRows.slice(headerIndex + 1)
     .filter((row) => {
-      const studio = String(value(row, sourceHeaders, "Studio_ID") || "").trim();
-      const live = norm(value(row, sourceHeaders, "Sample_Live"));
-      return studio && norm(studio) !== "studio id" && norm(studio) !== "total" && !isSampleRow(row) && live !== "sample";
+      const studio = String(value(row, sourceHeaders, "Studio Code") || "").trim();
+      return studio && norm(studio) !== "studio code" && norm(studio) !== "total" && !isSampleRow(row);
     })
     .map((row) => {
-      const studio = value(row, sourceHeaders, "Studio_ID");
-      const existing = existingByStudio.get(norm(studio));
+      const studio = value(row, sourceHeaders, "Studio Code");
       return Object.fromEntries(backendHeaders.map((header) => {
-        const aliases = overlay[norm(header)] || [header];
-        const sourceValue = value(row, sourceHeaders, ...aliases);
-        if (sourceValue !== "") return [header, sourceValue];
+        const sourceIndex = sourceHeaders.findIndex((candidate) => norm(candidate) === norm(header));
+        if (sourceIndex >= 0) return [header, row[sourceIndex] ?? ""];
         if (norm(header) === "dashboard record id") return [header, id("OPS-OCC", [studio])];
         if (norm(header) === "as of at" || norm(header) === "source updated at") return [header, now];
         if (norm(header) === "location id") return [header, studio];
         if (norm(header) === "supply model") return [header, "EXISTING"];
-        const existingIndex = backendHeaders.findIndex((candidate) => norm(candidate) === norm(header));
-        if (existing && existingIndex >= 0) return [header, existing[existingIndex] ?? ""];
         return [header, ""];
       }));
     });
@@ -143,7 +112,7 @@ export async function syncTeamOccupancyFromStudios() {
   await replaceAllRows("TEAM_OCCUPANCY", records);
   const active = records.filter((record) => norm(record[backendHeaders.find((header) => norm(header) === "status") || "Status"]) === "active");
   return {
-    sourceTab: "UI_Occupancy",
+    sourceTab: studioTab,
     rows: records.length,
     activeRows: active.length,
     activeContracted: active.reduce((sum, record) => sum + number(record[backendHeaders.find((header) => norm(header) === "contracted nest") || "Contracted Nest"]), 0),
