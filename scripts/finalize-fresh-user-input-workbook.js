@@ -40,6 +40,14 @@ const editableOverrides = new Map([
 ])
 const alwaysSystem = new Set(["record id", "sample live", "reporting date", "reporting time", "last updated", "vacant nests", "occupancy pct", "collection leakage inr", "source submission id", "updated at", "actual loaded cac inr", "payback days", "growth record id", "supply model", "required nests", "gap nests", "owner actor id", "signed contract covered nests", "readiness status", "id"])
 
+function isEditableHeader(title, header) {
+  const key = norm(header)
+  if (title === "Fono Funnel" && fonoSystemHeaders.has(key)) return false
+  const override = editableOverrides.get(title)
+  if (override) return override.has(key)
+  return !alwaysSystem.has(key) && !(title === "UI_Enterprise_Demand" && key === "enterprise name")
+}
+
 const consumers = {
   UI_Occupancy: "Living > Existing Occupancy",
   "Fono Funnel": "Living FONO; Enterprise Demand; Member Adds; Nia Growth",
@@ -102,11 +110,10 @@ async function main() {
     if (!manual) continue
 
     const header = headers.get(title)
-    const override = editableOverrides.get(title)
     const automatedColumns = []
     header.values.forEach((value, column) => {
       const key = norm(value)
-      const editable = fonoSystemHeaders.has(key) && title === "Fono Funnel" ? false : override ? override.has(key) : !alwaysSystem.has(key)
+      const editable = isEditableHeader(title, value)
       if (!editable) automatedColumns.push(column)
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(key)
       requests.push({ repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: header.index, endRowIndex: header.index + 1, startColumnIndex: column, endColumnIndex: column + 1 }, cell: {
@@ -128,9 +135,8 @@ async function main() {
   const guideRows = [["TAB", "COLUMN", "FIELD", "OWNERSHIP", "WHAT TO ENTER", "DASHBOARD CONSUMERS"]]
   for (const title of manualTabs) {
     const header = headers.get(title)
-    const override = editableOverrides.get(title)
     header.values.forEach((field, index) => {
-      const editable = fonoSystemHeaders.has(norm(field)) && title === "Fono Funnel" ? false : override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
+      const editable = isEditableHeader(title, field)
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(norm(field))
       guideRows.push([title, index + 1, field, reportInput ? "YELLOW — BUSINESS REPORT IMPORT" : editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", reportInput ? "Import or replace the verified Business Report value." : editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
     })

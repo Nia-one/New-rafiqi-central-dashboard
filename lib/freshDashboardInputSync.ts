@@ -26,7 +26,9 @@ const preferredCell = (table: Table, row: unknown[], ...names: string[]) => {
   return "";
 };
 
-const systemHeader = (header: string) => ["record id", "reporting date", "reporting time", "last updated", "sample live"].includes(norm(header));
+const systemHeaders = new Set(["record id", "reporting date", "reporting time", "last updated", "sample live"]);
+const systemHeader = (tab: string, header: string) => systemHeaders.has(norm(header))
+  || (tab === "UI_Enterprise_Demand" && norm(header) === "enterprise name");
 const indiaDateTime = (now: Date) => {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
@@ -43,7 +45,7 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   const index = (name: string) => headers.findIndex((header) => norm(header) === norm(name));
   const sampleLiveIndex = index("Sample_Live");
   const sampleLive = sampleLiveIndex < 0 ? "" : norm(row[sampleLiveIndex]);
-  const hasUserContent = headers.some((header, columnIndex) => !systemHeader(header) && String(row[columnIndex] ?? "").trim() !== "");
+  const hasUserContent = headers.some((header, columnIndex) => !systemHeader(tab, header) && String(row[columnIndex] ?? "").trim() !== "");
   // Explicit sample/template rows must never sync. A populated row with a blank
   // status is a genuine operator row, so the connector promotes it to Live.
   // Any other explicit status (for example Draft/Hold) remains excluded.
@@ -60,9 +62,14 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
       updates.push({ columnIndex, value });
     }
   };
-  const stableContent = headers.map((header, columnIndex) => systemHeader(header) ? "" : String(row[columnIndex] ?? "").trim()).join("|");
+  const stableContent = headers.map((header, columnIndex) => systemHeader(tab, header) ? "" : String(row[columnIndex] ?? "").trim()).join("|");
   const tabCode = tab.replace(/^UI_/, "").replace(/[^A-Za-z0-9]+/g, "-").toUpperCase();
   const digest = createHash("sha256").update(`${tab}|${sourceRowNumber}|${stableContent}`).digest("hex").slice(0, 12).toUpperCase();
+  if (tab === "UI_Enterprise_Demand") {
+    const studioNameIndex = index("Studio_Name");
+    const studioName = studioNameIndex < 0 ? "" : String(row[studioNameIndex] ?? "");
+    if (studioName.trim()) setWhenBlank("Enterprise_Name", studioName);
+  }
   setWhenBlank("Sample_Live", "Live");
   setWhenBlank("Record_ID", `UI-${tabCode}-${digest}`);
   setWhenBlank("Reporting_Date", date);
