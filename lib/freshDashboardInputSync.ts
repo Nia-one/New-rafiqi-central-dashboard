@@ -50,16 +50,16 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   // status is a genuine operator row, so the connector promotes it to Live.
   // Any other explicit status (for example Draft/Hold) remains excluded.
   if (sampleLive === "sample" || (sampleLive !== "" && sampleLive !== "live") || !hasUserContent) {
-    return { row, updates: [] as { columnIndex: number; value: string }[], isLive: false };
+    return { row, updates: [] as { columnIndex: number; value: string; valueInputOption: "RAW" | "USER_ENTERED" }[], isLive: false };
   }
 
   const { date, time } = indiaDateTime(now);
-  const updates: { columnIndex: number; value: string }[] = [];
-  const setWhenBlank = (name: string, value: string) => {
+  const updates: { columnIndex: number; value: string; valueInputOption: "RAW" | "USER_ENTERED" }[] = [];
+  const setWhenBlank = (name: string, value: string, valueInputOption: "RAW" | "USER_ENTERED" = "USER_ENTERED") => {
     const columnIndex = index(name);
     if (columnIndex >= 0 && String(row[columnIndex] ?? "").trim() === "") {
       row[columnIndex] = value;
-      updates.push({ columnIndex, value });
+      updates.push({ columnIndex, value, valueInputOption });
     }
   };
   const stableContent = headers.map((header, columnIndex) => systemHeader(tab, header) ? "" : String(row[columnIndex] ?? "").trim()).join("|");
@@ -68,7 +68,9 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   if (tab === "UI_Enterprise_Demand") {
     const studioNameIndex = index("Studio_Name");
     const studioName = studioNameIndex < 0 ? "" : String(row[studioNameIndex] ?? "");
-    if (studioName.trim()) setWhenBlank("Enterprise_Name", studioName);
+    // Enterprise names are business text, even when they resemble formulas,
+    // numbers, or dates. RAW preserves the exact Studio_Name value in Sheets.
+    if (studioName.trim()) setWhenBlank("Enterprise_Name", studioName, "RAW");
   }
   setWhenBlank("Sample_Live", "Live");
   setWhenBlank("Record_ID", `UI-${tabCode}-${digest}`);
@@ -76,6 +78,37 @@ export function prepareFreshInputRow(tab: string, headers: string[], input: unkn
   setWhenBlank("Reporting_Time", time);
   setWhenBlank("Last_Updated", now.toISOString());
   return { row, updates, isLive: true };
+}
+
+type FreshSourceUpdate = {
+  range: string;
+  values: string[][];
+  valueInputOption: "RAW" | "USER_ENTERED";
+};
+
+type FreshSourceValuesClient = {
+  spreadsheets: { values: { batchUpdate(request: {
+    spreadsheetId: string;
+    requestBody: { valueInputOption: "RAW" | "USER_ENTERED"; data: { range: string; values: string[][] }[] };
+  }): Promise<unknown> } };
+};
+
+export async function writeFreshInputSourceUpdates(sheets: FreshSourceValuesClient, spreadsheetId: string, updates: FreshSourceUpdate[]) {
+  let unpersisted = 0;
+  for (const valueInputOption of ["USER_ENTERED", "RAW"] as const) {
+    const data = updates
+      .filter((update) => update.valueInputOption === valueInputOption)
+      .map(({ range, values }) => ({ range, values }));
+    if (!data.length) continue;
+    try {
+      await sheets.spreadsheets.values.batchUpdate({ spreadsheetId, requestBody: { valueInputOption, data } });
+    } catch (error) {
+      const status = (error as { code?: number; status?: number }).code ?? (error as { status?: number }).status;
+      if (status !== 403) throw error;
+      unpersisted += data.length;
+    }
+  }
+  return { unpersisted };
 }
 
 type OwnedSpec = readonly [target: string, keyHeader: string, records: readonly Record<string, unknown>[]];
@@ -179,7 +212,7 @@ export async function syncFreshDashboardInputs() {
   // them out of this manual connector prevents duplicate operator input.
   const tabs = ["UI_Occupancy", "UI_Shrampark_Supply", "UI_Enterprise_Demand", "UI_Enterprise_Supply", "UI_Finance", "UI_Collections", "UI_People", "UI_Actions", "UI_Approvals", "UI_Evidence", "UI_Targets"];
   const response = await sheets.spreadsheets.values.batchGet({ spreadsheetId: SOURCE_ID, ranges: [...tabs.map((tab) => `'${tab}'!A:AN`), "'CM Actions'!A:V"] });
-  const sourceUpdates: { range: string; values: string[][] }[] = [];
+  const sourceUpdates: FreshSourceUpdate[] = [];
   const tables = new Map(tabs.map((tab, index) => {
     const values = (response.data.valueRanges?.[index]?.values || []) as unknown[][];
     const headerIndex = values.findIndex((row) => row.some((value) => norm(value) === "record id"));
@@ -191,7 +224,7 @@ export async function syncFreshDashboardInputs() {
         const column = update.columnIndex + 1;
         let letters = "", remaining = column;
         while (remaining > 0) { const remainder = (remaining - 1) % 26; letters = String.fromCharCode(65 + remainder) + letters; remaining = Math.floor((remaining - 1) / 26); }
-        sourceUpdates.push({ range: `'${tab}'!${letters}${sourceRowNumber}`, values: [[update.value]] });
+        sourceUpdates.push({ range: `'${tab}'!${letters}${sourceRowNumber}`, values: [[update.value]], valueInputOption: update.valueInputOption });
       }
       return prepared;
     }).filter((prepared) => prepared.isLive).map((prepared) => prepared.row);
@@ -199,13 +232,8 @@ export async function syncFreshDashboardInputs() {
     return [tab, table] as const;
   }));
   if (sourceUpdates.length) {
-    try {
-      await sheets.spreadsheets.values.batchUpdate({ spreadsheetId: SOURCE_ID, requestBody: { valueInputOption: "USER_ENTERED", data: sourceUpdates } });
-    } catch (error) {
-      const status = (error as { code?: number; status?: number }).code ?? (error as { status?: number }).status;
-      if (status !== 403) throw error;
-      console.warn(`Fresh input source is read-only for the sync identity; ${sourceUpdates.length} generated values were used for this sync but could not be persisted.`);
-    }
+    const { unpersisted } = await writeFreshInputSourceUpdates(sheets, SOURCE_ID, sourceUpdates);
+    if (unpersisted) console.warn(`Fresh input source is read-only for the sync identity; ${unpersisted} generated values were used for this sync but could not be persisted.`);
   }
   const t = (name: string) => tables.get(name)!;
   const map = (name: string, mapper: (row: unknown[], table: Table) => Record<string, unknown>) => t(name).rows.map((row) => mapper(row, t(name)));

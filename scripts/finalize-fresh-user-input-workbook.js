@@ -1,9 +1,3 @@
-require("dotenv").config({ path: ".env.local" })
-const fs = require("fs")
-const path = require("path")
-const { google } = require("googleapis")
-
-const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID
 const BLACK = { red: 0.03, green: 0.03, blue: 0.03 }
 const RED = { red: 0.8, green: 0.05, blue: 0.05 }
 const YELLOW = { red: 1, green: 0.75, blue: 0 }
@@ -70,6 +64,8 @@ const consumers = {
 }
 
 function credentials() {
+  const fs = require("fs")
+  const path = require("path")
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_FILE || "service-account.json"
   try { return JSON.parse(raw) } catch { return JSON.parse(fs.readFileSync(path.join(process.cwd(), raw), "utf8")) }
 }
@@ -82,6 +78,9 @@ function headerInfo(rows) {
 }
 
 async function main() {
+  require("dotenv").config({ path: ".env.local" })
+  const { google } = require("googleapis")
+  const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID
   if (!spreadsheetId) throw new Error("GOOGLE_TEAM_INPUT_SHEET_ID is missing")
   const account = credentials()
   const auth = new google.auth.GoogleAuth({ credentials: account, scopes: ["https://www.googleapis.com/auth/spreadsheets"] })
@@ -157,4 +156,8 @@ async function main() {
   console.log(JSON.stringify({ spreadsheetId, visibleTabs: (verified.data.sheets || []).filter((sheet) => !sheet.properties.hidden).sort((a, b) => a.properties.index - b.properties.index).map((sheet) => sheet.properties.title), manualTabs, guideRows: guideRows.length - 1 }, null, 2))
 }
 
-main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1 })
+module.exports = { isEditableHeader }
+
+if (require.main === module) {
+  main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1 })
+}
