@@ -1,9 +1,3 @@
-require("dotenv").config({ path: ".env.local" })
-const fs = require("fs")
-const path = require("path")
-const { google } = require("googleapis")
-
-const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID
 const BLACK = { red: 0.03, green: 0.03, blue: 0.03 }
 const RED = { red: 0.8, green: 0.05, blue: 0.05 }
 const YELLOW = { red: 1, green: 0.75, blue: 0 }
@@ -40,6 +34,14 @@ const editableOverrides = new Map([
 ])
 const alwaysSystem = new Set(["record id", "sample live", "reporting date", "reporting time", "last updated", "vacant nests", "occupancy pct", "collection leakage inr", "source submission id", "updated at", "actual loaded cac inr", "payback days", "growth record id", "supply model", "required nests", "gap nests", "owner actor id", "signed contract covered nests", "readiness status", "id"])
 
+function isEditableHeader(title, header) {
+  const key = norm(header)
+  if (title === "Fono Funnel" && fonoSystemHeaders.has(key)) return false
+  const override = editableOverrides.get(title)
+  if (override) return override.has(key)
+  return !alwaysSystem.has(key) && !(title === "UI_Enterprise_Demand" && key === "enterprise name")
+}
+
 const consumers = {
   UI_Occupancy: "Living > Existing Occupancy",
   "Fono Funnel": "Living FONO; Enterprise Demand; Member Adds; Nia Growth",
@@ -62,6 +64,8 @@ const consumers = {
 }
 
 function credentials() {
+  const fs = require("fs")
+  const path = require("path")
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_FILE || "service-account.json"
   try { return JSON.parse(raw) } catch { return JSON.parse(fs.readFileSync(path.join(process.cwd(), raw), "utf8")) }
 }
@@ -74,6 +78,9 @@ function headerInfo(rows) {
 }
 
 async function main() {
+  require("dotenv").config({ path: ".env.local" })
+  const { google } = require("googleapis")
+  const spreadsheetId = process.env.GOOGLE_TEAM_INPUT_SHEET_ID
   if (!spreadsheetId) throw new Error("GOOGLE_TEAM_INPUT_SHEET_ID is missing")
   const account = credentials()
   const auth = new google.auth.GoogleAuth({ credentials: account, scopes: ["https://www.googleapis.com/auth/spreadsheets"] })
@@ -102,11 +109,10 @@ async function main() {
     if (!manual) continue
 
     const header = headers.get(title)
-    const override = editableOverrides.get(title)
     const automatedColumns = []
     header.values.forEach((value, column) => {
       const key = norm(value)
-      const editable = fonoSystemHeaders.has(key) && title === "Fono Funnel" ? false : override ? override.has(key) : !alwaysSystem.has(key)
+      const editable = isEditableHeader(title, value)
       if (!editable) automatedColumns.push(column)
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(key)
       requests.push({ repeatCell: { range: { sheetId: sheet.properties.sheetId, startRowIndex: header.index, endRowIndex: header.index + 1, startColumnIndex: column, endColumnIndex: column + 1 }, cell: {
@@ -128,9 +134,8 @@ async function main() {
   const guideRows = [["TAB", "COLUMN", "FIELD", "OWNERSHIP", "WHAT TO ENTER", "DASHBOARD CONSUMERS"]]
   for (const title of manualTabs) {
     const header = headers.get(title)
-    const override = editableOverrides.get(title)
     header.values.forEach((field, index) => {
-      const editable = fonoSystemHeaders.has(norm(field)) && title === "Fono Funnel" ? false : override ? override.has(norm(field)) : !alwaysSystem.has(norm(field))
+      const editable = isEditableHeader(title, field)
       const reportInput = reportTabs.has(title) && !fonoManualHeaders.has(norm(field))
       guideRows.push([title, index + 1, field, reportInput ? "YELLOW — BUSINESS REPORT IMPORT" : editable ? "BLACK — USER INPUT" : "RED — AUTOMATED / DO NOT EDIT", reportInput ? "Import or replace the verified Business Report value." : editable ? "Enter the verified source value in the required format." : "Calculated, imported or system-managed.", consumers[title]])
     })
@@ -151,4 +156,8 @@ async function main() {
   console.log(JSON.stringify({ spreadsheetId, visibleTabs: (verified.data.sheets || []).filter((sheet) => !sheet.properties.hidden).sort((a, b) => a.properties.index - b.properties.index).map((sheet) => sheet.properties.title), manualTabs, guideRows: guideRows.length - 1 }, null, 2))
 }
 
-main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1 })
+module.exports = { isEditableHeader }
+
+if (require.main === module) {
+  main().catch((error) => { console.error(error.stack || error.message); process.exitCode = 1 })
+}
